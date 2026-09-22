@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: iemas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-iemas}
+      POSTGRES_USER: ${POSTGRES_USER:-iemas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-iemas_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - iemas_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iemas} -d ${POSTGRES_DB:-iemas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: iemas-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-iemas};Username=${POSTGRES_USER:-iemas};Password=${POSTGRES_PASSWORD:-iemas_dev_password}"
+      Jwt__Issuer: "Iemas"
+      Jwt__Audience: "IemasClients"
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set}
+      AgentJwt__Issuer: "Iemas.Agent"
+      AgentJwt__Audience: "IemasAgents"
+      AgentJwt__Secret: ${AGENT_JWT_SECRET:?AGENT_JWT_SECRET must be set}
+      CredentialEncryption__Key: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY must be set (base64, 32 bytes)}
+      Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN:-http://localhost:5173}
+      AiClassification__Enabled: ${AI_CLASSIFICATION_ENABLED:-true}
+      AiClassification__OpenRouter__ApiKey: ${OPENROUTER_API_KEY:-}
+    ports:
+      - "${API_PORT:-8090}:8080"
+
+volumes:
+  iemas_pgdata:

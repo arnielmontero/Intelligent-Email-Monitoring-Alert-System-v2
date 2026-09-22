@@ -1,0 +1,37 @@
+# .NET
+server/**/bin/
+server/**/obj/
+*.user
+*.suo
+
+# Node / React
+web-cms/node_modules/
+web-cms/dist/
+web-cms/.vite/
+
+# Windows Client (.NET)
+windows-client/**/bin/
+windows-client/**/obj/
+
+# Logs
+server/**/logs/
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+**/appsettings.Production.json
+**/appsettings.*.local.json
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (local)
+docker/pgdata/

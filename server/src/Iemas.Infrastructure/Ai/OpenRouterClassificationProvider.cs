@@ -1,0 +1,266 @@
+using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Iemas.Application.Common.Ai;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+namespace Iemas.Infrastructure.Ai;
+
+/// <summary>
+/// Requirements §23/§24/§25/§27 (what to ask) and §82 (OpenRouter as the V1 provider). Isolates
+/// all HTTP/JSON/prompt-shape detail behind <see cref="IAiClassificationProvider"/> so the
+/// classification workflow (Application layer) never depends on OpenRouter specifics — same
+/// separation as <c>ImapEmailProviderAdapter</c> for mailboxes (§14.1).
+///
+/// Never throws for provider/network/parse failures (§83) — every failure mode is captured into
+/// <see cref="ClassificationAttemptResult"/> so the caller can retry/fall back without
+/// exception-driven control flow. The API key is read once from options and attached only to the
+/// Authorization header; it is never interpolated into any exception message or log statement.
+/// </summary>
+public class OpenRouterClassificationProvider : IAiClassificationProvider
+{
+    private readonly HttpClient _httpClient;
+    private readonly OpenRouterOptions _options;
+    private readonly ILogger<OpenRouterClassificationProvider> _logger;
+
+    public OpenRouterClassificationProvider(
+        HttpClient httpClient,
+        IOptions<AiClassificationOptions> options,
+        ILogger<OpenRouterClassificationProvider> logger)
+    {
+        _httpClient = httpClient;
+        _options = options.Value.OpenRouter;
+        _logger = logger;
+    }
+
+    public async Task<ClassificationAttemptResult> ClassifyAsync(
+        ClassificationRequest request, string modelIdentifier, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+        {
+            // §16/§82 — a missing key is a configuration problem, not a secret to describe in
+            // detail. Reported as a normal failed attempt so the caller's retry/fallback/
+            // REVIEW_REQUIRED path handles it exactly like any other provider failure (§83).
+            return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
+                "OpenRouter API key is not configured.", stopwatch.ElapsedMilliseconds);
+        }
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeout);
+
+        try
+        {
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+            if (!string.IsNullOrWhiteSpace(_options.SiteUrl))
+            {
+                httpRequest.Headers.Add("HTTP-Referer", _options.SiteUrl);
+            }
+            if (!string.IsNullOrWhiteSpace(_options.SiteName))
+            {
+                httpRequest.Headers.Add("X-Title", _options.SiteName);
+            }
+
+            httpRequest.Content = JsonContent.Create(BuildChatRequest(request, modelIdentifier));
+
+            using var httpResponse = await _httpClient.SendAsync(httpRequest, cts.Token);
+
+            if (!httpResponse.IsSuccessStatusCode)
+            {
+                var body = await SafeReadBodyAsync(httpResponse, cts.Token);
+                _logger.LogWarning("OpenRouter request failed with status {StatusCode} for model {Model}", httpResponse.StatusCode, modelIdentifier);
+                return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
+                    $"OpenRouter returned HTTP {(int)httpResponse.StatusCode}: {Truncate(body, 500)}", stopwatch.ElapsedMilliseconds);
+            }
+
+            var chatResponse = await httpResponse.Content.ReadFromJsonAsync<OpenRouterChatResponse>(cts.Token);
+            var content = chatResponse?.Choices?.FirstOrDefault()?.Message?.Content;
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
+                    "OpenRouter returned an empty response.", stopwatch.ElapsedMilliseconds);
+            }
+
+            var parsed = TryParseClassification(content, out var parseError);
+            if (parsed is null)
+            {
+                // §83 — a malformed/unexpected AI response must not be silently treated as a
+                // classification; it is reported as a failed attempt like any other provider error.
+                return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
+                    $"Could not parse a valid classification from the model response: {parseError}", stopwatch.ElapsedMilliseconds);
+            }
+
+            stopwatch.Stop();
+            return new ClassificationAttemptResult(true, "OpenRouter", modelIdentifier, parsed, null, stopwatch.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The linked CTS fired from CancelAfter(timeout), not from the caller's own token.
+            return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
+                $"OpenRouter request timed out after {timeout.TotalSeconds:0}s.", stopwatch.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "OpenRouter request threw for model {Model}", modelIdentifier);
+            return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
+                $"OpenRouter request failed: {ex.Message}", stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    private static object BuildChatRequest(ClassificationRequest request, string modelIdentifier) => new
+    {
+        model = modelIdentifier,
+        temperature = 0,
+        response_format = new { type = "json_object" },
+        messages = new object[]
+        {
+            new { role = "system", content = SystemPrompt },
+            new { role = "user", content = BuildUserPrompt(request) },
+        },
+    };
+
+    // Requirements §23/§25/§27 — the AI recommends structured output only; it never drafts a
+    // customer reply or decides final workflow state. The schema mirrors §25's example exactly.
+    private const string SystemPrompt = """
+        You are an email triage classifier for a business inbox monitoring system. You never
+        draft or suggest a reply to the customer. You only analyze the email content the user
+        gives you and return a single JSON object describing its business relevance.
+
+        Consider the subject, body, sender, recipient, whether it is part of an existing
+        conversation thread, and the classification profile's category/include/exclude
+        definitions. Judge meaning and intent, not just keyword presence — for example, an
+        automated shipping notification is not relevant even if it mentions a product name, while
+        a genuine customer pricing question is relevant even without an exact keyword match.
+
+        Respond with ONLY a JSON object matching this exact shape, no other text:
+        {
+          "relevant": boolean,
+          "category": string,
+          "action_required": boolean,
+          "response_expected": boolean,
+          "priority": "LOW" | "MEDIUM" | "HIGH",
+          "confidence": number between 0 and 1,
+          "summary": string (one or two sentences)
+        }
+        """;
+
+    private static string BuildUserPrompt(ClassificationRequest request)
+    {
+        return $"""
+            Classification profile: {request.ProfileName}
+            Categories: {request.ProfileCategories}
+            Include signals: {request.ProfileIncludeDefinitions}
+            Exclude signals: {request.ProfileExcludeDefinitions}
+
+            From: {request.FromAddress}
+            To: {request.ToAddresses}
+            Part of existing thread: {request.IsPartOfExistingThread}
+            Subject: {request.Subject}
+
+            Body:
+            {request.BodyText ?? "(no text body)"}
+            """;
+    }
+
+    private static ClassificationResponse? TryParseClassification(string json, out string? error)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("relevant", out var relevantEl) || relevantEl.ValueKind != JsonValueKind.True && relevantEl.ValueKind != JsonValueKind.False)
+            {
+                error = "Missing or non-boolean 'relevant' field.";
+                return null;
+            }
+
+            if (!root.TryGetProperty("confidence", out var confidenceEl) || !confidenceEl.TryGetDouble(out var confidence))
+            {
+                error = "Missing or non-numeric 'confidence' field.";
+                return null;
+            }
+
+            if (confidence is < 0 or > 1)
+            {
+                error = $"'confidence' value {confidence} is outside the valid 0-1 range.";
+                return null;
+            }
+
+            var category = root.TryGetProperty("category", out var categoryEl) ? categoryEl.GetString() : null;
+            var priority = root.TryGetProperty("priority", out var priorityEl) ? priorityEl.GetString() : null;
+            var summary = root.TryGetProperty("summary", out var summaryEl) ? summaryEl.GetString() : null;
+            var actionRequired = root.TryGetProperty("action_required", out var actionEl) && actionEl.ValueKind == JsonValueKind.True;
+            var responseExpected = root.TryGetProperty("response_expected", out var respEl) && respEl.ValueKind == JsonValueKind.True;
+
+            if (string.IsNullOrWhiteSpace(category))
+            {
+                error = "Missing or empty 'category' field.";
+                return null;
+            }
+
+            if (priority is not ("LOW" or "MEDIUM" or "HIGH"))
+            {
+                error = $"'priority' value \"{priority}\" is not one of LOW/MEDIUM/HIGH.";
+                return null;
+            }
+
+            error = null;
+            return new ClassificationResponse(
+                relevantEl.ValueKind == JsonValueKind.True,
+                category,
+                actionRequired,
+                responseExpected,
+                priority,
+                confidence,
+                summary ?? string.Empty);
+        }
+        catch (JsonException ex)
+        {
+            error = $"Response was not valid JSON: {ex.Message}";
+            return null;
+        }
+    }
+
+    private static async Task<string> SafeReadBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch
+        {
+            return "(could not read response body)";
+        }
+    }
+
+    private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
+
+    private class OpenRouterChatResponse
+    {
+        [JsonPropertyName("choices")]
+        public List<OpenRouterChoice>? Choices { get; set; }
+    }
+
+    private class OpenRouterChoice
+    {
+        [JsonPropertyName("message")]
+        public OpenRouterMessage? Message { get; set; }
+    }
+
+    private class OpenRouterMessage
+    {
+        [JsonPropertyName("content")]
+        public string? Content { get; set; }
+    }
+}

@@ -1,0 +1,6 @@
+@Iemas.Api_HostAddress = http://localhost:5044
+
+GET {{Iemas.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
