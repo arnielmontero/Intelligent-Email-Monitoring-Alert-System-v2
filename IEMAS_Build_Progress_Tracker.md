@@ -3,8 +3,8 @@
 ## Overall Status
 
 **Status:** In Progress
-**Current Phase:** Phase 10 — Hardening, **SUBSTANTIALLY COMPLETE.** Phase 9 is Substantially Complete and Phases 4-9 are all live-verified (see below). Phase 10 work (started 2026-09-23) is done across every item except one deliberately-open exception: Hangfire concurrency guards, missed-cron-window policy, OpenRouter resilience, IMAP resilience, the OpenRouter circuit breaker, security hardening (Findings #2-#4: global exception handler, AI prompt-injection defense, auth endpoint rate limiting), all three observability items (correlation IDs, liveness/readiness health checks, structured operational telemetry), and data integrity (a real PostgreSQL trigger enforcing the Phase 7 claim-vs-verified-fact invariant at the DB level, live-verified including under genuine concurrency; a full backup/restore drill against a separate disposable instance with application-level read/write verification) are all implemented, tested, and live-verified. **The one remaining item is Finding #1** (committed production-identical secrets) — deliberately left **OPEN / Awaiting authorized secret rotation**: a migration tool was built and dry-run-verified against the live DB, but the live key-rotation write was not executed, since it requires an explicitly authorized environment for a live secret-store write and the two currently-protected credentials are test data only.
-**Overall Progress:** 75% (9 of 12 phases substantially complete; all 9 now carry real Docker-stack live verification, not just unit tests; Phase 10 hardening underway on top of that foundation)
+**Current Phase:** Phase 11 — Testing, **IN PROGRESS** (started 2026-09-23, immediately following Phase 10). Phase 10 — Hardening is **SUBSTANTIALLY COMPLETE**: Hangfire concurrency guards, missed-cron-window policy, OpenRouter resilience, IMAP resilience, the OpenRouter circuit breaker, security hardening (Findings #2-#4), all three observability items, and data integrity (DB trigger + backup/restore drill) are all implemented, tested, and live-verified — the sole exception, deliberately left open, is **Finding #1** (committed production-identical secrets) — **OPEN / Awaiting authorized secret rotation**, per explicit decision not to hold up further phases for it. Phase 11 is explicitly scoped as more than a `dotnet test` re-run: full regression → end-to-end workflows → failure-path testing → security regression → recovery/regression → final tracker evidence, per explicit direction, so Phase 12 deployment decisions rest on evidence rather than accumulated passing tests alone.
+**Overall Progress:** 80% (10 of 12 phases substantially complete — all with real Docker-stack live verification, not just unit tests; Phase 11 testing underway on top of that foundation)
 
 ### Current Focus — Phase 10 Hardening (session in progress, 2026-09-23)
 
@@ -785,6 +785,49 @@ missed-cron policy, OpenRouter resilience, IMAP resilience, the circuit breaker,
 findings but #1, and all three observability items) is implemented, tested, and live-verified.
 
 **Not started yet:** closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite). Finding #1 (committed production-identical secrets) remains explicitly **OPEN / Awaiting authorized secret rotation**.
+
+## Phase 11 — Testing (2026-09-23, started immediately after Phase 10)
+
+Per explicit direction, scoped as more than a `dotnet test` re-run: full regression → end-to-end
+workflows → failure-path testing → security regression → recovery/regression → final tracker
+evidence, with automated-test evidence kept explicitly separate from live-test evidence throughout,
+and no gate marked done on an assumption.
+
+### 1. Full Regression — DONE
+
+- **Backend**: `dotnet test` — **329/329 passing**, 0 failures. `dotnet build` (Debug) and
+  `dotnet build -c Release` both clean — 0 errors, 2 pre-existing `CS8602` nullable-reference
+  warnings in `ImapEmailProviderAdapter.cs` (known, unchanged from earlier in this session, not
+  newly introduced).
+- **Frontend**: `npm run build` (`tsc -b && vite build`) — clean TypeScript compile, Vite production
+  bundle produced (`382.75 kB` / `115.05 kB` gzipped) with no errors. `npm run lint` (`oxlint`) — 0
+  errors, 8 pre-existing warnings, all the same `react(set-state-in-effect)` rule on the
+  fetch-on-mount pattern used consistently across 8 CMS list pages (Employees, Escalation Groups,
+  Email Accounts, AI Models, Reminder Policies, Email Classification, Email Monitoring, Escalation
+  Policies) — a known, low-risk pattern, not a functional defect, and out of scope to refactor as
+  part of a testing phase. No frontend automated test suite exists in this project (`package.json`
+  has no `test` script) — this remains an accurate, tracked gap (see "Known Gaps" below), not
+  silently treated as covered.
+- **Migration verification**: `dotnet ef migrations list` (from the host) enumerates 10 migrations
+  ending in `20260923090552_AddReplyStatusVerificationTrigger`. Cross-checked directly against the
+  real running database via `SELECT "MigrationId" FROM "__EFMigrationsHistory"` — **all 10 migration
+  IDs match exactly**, confirming zero drift between what the codebase defines and what is actually
+  applied to the live schema.
+- **Clean production-style build**: `docker compose build --no-cache api` — a full, cache-free
+  rebuild of the entire multi-stage Docker image (restore → publish Release → runtime image) —
+  succeeded end to end. Restarted the stack on the freshly-built image and confirmed
+  `/health/live` → `200 Healthy` immediately after startup, proving the from-scratch production
+  build is not just compilable but actually runnable.
+
+### 2. End-to-End Workflows — IN PROGRESS
+
+### 3. Failure-Path Testing — NOT STARTED
+
+### 4. Security Regression — NOT STARTED
+
+### 5. Recovery/Regression — NOT STARTED
+
+### 6. Final Evidence/Tracker — NOT STARTED (this document is updated incrementally as each item above completes, not deferred to the end)
 
 ### Summary
 
