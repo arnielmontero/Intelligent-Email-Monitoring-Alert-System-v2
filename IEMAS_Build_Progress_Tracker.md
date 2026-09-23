@@ -3,8 +3,26 @@
 ## Overall Status
 
 **Status:** In Progress
-**Current Phase:** Phase 9 — Escalation, **Substantially Complete.** Phases 4-9 were all **live-verified against a real Docker/PostgreSQL/Hangfire stack for the first time in this project's history** this session (2026-09-23), after Docker Desktop's engine — unreachable across the prior 5-6 sessions — came back healthy. See each phase's Completion Gate below for item-by-item live evidence (curl output, `psql` row inspection, real Hangfire cron-firing proof) versus what remains genuinely unverifiable and why.
-**Overall Progress:** 75% (9 of 12 phases substantially complete; all 9 now carry real Docker-stack live verification, not just unit tests)
+**Current Phase:** Phase 10 — Hardening, **IN PROGRESS.** Phase 9 is Substantially Complete and Phases 4-9 are all live-verified (see below). Phase 10 work started 2026-09-23: Hangfire concurrency guards are done, committed, and live-verified; a missed-cron-window downtime experiment is in progress (see "Current Focus" below) to gather real evidence before writing a missed-tick policy, per explicit instruction not to guess at Hangfire's behavior.
+**Overall Progress:** 75% (9 of 12 phases substantially complete; all 9 now carry real Docker-stack live verification, not just unit tests; Phase 10 hardening underway on top of that foundation)
+
+### Current Focus — Phase 10 Hardening (session in progress, 2026-09-23)
+
+**Item 1 of the Phase 10 plan — Hangfire job safety — DONE and committed:**
+- Added `[DisableConcurrentExecution]` guards to the Reminder (`*/5 * * * *`) and Escalation (`*/10 * * * *`) recurring jobs via a new `RecurringJobGuards` wrapper class in `Iemas.Api.Jobs` (the attribute needs a Hangfire package reference, which `Iemas.Application` deliberately does not take — Application defines interfaces only, per the Phase 1 module-boundary rule — so the guard lives in the Api layer instead of directly on `ReminderExecutionService`/`EscalationService`).
+- **Live-verified against the real running stack**, not just registered: both jobs were watched firing through the new wrapper on their real schedule (Reminder job 81 at 05:55:08 UTC, Escalation job 88 at 06:00:08 UTC), each with a clean `Enqueued → Processing → Succeeded` state history, no duplicate concurrent executions, all 6 recurring job IDs/cron schedules unchanged (confirmed via direct `hangfire.hash`/`hangfire.job`/`hangfire.state` queries against `iemas-postgres`), and zero errors/exceptions in `iemas-api` logs around either tick.
+- 252/252 tests passing, clean `dotnet build`, both re-confirmed after the live check (not just before).
+- Committed: `c95121b` — "Phase 10: guard Reminder/Escalation jobs against concurrent execution."
+- Also fixed a related drift risk found while reviewing Bug #13: `EscalationService.EvaluateCaseAsync` and `TestPolicyAsync` each had their own inline copy of the grace-period comparison — exactly the pattern that let Bug #13 happen. Extracted into a shared `IsWithinGracePeriod` helper. Committed: `4404d62`.
+
+**Item 2 of the Phase 10 plan — missed-cron-window policy — evidence-gathering in progress, not yet decided:**
+Per explicit instruction, the missed-tick behavior (does a downed server catch up on every missed cron occurrence, or just resume from now?) is being determined by **empirical observation against the real Hangfire 1.8.14 + PostgreSQL storage configuration**, not assumed from general Hangfire documentation, and the observed *implementation* behavior is being kept explicitly separate from the *business policy* decision that follows it (per the sequence: observed behavior → desired behavior → explicit policy).
+
+- **Experiment 1 (shorter downtime, single missed reminder tick):** `iemas-api` stopped 06:33:44 UTC, restarted 06:37:22 UTC (~3m38s down, spanning exactly one missed `*/5 * * * *` reminder tick at 06:35:00). Result: **exactly one catch-up execution** (job 161, fired 06:37:24 UTC — ~2s after restart, `Enqueued → Processing → Succeeded`), not zero (skipped) and not replayed-per-missed-occurrence. No escalation tick was missed in this window (escalation's `*/10 * * * *` next tick was 06:40:00, still in the future when the container came back up), so this experiment only speaks to the Reminder job.
+- **Experiment 2 (longer downtime, in progress as of this tracker update):** `iemas-api` stopped again at 06:38:08 UTC, deliberately left down long enough to span **two** missed reminder ticks (06:40:00 and 06:45:00) and **one** missed escalation tick (06:40:00), to test (a) whether missing 2 ticks on the same job produces 1 or 2 catch-up executions, and (b) whether the 10-minute-interval Escalation job behaves the same way as the 5-minute Reminder job. **Not yet restarted / not yet observed as of this write-up** — this tracker entry will be updated with the actual result once the container is brought back up and the `hangfire.job`/`hangfire.state` evidence is captured, exactly like Experiment 1's evidence above. Do not treat Experiment 1's single-tick result as proven for the multi-tick or 10-minute-interval case until Experiment 2's evidence lands here.
+- **No missed-cron-window policy has been written yet** — that follows once both experiments' evidence is in hand, per the explicit instruction not to encode observed behavior directly as policy without first stating it as an observation, then deciding the desired business behavior (catch-up window limit, max catch-up executions, stale reminder/escalation handling, interaction with the new concurrency guard) separately.
+
+**Not started yet:** IMAP/OpenRouter resilience (item 3 of the Phase 10 plan — timeouts, retry/backoff, circuit breaker), security hardening (secrets out of `appsettings`/compose, agent token revocation-on-sync), observability (correlation IDs, health checks for IMAP/OpenRouter/Hangfire), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
 
 ### Summary
 
@@ -117,7 +135,7 @@ Per requirements §112, the following business decisions are not fully frozen. R
 | 7 | Windows Agent | `[x]` Substantially Complete (server backend infrastructure implemented + unit-tested, scope confirmed with user as server-only; **full REST lifecycle live-verified, 2026-09-23**; real SignalR client/Windows Agent binary still not verified — none exists) |
 | 8 | Reminder Engine | `[x]` Substantially Complete (implemented + unit-tested + **live-verified including a real automatically-firing Hangfire job, 2026-09-23**) |
 | 9 | Escalation | `[x]` Substantially Complete (implemented + unit-tested + controller-tested + CMS screens built + **live-verified, 2026-09-23 — 1 real bug (#13) found and fixed during live verification**) |
-| 10 | Hardening | `[ ]` Not Started |
+| 10 | Hardening | `[~]` In Progress — Hangfire concurrency guards done + live-verified; missed-cron-window evidence-gathering in progress; IMAP/OpenRouter resilience, security, observability, data-integrity items not yet started |
 | 11 | Testing | `[ ]` Not Started |
 | 12 | Production Deployment | `[ ]` Not Started |
 
