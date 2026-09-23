@@ -2,6 +2,7 @@ using System.Text;
 using Hangfire;
 using Hangfire.Dashboard;
 using Iemas.Api.Hubs;
+using Iemas.Api.Jobs;
 using Iemas.Application;
 using Iemas.Application.Cases;
 using Iemas.Application.EmailClassification;
@@ -55,6 +56,7 @@ builder.Services.AddSwaggerGen(options =>
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddScoped<RecurringJobGuards>();
 
 var jwtSecret = builder.Configuration["Jwt:Secret"]
     ?? throw new InvalidOperationException("Missing Jwt:Secret configuration.");
@@ -234,11 +236,16 @@ if (builder.Configuration.GetValue("ReplyVerification:Enabled", true))
 // registration pattern as the jobs above; re-derives its candidate set fresh every run so a
 // server restart mid-cycle loses no state — Reminder rows and their Status/ScheduledForUtc are
 // the only source of truth, not anything held in the job/server process.
+//
+// Phase 10 hardening: routed through RecurringJobGuards (Iemas.Api.Jobs) rather than calling
+// ReminderExecutionService directly, so [DisableConcurrentExecution] can guard against an
+// overrunning run still being mid-batch when its own next cron tick fires — see that class's doc
+// comment for why the per-row claim-token idempotency alone isn't a full substitute for this.
 if (builder.Configuration.GetValue("ReminderEngine:Enabled", true))
 {
-    RecurringJob.AddOrUpdate<ReminderExecutionService>(
+    RecurringJob.AddOrUpdate<RecurringJobGuards>(
         "reminder-engine-execute-due-reminders",
-        service => service.RunAsync(builder.Configuration.GetValue("ReminderEngine:BatchSize", 50), CancellationToken.None),
+        guards => guards.RunRemindersAsync(builder.Configuration.GetValue("ReminderEngine:BatchSize", 50), CancellationToken.None),
         builder.Configuration["ReminderEngine:CronSchedule"] ?? "*/5 * * * *");
 }
 
@@ -247,11 +254,16 @@ if (builder.Configuration.GetValue("ReminderEngine:Enabled", true))
 // a level already recorded as Executed for a Case is never re-executed, guarded in
 // EscalationService itself rather than a DB constraint, since a Skipped attempt must be allowed to
 // recur on every poll). Same idempotent-upsert registration pattern as the jobs above.
+//
+// Phase 10 hardening: routed through RecurringJobGuards for the same [DisableConcurrentExecution]
+// reason as the Reminder job above — Escalation's own idempotency check (querying for an existing
+// Executed row) has a narrower TOCTOU gap under real concurrent execution than Reminder's unique-
+// index claim, making the job-level lock more load-bearing here, not just extra safety.
 if (builder.Configuration.GetValue("EscalationEngine:Enabled", true))
 {
-    RecurringJob.AddOrUpdate<EscalationService>(
+    RecurringJob.AddOrUpdate<RecurringJobGuards>(
         "escalation-engine-evaluate-cases",
-        service => service.RunAsync(builder.Configuration.GetValue("EscalationEngine:BatchSize", 50), CancellationToken.None),
+        guards => guards.RunEscalationsAsync(builder.Configuration.GetValue("EscalationEngine:BatchSize", 50), CancellationToken.None),
         builder.Configuration["EscalationEngine:CronSchedule"] ?? "*/10 * * * *");
 }
 
