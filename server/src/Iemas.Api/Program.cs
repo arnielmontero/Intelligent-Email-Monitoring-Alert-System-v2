@@ -58,6 +58,9 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<RecurringJobGuards>();
 
+builder.Services.AddExceptionHandler<Iemas.Api.GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 var jwtSecret = builder.Configuration["Jwt:Secret"]
     ?? throw new InvalidOperationException("Missing Jwt:Secret configuration.");
 
@@ -155,6 +158,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseExceptionHandler();
 app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();
 app.UseCors(CmsCorsPolicy);
