@@ -41,7 +41,170 @@ Per explicit instruction, the missed-tick behavior (does a downed server catch u
 - Also closed a related gap found while reviewing this: the Email Intake recurring job (the tightest interval of any job, `*/2 * * * *`) had no `[DisableConcurrentExecution]` guard at all — the same class of gap already fixed for Reminder/Escalation earlier this session, but more load-bearing here since IMAP retries now make a struggling-mailbox run take longer, raising real overlap risk. Routed through the existing `RecurringJobGuards` wrapper (now handling all three jobs); job ID/cron unchanged, confirmed via `hangfire.hash` (still exactly 6 recurring jobs, correctly upserted in place, no duplicates).
 - **Live-verified against the real Docker stack with a genuine outage/recovery cycle**, not just unit tests: stopped the real `greenmail-iemas` container mid-session, triggered a manual intake run — both configured accounts (one good, one deliberately-bad-credentials) failed independently (per-account isolation confirmed: the good account's attempt was not blocked by the bad account's failure), the good account's failure took **18.4s** (visible evidence of the retry loop actually running — DNS-resolution-failure → `SocketException` → `Transient` → retry with backoff — vs. 269-466ms on a normal connect/fail), the bad-auth account failed fast (73-75ms, confirming `AuthenticationFailure` correctly skips retry entirely) — confirmed via `psql` that `email_messages` stayed at 3 rows (no loss) and `LastSyncCompletedAt` was left untouched during the outage (watermark preserved, per §44). Restarted `greenmail-iemas`, re-triggered intake: immediate recovery (269ms), still 3 messages total (**no duplicate ingestion**), watermark correctly advanced. `dotnet test` 281/281 passing (17 new), clean `dotnet build` (0 new warnings, same 2 pre-existing), Docker image rebuilt and confirmed healthy.
 
-**Not started yet:** a circuit breaker for OpenRouter (deferred — the category-aware retry/backoff already addresses the most damaging behavior; a full circuit breaker is a larger design decision not yet made, per the explicit instruction not to implement it without first defining its state machine and interaction with the existing retry/fallback logic), security hardening (secrets out of `appsettings`/compose, agent token revocation-on-sync), observability (correlation IDs, health checks for IMAP/OpenRouter/Hangfire), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
+### OpenRouter Circuit Breaker — Design (2026-09-23, design-only, not yet implemented)
+
+Written up in full before any code, per explicit instruction — the state machine and its interaction
+with the existing per-model retry/fallback logic (this session's earlier work, commit `100be59`)
+must be settled first so the two mechanisms don't fight each other.
+
+**What the circuit represents:** one circuit per `(Provider, ModelIdentifier)` pair — i.e. one per
+row in `AiModelConfig` — not one global OpenRouter circuit and not one per `TaskCapability`. Reason:
+`EmailClassificationService.ClassifyOneAsync` already walks an ordered fallback list of models
+(`FallbackOrder`) per §82/§83; a global circuit would suppress a healthy fallback model just because
+an unrelated primary model is unhealthy, which directly contradicts the fallback architecture's own
+purpose. A per-model circuit means an OPEN circuit on the primary model still lets fallback models
+be tried normally — the circuit breaker and the fallback loop reinforce each other instead of
+conflicting.
+
+**The concrete problem this closes that retry/backoff (already done) cannot:** `RunAsync` processes
+a batch of messages (default 25) in one call; each message independently calls `ClassifyOneAsync`,
+which independently walks the model list from the top every time. If the primary model is down, the
+existing retry logic already avoids retrying a non-retryable failure (Bug #14's fix) and already
+avoids over-retrying a malformed response — but a `Transient`/`RateLimited` failure (the common "the
+model is temporarily unhealthy" case) still gets its full retry budget **on every single message in
+the batch**, because nothing remembers "this model just failed" from one message to the next within
+the same run, let alone across runs. 25 messages × up to `MaxRetries+1` attempts each against a model
+that's going to fail every time is exactly the wasted work/latency a circuit breaker exists to avoid.
+
+**State machine:**
+
+- **CLOSED** — normal operation. Every attempt against this model goes through the existing
+  retry/backoff logic unchanged (`ClassificationFailureCategory`-driven retry count and delay, per
+  commit `100be59`). Failures are counted toward the opening threshold (see below); a success resets
+  the count to zero.
+- **OPEN** — no request is sent to this model at all. `EmailClassificationService`'s model loop
+  skips straight to the next model in `FallbackOrder` without calling `_aiProvider.ClassifyAsync`
+  for the open-circuit model — the retry budget for that model is not consumed at all while open,
+  since spending it would be pure waste against a model already known to be failing. After the
+  cooldown elapses, the circuit transitions to HALF-OPEN on its *next* access attempt (lazy
+  transition, not a background timer — see "Implementation shape" below).
+- **HALF-OPEN** — exactly one probe request is permitted through per cooldown period. While a probe
+  is in flight, any other concurrent attempt against the same model is treated as if the circuit
+  were still OPEN (skipped straight to fallback) rather than allowed to send a second concurrent
+  probe — a second simultaneous "controlled probe" is a contradiction in terms. Probe success →
+  CLOSED (failure count reset to zero). Probe failure → OPEN again, cooldown restarts (see backoff
+  below).
+
+**What counts as a "failure" toward the opening threshold:**
+
+| Failure category (existing enum, commit `100be59`) | Counts toward circuit? | Why |
+|---|---|---|
+| `Transient` (timeout, network, 5xx) | Yes | The exact "provider is unhealthy right now" signal a circuit breaker exists for. |
+| `RateLimited` (429) | Yes, but see below | A provider actively telling us to back off is at least as strong a signal as a 5xx. |
+| `MalformedResponse` | Yes | A model returning garbage repeatedly is unhealthy in a way that matters just as much as a network failure — the existing "1 retry only" policy already limits per-message damage, but repeated malformed responses across messages should still open the circuit. |
+| `AuthenticationFailure` | **No** — special-cased, see below | Not a health signal about the model; it is a static configuration fact (bad/missing key) that will not change until an admin fixes it, and cooldown/probing cannot fix a wrong API key. |
+| `InvalidRequest` | **No** | Same reasoning as AuthenticationFailure — a structurally bad request will fail identically forever; retrying/probing it is never useful. |
+
+`AuthenticationFailure`/`InvalidRequest` are excluded from the failure count entirely, but not
+ignored: they already skip retry via the existing `IsRetryable` logic (commit `100be59`), and the
+model is left `CLOSED` rather than `OPEN` — opening it would suggest "try again later," which is
+wrong for a failure that needs a config change, not time, to resolve. (A future CMS "circuit status"
+view, if built, should surface these differently — e.g. "misconfigured" vs. "temporarily unhealthy"
+— but that is a display concern, not part of this state machine.)
+
+A `RateLimited` (429) failure counts toward the threshold like any other, but additionally: if the
+provider's own `Retry-After` is present and would itself push past the point where the circuit's
+cooldown would otherwise end, the longer of the two wins — never open a circuit for less time than
+the provider explicitly asked for.
+
+**Threshold — consecutive failures, not a rolling window:** opens after **3 consecutive** counted
+failures for that model (across calls/messages — i.e. this is a running counter carried between
+`ClassifyOneAsync` invocations for the same model, not reset per message or per batch). A rolling
+window (e.g. "5 of the last 10 attempts") was considered and rejected for V1: it needs a
+time-bucketed counter structure that's meaningfully more code for a benefit that mostly matters at
+much higher request volume than this system's batch-of-25-every-2-minutes cadence actually has: at
+this volume, "N in a row" and "N of the last M" converge in practice, and consecutive-count is
+simpler to reason about, log, and test. Explicitly recorded as a V1 simplification, not an oversight
+— worth revisiting if/when classification volume grows enough for burst patterns to matter.
+
+**Cooldown duration:** starts at **30 seconds**, doubling on each consecutive re-open up to a cap of
+**10 minutes** (30s → 1m → 2m → 4m → 8m → 10m cap) — the same bounded-exponential shape already used
+for the OpenRouter retry backoff and the IMAP connect retry, for consistency across this session's
+three resilience mechanisms. The multiplier resets to 30s once a probe succeeds and the circuit
+returns to CLOSED. Rationale for starting short: at 2-minute batch cadence, a 30s-to-few-minutes
+outage (the most common real case — a brief provider hiccup) should self-heal within one or two
+batch cycles rather than staying open needlessly; the doubling cap protects against hammering a
+genuinely extended outage every 30 seconds forever.
+
+**Half-open probe count: exactly 1.** A single successful probe closes the circuit immediately
+(optimistic recovery) rather than requiring N consecutive probe successes — consistent with this
+system's low request volume (waiting for multiple *cooldown periods* worth of probes, at 30s-10m
+each, to re-open a circuit would make recovery slower than the outage that caused it in the
+marginal/flaky case). If the model is still genuinely unhealthy, the probe fails and the
+doubling-cooldown OPEN state simply repeats — no correctness is lost, only optimism about how fast
+one success proves health.
+
+**Interaction with fallback:** when a model's circuit is OPEN or a HALF-OPEN slot is already
+occupied by another concurrent attempt, `EmailClassificationService`'s `foreach (var model in
+models)` loop treats that exactly like an exhausted-retries failure for that model — it moves to
+the next model in `FallbackOrder` immediately, consuming none of that model's retry budget (there is
+nothing to retry; the model was never called). If every enabled model's circuit is OPEN, the
+existing `PersistFailureAsync` path is reached exactly as it is today when every model's retries are
+exhausted — `ReviewRequired`, never lost, never silently marked irrelevant (§83 unchanged).
+
+**Persistence: in-memory only, not written to PostgreSQL.** Rationale: `iemas-api` runs as a single
+container (`docker-compose.yml` — no multi-replica deployment in this project's scope), so there is
+no cross-process consistency problem an in-memory store would fail to solve. On a container restart,
+starting every circuit fresh at CLOSED is treated as the *correct* default, not a gap to work around:
+a restart is itself a meaningfully different runtime state (new process, possibly after a deploy that
+fixed the underlying issue), so re-probing from a clean slate is more correct than trusting
+pre-restart failure history — and if the model is still genuinely down, the circuit will simply
+reopen after 3 consecutive fresh failures, which given the 2-minute batch cadence means at most one
+extra wasted-retry batch cycle after a restart, not an unbounded cost.
+
+**Concurrency:** `EmailClassificationService` is `AddScoped` (one instance per Hangfire job
+invocation or per manual-trigger HTTP request — see `EmailClassificationController`), so circuit
+state cannot live on the service instance; it must be a **singleton** service (`AiCircuitBreakerStore`
+or similar) injected into `EmailClassificationService`, using a `ConcurrentDictionary<(string
+Provider, string ModelIdentifier), CircuitState>` with per-entry synchronization (e.g. a small lock
+or `Interlocked`-based state transitions) so the HALF-OPEN "exactly one probe" guarantee holds even
+across two genuinely concurrent callers. This closes a related gap discovered while designing this:
+**the AI classification recurring job (`ai-classification-poll-pending-messages`, `*/2 * * * *`) has
+no `[DisableConcurrentExecution]` guard**, the same class of gap already fixed this session for
+Reminder/Escalation/Email-Intake — and unlike those three, this one is directly load-bearing for the
+circuit breaker's correctness, not just an efficiency concern: without it, two concurrent job runs
+(the scheduled job racing the manual `POST /email-classification/run` trigger, which
+`EmailClassificationController` exposes) could each independently think they own the single
+HALF-OPEN probe slot unless the store's internal locking handles it — the job-level guard plus the
+store's own concurrency-safety are complementary, not redundant (the guard prevents the common case
+cheaply; the store's locking is the actual correctness guarantee if the guard is ever bypassed, e.g.
+a future second entry point). Will be added the same way the other three were (`RecurringJobGuards`).
+
+**Logging/metrics for state transitions:** every CLOSED→OPEN, OPEN→HALF-OPEN, HALF-OPEN→CLOSED, and
+HALF-OPEN→OPEN transition logs a structured warning/information line naming the model identifier,
+the transition, the consecutive-failure count (on open) or probe result (on half-open resolution),
+and the new cooldown duration (on open) — enough to answer "why did classification suddenly get
+slower/faster for message X" from logs alone without needing a dedicated metrics dashboard for V1.
+A CMS-visible circuit-status view is explicitly out of scope for this design (no requirement calls
+for it, and `AiModelConfigsPage`-style CMS surfacing can be a follow-up once the breaker itself is
+proven live) — noted here so it isn't silently forgotten, not built speculatively.
+
+**Explicitly out of scope for this design pass:** IMAP does *not* get an equivalent circuit breaker.
+Reasoning: IMAP failures are already scoped per-account (one mailbox failing doesn't affect any other
+account's fetch — true isolation, not just a circuit), and the retry/backoff added earlier this
+session already bounds the cost of a single account's failure to 3 attempts over a few seconds, not
+25 repeated attempts within one run the way classification's per-message model loop does — the
+structural reason a circuit breaker earns its complexity for OpenRouter (one shared external
+dependency hit by every message in a batch) does not apply the same way to IMAP (each account is
+already its own independent unit of failure). Revisit only if a future phase introduces something
+IMAP-side that resembles the classification batch's "many attempts against one shared endpoint per
+run" shape.
+
+**Implementation is not started.** This design is written up for review before any `CircuitState`
+enum, `AiCircuitBreakerStore` class, or wiring into `EmailClassificationService`/`RecurringJobGuards`
+exists. Next step once this design is confirmed: implement `AiCircuitBreakerStore` as a pure,
+directly-unit-testable state machine (no I/O, easy to drive with fake clock/time injection for
+cooldown-expiry tests — the same "extract the part that can be a pure function" pattern used for
+`ImapFailureClassifier` and `ClassificationDecisionPolicy`), wire it into
+`EmailClassificationService`'s model loop, add the classification job to `RecurringJobGuards`, add
+unit tests for every state transition and the fallback-interaction behavior, then live-verify against
+the real Docker stack the same way OpenRouter retry/backoff and IMAP retry were live-verified this
+session (though a genuine live circuit-open/half-open/close cycle against *real* OpenRouter would
+still need a real API key or a way to force repeated failures against the real provider — likely
+achievable via a deliberately-wrong model identifier or a fake `HttpMessageHandler`-backed live test
+rather than needing a real outage, unlike IMAP where a real GreenMail stop/start was straightforward).
+
+**Not started yet:** security hardening (secrets out of `appsettings`/compose, agent token revocation-on-sync), observability (correlation IDs, health checks for IMAP/OpenRouter/Hangfire), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
 
 ### Summary
 
