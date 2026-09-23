@@ -229,6 +229,11 @@ public class EscalationService
             return new TestEscalationPolicyResult(false, null, null, $"Only {sentReminderCount}/{policy.TriggerReminderCount} reminders sent — threshold not reached.");
         }
 
+        if (DateTimeOffset.UtcNow - targetCase.FirstEmailReceivedAt < policy.GracePeriod)
+        {
+            return new TestEscalationPolicyResult(false, null, null, "Grace period has not yet elapsed — would not escalate yet.");
+        }
+
         var level = policy.Levels.OrderBy(l => l.Level).FirstOrDefault();
         if (level is null)
         {
