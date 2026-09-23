@@ -183,11 +183,15 @@ app.MapHub<AgentHub>("/hubs/agent").RequireAuthorization(RequireAgentPolicy);
 // (deferred to Phase 10); EmailIntake__Enabled is a config-level equivalent for now so intake
 // can still be stopped without a code change, and is called out in the tracker as a forward
 // reference to the real Phase 10 control.
+//
+// Phase 10 hardening: routed through RecurringJobGuards, same [DisableConcurrentExecution] reason
+// as the Reminder/Escalation jobs below — this is the tightest interval of any job (2 minutes), so
+// it is the one most likely to genuinely overlap its own next tick under a slow/degraded mailbox.
 if (builder.Configuration.GetValue("EmailIntake:Enabled", true))
 {
-    RecurringJob.AddOrUpdate<EmailIntakeService>(
+    RecurringJob.AddOrUpdate<RecurringJobGuards>(
         "email-intake-poll-all-accounts",
-        service => service.RunAllAsync(CancellationToken.None),
+        guards => guards.RunEmailIntakeAsync(CancellationToken.None),
         builder.Configuration["EmailIntake:CronSchedule"] ?? "*/2 * * * *");
 }
 

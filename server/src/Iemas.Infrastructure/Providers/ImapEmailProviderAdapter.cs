@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Iemas.Application.Common.Interfaces;
 using Iemas.Application.Common.Providers;
 using Iemas.Domain.Email;
 using MailKit;
@@ -17,20 +18,28 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
 {
     private const int ConnectTimeoutSeconds = 20;
     private const int FetchTimeoutSeconds = 60;
+    private const int MaxConnectRetries = 2;
+    private static readonly TimeSpan MaxConnectRetryDelay = TimeSpan.FromSeconds(10);
+
+    private readonly IRetryDelay _retryDelay;
+
+    public ImapEmailProviderAdapter(IRetryDelay retryDelay)
+    {
+        _retryDelay = retryDelay;
+    }
 
     public EmailProtocol Protocol => EmailProtocol.Imap;
 
     public async Task<ProviderConnectionTestResult> TestConnectionAsync(EmailProviderConnectionSettings settings, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        using var client = new ImapClient();
 
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(ConnectTimeoutSeconds));
 
-            await ConnectAndAuthenticateAsync(client, settings, timeoutCts.Token);
+            using var client = await ConnectAndAuthenticateAsync(settings, timeoutCts.Token);
             await client.Inbox.OpenAsync(FolderAccess.ReadOnly, timeoutCts.Token);
             await client.DisconnectAsync(true, cancellationToken);
 
@@ -53,11 +62,10 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
         int maxMessages,
         CancellationToken cancellationToken)
     {
-        using var client = new ImapClient();
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(FetchTimeoutSeconds));
 
-        await ConnectAndAuthenticateAsync(client, settings, timeoutCts.Token);
+        using var client = await ConnectAndAuthenticateAsync(settings, timeoutCts.Token);
         var inbox = client.Inbox;
         await inbox.OpenAsync(FolderAccess.ReadOnly, timeoutCts.Token);
 
@@ -118,13 +126,13 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
         int maxMessages,
         CancellationToken cancellationToken)
     {
-        using var client = new ImapClient();
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(FetchTimeoutSeconds));
 
+        ImapClient client;
         try
         {
-            await ConnectAndAuthenticateAsync(client, settings, timeoutCts.Token);
+            client = await ConnectAndAuthenticateAsync(settings, timeoutCts.Token);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -132,6 +140,7 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
             // (and therefore falsely reassuring) Sent-folder result.
             return new FetchSentResult(false, ex.Message, Array.Empty<ProviderMessage>(), Array.Empty<(string, string)>());
         }
+        using var _ = client;
 
         IMailFolder? sentFolder;
         try
@@ -232,7 +241,61 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
         }
     }
 
-    private static async Task ConnectAndAuthenticateAsync(ImapClient client, EmailProviderConnectionSettings settings, CancellationToken cancellationToken)
+    /// <summary>
+    /// Phase 10 hardening — bounded retry around connect/authenticate only, never around the
+    /// per-message fetch that follows (a message-level failure is already isolated per-message,
+    /// see <see cref="FetchInboxMessagesAsync"/>/<see cref="FetchSentMessagesAsync"/>). Retrying a
+    /// failed connect attempt on the same <see cref="ImapClient"/> instance risks stale TLS/socket
+    /// state, so a failed attempt disposes its client and the next attempt (if any) constructs a
+    /// fresh one — the caller always receives either a connected, authenticated client or the
+    /// original exception, never a half-connected one. <see cref="ImapFailureClassifier"/> decides
+    /// whether the failure is worth retrying at all (never for bad credentials) and how many times.
+    /// </summary>
+    private async Task<ImapClient> ConnectAndAuthenticateAsync(EmailProviderConnectionSettings settings, CancellationToken cancellationToken)
+    {
+        Exception? lastException = null;
+
+        for (var attempt = 0; attempt <= MaxConnectRetries; attempt++)
+        {
+            var client = new ImapClient();
+            try
+            {
+                await ConnectAndAuthenticateOnceAsync(client, settings, cancellationToken);
+                return client;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
+            }
+            catch (Exception ex)
+            {
+                client.Dispose();
+                lastException = ex;
+
+                var category = ImapFailureClassifier.Classify(ex);
+                if (!ImapFailureClassifier.IsRetryable(category, attempt) || attempt == MaxConnectRetries)
+                {
+                    throw;
+                }
+
+                var delay = ComputeConnectRetryDelay(attempt);
+                await _retryDelay.WaitAsync(delay, cancellationToken);
+            }
+        }
+
+        // Unreachable — the loop always either returns or throws — but keeps the compiler happy
+        // about every code path producing a value.
+        throw lastException ?? new InvalidOperationException("IMAP connect retry loop exited without a result.");
+    }
+
+    private static TimeSpan ComputeConnectRetryDelay(int attemptIndex)
+    {
+        var exponential = TimeSpan.FromSeconds(Math.Pow(2, attemptIndex));
+        return exponential > MaxConnectRetryDelay ? MaxConnectRetryDelay : exponential;
+    }
+
+    private static async Task ConnectAndAuthenticateOnceAsync(ImapClient client, EmailProviderConnectionSettings settings, CancellationToken cancellationToken)
     {
         var secureSocketOptions = MapEncryption(settings.Encryption);
         await client.ConnectAsync(settings.Host, settings.Port, secureSocketOptions, cancellationToken);
