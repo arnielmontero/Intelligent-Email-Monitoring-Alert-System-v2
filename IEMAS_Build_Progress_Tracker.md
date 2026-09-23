@@ -514,7 +514,80 @@ reporting an error has it without needing to inspect headers.
   the other job's, proving both the logging and the per-execution correlation grouping work against a
   real, unforced Hangfire tick (not a manually-triggered one).
 
-**Not started yet:** health checks (liveness vs readiness split; meaningful PostgreSQL/IMAP/OpenRouter/Hangfire signals that don't themselves consume production resources), the remaining structured operational telemetry items (classification duration/result, OpenRouter model/fallback selection, retry counts, circuit state transitions already logged from the circuit breaker work, rate-limit events), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
+### Observability — Health Checks (2026-09-23)
+
+Second of three observability items, per explicit direction: liveness vs readiness split, with each
+dependency check reporting on **real, already-collected signal** rather than performing a fresh
+dependency call on every poll — the explicit design constraint from this item's instructions ("don't
+make health checks accidentally cause production work").
+
+**Liveness (`/health/live`):** `Predicate = _ => false` — zero dependency checks, confirms only that
+the process itself can respond. A struggling PostgreSQL/IMAP/OpenRouter/Hangfire must never cause an
+orchestrator to kill and restart this process, since a restart cannot fix an external dependency
+problem and would only add downtime on top of it.
+
+**Readiness (`/health/ready`, with `/health` kept as an alias for any caller that only knows the
+older single endpoint):** all four dependencies, each tagged `"ready"`:
+- **PostgreSQL** — unchanged, the pre-existing `AddNpgSql` check (a real lightweight query).
+- **IMAP** (`ImapHealthCheck`) — reads `EmailSyncState.ConsecutiveFailureCount`/`LastSyncError`,
+  written by the real Email Intake job on every tick, instead of opening a fresh IMAP connection per
+  account on every health poll (which would mean N extra connections per poll interval, on top of
+  the job's own connections). `Healthy` if every monitored/active account has zero consecutive
+  failures; `Degraded` if some have failures below the retry-exhaustion threshold (already-tracked,
+  self-healing via the job's own retry/backoff, Phase 10 IMAP resilience work); `Unhealthy` only once
+  an account reaches **3+ consecutive failures** (matching the same threshold philosophy as the
+  circuit breaker's own `FailureThreshold`). Disabled/inactive accounts are excluded entirely — a
+  disabled mailbox failing is not a live production problem.
+- **OpenRouter** (`OpenRouterHealthCheck`) — checks configuration validity (API key/BaseUrl present)
+  and the real, already-observed `AiCircuitBreakerStore` state (added `GetSnapshot()` to the store
+  for this — a read-only enumeration of every model's current circuit state, never used for retry
+  decisions) instead of making a live inference call, which would burn real API quota/cost merely to
+  answer a health poll. A missing API key (this environment's known, already-tracked gap) reports
+  `Degraded`, not `Unhealthy` — classification fails cleanly to `ReviewRequired`, nothing is lost.
+  Per the circuit breaker's own fallback-first design: `Unhealthy` only if **every** tracked model's
+  circuit is OPEN (classification cannot function at all); `Degraded` if some but not all are OPEN
+  (fallback still available) — explicitly not "any model open = unhealthy," which would misrepresent
+  a system that is still working exactly as designed.
+- **Hangfire** (`HangfireHealthCheck`) — queries `JobStorage.Current.GetMonitoringApi()` (server
+  count, total worker count, queue/failed counts) — a lightweight read against Hangfire's own
+  PostgreSQL-backed monitoring tables, never enqueuing a real job just to prove the system works.
+  `Unhealthy` if no server is registered (recurring jobs will not run at all); `Degraded` if servers
+  are registered but report zero workers; `Healthy` otherwise.
+- **Response format:** the default ASP.NET Core health check response is a bare "Healthy"/"Unhealthy"
+  string, which doesn't say *which* dependency is degraded without checking logs — added
+  `HealthCheckJsonWriter` so `/health/ready` (and `/health`) return per-check name, status,
+  description, duration, and diagnostic data as JSON. Verified none of the four checks' `data`
+  dictionaries contain credentials/keys/tokens (only counts and, for IMAP, the account's email
+  address and non-secret `LastSyncError` text — both already exposed via the CMS's own Email Accounts
+  screen, not a new disclosure).
+- **12 new unit tests**: 6 for `ImapHealthCheck` (no monitored mailboxes → Healthy; clean sync →
+  Healthy; failures below threshold → Degraded not Unhealthy; failures at threshold → Unhealthy with
+  the failing account named in the description; disabled/inactive accounts excluded even with high
+  failure counts; a mixed healthy+failing scenario's description names only the failing account, not
+  the healthy one) and 6 for `OpenRouterHealthCheck` (classification disabled → Healthy without
+  inspecting the key; missing key → Degraded not Unhealthy; missing BaseUrl → Unhealthy; valid config
+  with no circuit activity yet → Healthy; some-but-not-all models OPEN → Degraded; every tracked
+  model OPEN → Unhealthy). `HangfireHealthCheck` was not unit-tested directly — it depends on the
+  static `JobStorage.Current`, the same class of hard-to-mock infrastructure dependency this project
+  has consistently chosen to verify live rather than force an artificial mock for (matching
+  `ImapEmailProviderAdapter`'s own precedent) — its live verification below is this check's real
+  evidence. **324/324 tests passing** (312 + 12), clean `dotnet build` (0 warnings).
+- **Live-verified against the real Docker stack**, not just unit tests: `/health/live` returned `200
+  Healthy` unconditionally. `/health/ready` (and the `/health` alias) returned real, meaningful JSON
+  reflecting actual system state — genuinely useful, not fabricated for the test: PostgreSQL
+  `Healthy`; Hangfire `Healthy` with the real registered server (`1 Hangfire server(s) registered with
+  20 total worker(s)`); OpenRouter `Degraded` with the correct missing-API-key message (this
+  environment's known, pre-existing gap); and **IMAP correctly reported `Unhealthy`**, naming the
+  actual `testuser-badauth@localhost` account (a deliberately-misconfigured account created during
+  this session's earlier Phase 6/9 live verification work) with its real, accumulated `101 consecutive
+  failures` and real last error text (`LOGIN failed. Invalid login/password for user id testuser`) —
+  confirmed via `psql` this is expected pre-existing test data, not a new regression, and it is exactly
+  the kind of real signal this check exists to surface. Overall `/health/ready` status was `503`
+  (aggregate `Unhealthy`, standard ASP.NET Core status-code mapping) — an honest reflection of this
+  session's environment (one genuinely broken test mailbox, one known missing API key), not a
+  fabricated "all green" result.
+
+**Not started yet:** the remaining structured operational telemetry items (classification duration/result — beyond what Phase 10's OpenRouter/circuit-breaker work already logs, OpenRouter model/fallback selection, retry counts, rate-limit events — circuit state transitions are already logged from the earlier circuit breaker work), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
 
 ### Summary
 

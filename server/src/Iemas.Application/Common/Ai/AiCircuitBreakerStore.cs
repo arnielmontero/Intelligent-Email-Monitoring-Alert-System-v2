@@ -181,6 +181,15 @@ public class AiCircuitBreakerStore
     public CircuitState GetState(string provider, string modelIdentifier) =>
         _entries.TryGetValue((provider, modelIdentifier), out var entry) ? entry.State : CircuitState.Closed;
 
+    /// <summary>
+    /// Read-only snapshot of every model this process has ever seen a classification attempt for,
+    /// with its current state — for observability (health checks, diagnostics), never for retry
+    /// decisions. A model never attempted since the last restart simply won't appear here (it is
+    /// implicitly CLOSED, same as <see cref="GetState"/> would report for an unknown key).
+    /// </summary>
+    public IReadOnlyList<(string Provider, string ModelIdentifier, CircuitState State)> GetSnapshot() =>
+        _entries.Select(kvp => (kvp.Key.Provider, kvp.Key.ModelIdentifier, kvp.Value.State)).ToList();
+
     private static TimeSpan NextCooldown(TimeSpan current)
     {
         var doubled = current * 2;

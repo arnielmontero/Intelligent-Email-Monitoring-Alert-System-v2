@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Hangfire;
 using Hangfire.Dashboard;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Iemas.Api.Hubs;
 using Iemas.Api.Jobs;
@@ -148,8 +149,20 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Observability (Phase 10 hardening) — liveness vs readiness, per explicit direction: a running
+// process shouldn't be reported as fully "ready" if a critical dependency is unavailable, but
+// liveness (is the process itself alive, e.g. for an orchestrator's restart decision) must not
+// depend on external dependencies at all — a struggling PostgreSQL/IMAP/OpenRouter should not cause
+// the process to be killed and restarted, which would not fix the actual problem.
+// "live" tag: no dependency checks, just confirms the process can respond at all.
+// "ready" tag: PostgreSQL (hard dependency — nothing works without it), Hangfire (hard dependency —
+// no background processing without it), IMAP and OpenRouter (soft — see each check's own comments
+// for why a struggling mailbox or model doesn't have to mean the whole system is "not ready").
 builder.Services.AddHealthChecks()
-    .AddNpgSql(builder.Configuration.GetConnectionString("Default")!, name: "postgresql");
+    .AddNpgSql(builder.Configuration.GetConnectionString("Default")!, name: "postgresql", tags: new[] { "ready" })
+    .AddCheck<Iemas.Api.HealthChecks.ImapHealthCheck>("imap", tags: new[] { "ready" })
+    .AddCheck<Iemas.Api.HealthChecks.OpenRouterHealthCheck>("openrouter", tags: new[] { "ready" })
+    .AddCheck<Iemas.Api.HealthChecks.HangfireHealthCheck>("hangfire", tags: new[] { "ready" });
 
 // Finding #4 (Phase 10 security hardening) — rate limit the unauthenticated auth-boundary
 // endpoints (CMS login, Agent enrollment, Agent authentication) against credential-stuffing/
@@ -200,7 +213,25 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 });
 
 app.MapControllers();
-app.MapHealthChecks("/health");
+
+// Liveness: no dependency checks — only confirms the process itself can respond, for an
+// orchestrator's restart decision. A struggling dependency should never cause a restart that can't
+// fix it.
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false,
+});
+
+// Readiness: all "ready"-tagged checks (PostgreSQL, IMAP, OpenRouter, Hangfire) — should this
+// instance receive traffic right now. /health is kept as an alias to /health/ready for any existing
+// caller/monitor that only knows the older single endpoint.
+var readinessOptions = new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = Iemas.Api.HealthChecks.HealthCheckJsonWriter.WriteAsync,
+};
+app.MapHealthChecks("/health/ready", readinessOptions);
+app.MapHealthChecks("/health", readinessOptions);
 
 // §76 SignalR — real-time delivery transport only, never a source of truth (§76: "SignalR is a
 // real-time transport, not a source of truth"). Requires the Agent-scheme bearer token (via
