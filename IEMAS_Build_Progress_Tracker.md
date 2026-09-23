@@ -190,6 +190,40 @@ already its own independent unit of failure). Revisit only if a future phase int
 IMAP-side that resembles the classification batch's "many attempts against one shared endpoint per
 run" shape.
 
+**Reviewed and confirmed (2026-09-23) — three points made explicit before implementation:**
+
+1. **Retry failures vs. circuit failures are not the same counter.** `request → existing retry/backoff
+   (per `100be59`) → final outcome for that model → only the *final* outcome increments (or resets)
+   the circuit's consecutive-failure count.` One logical `ClassifyOneAsync` attempt against a model —
+   however many internal retries it took — counts as exactly one circuit-level failure or success,
+   never one per internal retry. Otherwise the "3 consecutive failures" threshold would really mean
+   "3 network blips," which could trip on a single message's retry sequence rather than requiring the
+   model to fail across multiple distinct messages/attempts — the circuit breaker is meant to detect
+   "this model is unhealthy across attempts," not "this one attempt needed a retry."
+2. **All-models-unavailable is an explicit, named outcome, not an implicit fallthrough.** If every
+   enabled model for a `TaskCapability` is OPEN (or fails outright), classification reaches the
+   existing `PersistFailureAsync` → `ReviewRequired` path exactly as it does today when every model's
+   retries are exhausted (§83 unchanged) — stated explicitly here so it's never accidentally coded as
+   "no error, nothing happened" or, worse, a false `NotImportant`/`Important` decision. No email is
+   ever marked classified merely because every model was circuit-open; it remains eligible for a
+   future classification run once at least one circuit's cooldown elapses.
+3. **HALF-OPEN resolution is exactly binary, unaffected by fallback:** a successful, valid
+   classification response (i.e. `ClassificationAttemptResult.Succeeded == true`) closes the circuit
+   and resets its consecutive-failure count to zero. Any failure of the probe — including
+   `MalformedResponse`, which elsewhere gets one extra retry — immediately returns the circuit to
+   OPEN and applies the next cooldown step; the probe itself does not get the ordinary retry
+   treatment (it already consumed its one attempt by being the probe). The probe's outcome is
+   evaluated standalone; whether a fallback model subsequently succeeds for that same message has no
+   bearing on the probed model's own circuit state.
+
+**Observability (built now, not deferred to the later "Observability" Phase 10 item):** every CLOSED→OPEN,
+OPEN→HALF-OPEN, HALF-OPEN→CLOSED, and HALF-OPEN→OPEN transition logs a structured line via the existing
+`ILogger` (matching `OpenRouterClassificationProvider`'s existing logging pattern) naming: `Provider`,
+`ModelIdentifier`, the transition, the triggering `ClassificationFailureCategory` (on a failure-driven
+transition), the consecutive-failure count (on open), and the new cooldown duration (on open). Never
+logs the API key, the prompt, email content, or the raw AI response — matching the existing discipline
+already followed by `OpenRouterClassificationProvider`'s own logging.
+
 **Implementation is not started.** This design is written up for review before any `CircuitState`
 enum, `AiCircuitBreakerStore` class, or wiring into `EmailClassificationService`/`RecurringJobGuards`
 exists. Next step once this design is confirmed: implement `AiCircuitBreakerStore` as a pure,
