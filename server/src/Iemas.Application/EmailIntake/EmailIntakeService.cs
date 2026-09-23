@@ -4,6 +4,7 @@ using Iemas.Application.Common.Providers;
 using Iemas.Application.EmailIntake.Dtos;
 using Iemas.Domain.Email;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Iemas.Application.EmailIntake;
 
@@ -20,15 +21,18 @@ public class EmailIntakeService
     private readonly IAppDbContext _db;
     private readonly ICredentialEncryptionService _encryptionService;
     private readonly IEmailProviderAdapterResolver _adapterResolver;
+    private readonly ILogger<EmailIntakeService> _logger;
 
     public EmailIntakeService(
         IAppDbContext db,
         ICredentialEncryptionService encryptionService,
-        IEmailProviderAdapterResolver adapterResolver)
+        IEmailProviderAdapterResolver adapterResolver,
+        ILogger<EmailIntakeService> logger)
     {
         _db = db;
         _encryptionService = encryptionService;
         _adapterResolver = adapterResolver;
+        _logger = logger;
     }
 
     /// <summary>
@@ -155,6 +159,9 @@ public class EmailIntakeService
         await _db.SaveChangesAsync(cancellationToken);
 
         stopwatch.Stop();
+        _logger.LogInformation(
+            "IMAP sync for account {EmailAccountId} completed in {ElapsedMilliseconds}ms: {FetchedCount} fetched, {PersistedCount} persisted, {DuplicateCount} duplicates, {MalformedCount} malformed",
+            account.Id, stopwatch.ElapsedMilliseconds, fetchResult.Messages.Count, persisted, duplicates, fetchResult.MalformedMessages.Count);
         return new IntakeRunResult(
             account.Id, true, fetchResult.Messages.Count, persisted, duplicates, fetchResult.MalformedMessages.Count, null, stopwatch.ElapsedMilliseconds);
     }
@@ -277,6 +284,12 @@ public class EmailIntakeService
             DurationMs = stopwatch.ElapsedMilliseconds,
         });
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Never logs the account's credential/secret — only the account ID and the adapter's own
+        // error message (already vetted not to contain the secret; see ImapEmailProviderAdapter).
+        _logger.LogWarning(
+            "IMAP sync for account {EmailAccountId} failed after {ElapsedMilliseconds}ms: {Error}",
+            emailAccountId, stopwatch.ElapsedMilliseconds, error);
 
         stopwatch.Stop();
         return new IntakeRunResult(emailAccountId, false, 0, 0, 0, 0, error, stopwatch.ElapsedMilliseconds);

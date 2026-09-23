@@ -3,7 +3,7 @@
 ## Overall Status
 
 **Status:** In Progress
-**Current Phase:** Phase 10 — Hardening, **IN PROGRESS.** Phase 9 is Substantially Complete and Phases 4-9 are all live-verified (see below). Phase 10 work started 2026-09-23: Hangfire concurrency guards, missed-cron-window policy, OpenRouter resilience, IMAP resilience, and the OpenRouter circuit breaker are all done, committed, and live-verified. Security hardening (audit-first, per explicit instruction) is also done: Findings #2 (global exception handler), #3 (AI prompt-injection defense), and #4 (auth endpoint rate limiting) are resolved, tested, and live-verified; Finding #1 (committed production-identical secrets) is deliberately left **OPEN / Awaiting authorized secret rotation** — a migration tool was built and dry-run-verified against the live DB, but the live key-rotation write was not executed, since it requires an explicitly authorized environment for a live secret-store write and the two currently-protected credentials are test data only. Next: observability, then data integrity.
+**Current Phase:** Phase 10 — Hardening, **IN PROGRESS.** Phase 9 is Substantially Complete and Phases 4-9 are all live-verified (see below). Phase 10 work started 2026-09-23: Hangfire concurrency guards, missed-cron-window policy, OpenRouter resilience, IMAP resilience, and the OpenRouter circuit breaker are all done, committed, and live-verified. Security hardening (audit-first, per explicit instruction) is also done: Findings #2 (global exception handler), #3 (AI prompt-injection defense), and #4 (auth endpoint rate limiting) are resolved, tested, and live-verified; Finding #1 (committed production-identical secrets) is deliberately left **OPEN / Awaiting authorized secret rotation** — a migration tool was built and dry-run-verified against the live DB, but the live key-rotation write was not executed, since it requires an explicitly authorized environment for a live secret-store write and the two currently-protected credentials are test data only. Observability is also done: correlation IDs (HTTP + Hangfire jobs), liveness/readiness health checks (PostgreSQL/IMAP/OpenRouter/Hangfire, each reporting on real already-collected signal rather than causing fresh production work per poll), and structured operational telemetry (classification/IMAP duration+result, model/fallback selection, retry counts, rate-limit events) are all implemented, tested, and live-verified. Next: data integrity, the last Phase 10 item.
 **Overall Progress:** 75% (9 of 12 phases substantially complete; all 9 now carry real Docker-stack live verification, not just unit tests; Phase 10 hardening underway on top of that foundation)
 
 ### Current Focus — Phase 10 Hardening (session in progress, 2026-09-23)
@@ -587,7 +587,65 @@ older single endpoint):** all four dependencies, each tagged `"ready"`:
   session's environment (one genuinely broken test mailbox, one known missing API key), not a
   fabricated "all green" result.
 
-**Not started yet:** the remaining structured operational telemetry items (classification duration/result — beyond what Phase 10's OpenRouter/circuit-breaker work already logs, OpenRouter model/fallback selection, retry counts, rate-limit events — circuit state transitions are already logged from the earlier circuit breaker work), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
+### Observability — Structured Operational Telemetry (2026-09-23)
+
+Third and final observability item, per explicit direction: classification/IMAP duration and
+result, OpenRouter model/fallback selection, retry counts, and rate-limit events as real-time
+structured logs (circuit state transitions were already logged from the earlier circuit breaker
+work; `AiClassificationLog`/`EmailIntakeLog` already persist per-message/per-run duration/outcome to
+the database, but that's queryable history, not something visible in real-time logs the way this
+item asks for).
+
+- **`EmailClassificationService`**: `RunAsync` now logs one batch-summary line on completion
+  (message count, elapsed ms, important/not-important/review-required/provider-failed breakdown).
+  Inside the per-model retry loop, added: a `LogWarning` on every `RateLimited` attempt (model,
+  attempt number, the provider's `Retry-After` value) — the explicit "rate-limit events" item; a
+  `LogInformation` on a model succeeding (which model, provider, attempt count, and whether it was a
+  fallback model rather than the primary, via `AiModelConfig.FallbackOrder > 0`) — the explicit
+  "OpenRouter model/fallback selection" item; and a `LogWarning` when a model is exhausted and the
+  loop moves to the next fallback (model, attempt count, failure category, error message).
+- **`EmailIntakeService`**: added `ILogger<EmailIntakeService>` (was previously not injected at
+  all — this service logged nothing for a routine run, the same gap found and partly addressed for
+  Hangfire's own job-boundary logging during the correlation-ID work). `RunForAccountAsync` now logs
+  one line per account per run: `LogInformation` on success (account ID, elapsed ms, fetched/
+  persisted/duplicate/malformed counts) or `LogWarning` on failure (account ID, elapsed ms, the
+  adapter's own sanitized error message) via the shared `RecordAccountFailureAsync` path. Verified by
+  inspection and by test (`DoesNotContain("password", ...)`) that the decrypted credential secret is
+  never included — only the account ID and the adapter's own error text, which
+  `ImapEmailProviderAdapter` already never includes credential material in (Phase 10 IMAP resilience
+  work).
+- **5 new unit tests**: added a small `CapturingLogger<T>` test helper (records every formatted log
+  message + level, since no test double for `ILogger` existed in this project yet) —
+  `EmailIntakeServiceTests`: a success run logs the expected fetched/persisted counts and never the
+  password; a failure run logs a `Warning` with the real error text and never the password.
+  `EmailClassificationServiceTests`: `RunAsync` logs a batch summary with the correct
+  important-count; a successful classification (after one retry) logs the model identifier and the
+  correct attempt count; a rate-limited attempt logs a warning containing the parsed `Retry-After`
+  value. **329/329 tests passing** (324 + 5), clean `dotnet build` (0 new warnings, same 2
+  pre-existing).
+- **Live-verified against the real Docker stack**, not just unit tests: waited for a real (unforced)
+  `*/2 * * * *` Hangfire tick and confirmed via `docker logs` all of the new lines fired correctly,
+  each carrying its job's correlation ID from the earlier correlation-ID work (proving the two
+  observability items compose correctly together):
+  - `"Email classification batch processed 0 message(s) in 46ms: 0 important, 0 not important, 0
+    review required, 0 provider failed"` — real batch telemetry (this run had nothing pending, which
+    is itself now visible instead of silent).
+  - `"IMAP sync for account 018474df-...-a26e-... completed in 531ms: 0 fetched, 0 persisted, 0
+    duplicates, 0 malformed"` — the working test account's real sync result.
+  - `"IMAP sync for account 6eaf7572-...-9bb5-... failed after 78ms: LOGIN failed. Invalid
+    login/password for user id testuser"` — the deliberately-misconfigured test account's real
+    failure, correctly logged at `WARN`, with the account's own decrypted secret never appearing
+    anywhere in the line (only the account ID and the adapter's sanitized error text).
+  - All three lines carried the same `job-email-classification-...`/`job-email-intake-...`
+    correlation ID as their respective `"Recurring job ... starting"`/`"...completed in ...ms"`
+    wrapper lines from the earlier correlation-ID work, confirming end-to-end traceability for one
+    job execution across every log line it produced.
+
+**Observability (all three items — correlation IDs, health checks, structured telemetry) is now
+complete for this session**, each implemented, tested, and live-verified per this project's standing
+verification discipline.
+
+**Not started yet:** data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite). Finding #1 (committed production-identical secrets) remains explicitly **OPEN / Awaiting authorized secret rotation**.
 
 ### Summary
 

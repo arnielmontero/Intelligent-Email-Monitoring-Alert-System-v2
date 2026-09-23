@@ -73,6 +73,9 @@ public class EmailClassificationService
         }
 
         stopwatch.Stop();
+        _logger.LogInformation(
+            "Email classification batch processed {MessageCount} message(s) in {ElapsedMilliseconds}ms: {Important} important, {NotImportant} not important, {ReviewRequired} review required, {ProviderFailed} provider failed",
+            messageIds.Count, stopwatch.ElapsedMilliseconds, important, notImportant, reviewRequired, providerFailed);
         return new ClassificationRunResult(messageIds.Count, important, notImportant, reviewRequired, providerFailed, stopwatch.ElapsedMilliseconds);
     }
 
@@ -165,10 +168,12 @@ public class EmailClassificationService
             anyModelAttempted = true;
 
             var modelSucceeded = false;
+            var attemptCount = 0;
 
             for (var attempt = 0; attempt <= model.MaxRetries; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                attemptCount++;
 
                 lastAttempt = await _aiProvider.ClassifyAsync(
                     request, model.ModelIdentifier, TimeSpan.FromSeconds(model.TimeoutSeconds), cancellationToken);
@@ -177,6 +182,13 @@ public class EmailClassificationService
                 {
                     modelSucceeded = true;
                     break;
+                }
+
+                if (lastAttempt.FailureCategory == ClassificationFailureCategory.RateLimited)
+                {
+                    _logger.LogWarning(
+                        "AI classification rate-limited by {Provider}/{Model} (attempt {Attempt}/{MaxAttempts}); Retry-After: {RetryAfter}",
+                        model.Provider, model.ModelIdentifier, attemptCount, model.MaxRetries + 1, lastAttempt.RetryAfter);
                 }
 
                 if (!IsRetryable(lastAttempt.FailureCategory, attempt))
@@ -195,8 +207,16 @@ public class EmailClassificationService
 
             if (modelSucceeded)
             {
+                _logger.LogInformation(
+                    "Email {EmailMessageId} classified successfully by {Provider}/{Model} after {AttemptCount} attempt(s){FallbackNote}",
+                    message.Id, model.Provider, model.ModelIdentifier, attemptCount,
+                    model.FallbackOrder > 0 ? " (used a fallback model, not the primary)" : "");
                 return await PersistSuccessAsync(message, profile, filterResult, lastAttempt, stopwatch, cancellationToken);
             }
+
+            _logger.LogWarning(
+                "Email {EmailMessageId} classification failed on {Provider}/{Model} after {AttemptCount} attempt(s): {FailureCategory} — {ErrorMessage}",
+                message.Id, model.Provider, model.ModelIdentifier, attemptCount, lastAttempt.FailureCategory, lastAttempt.ErrorMessage);
         }
 
         // Explicit design decision (see Build Progress Tracker): every enabled model's circuit

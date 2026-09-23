@@ -636,4 +636,102 @@ public class EmailClassificationServiceTests
         // Newsletter never reached the AI provider (deterministic exclude short-circuit).
         Assert.Single(provider.CallsByModel);
     }
+
+    // --- Observability (Phase 10 hardening) — classification duration/result, model selection/retry logging ---
+
+    [Fact]
+    public async Task RunAsync_LogsBatchSummary_WithMessageCountAndOutcomeBreakdown()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        db.EmailAccounts.Add(account);
+        db.ClassificationProfiles.Add(CreateSalesProfile());
+        db.AiModelConfigs.Add(CreateModel());
+        db.EmailMessages.Add(CreateMessage(account.Id, "Price inquiry", "Please send your latest price list."));
+        await db.SaveChangesAsync();
+
+        var provider = new FakeAiClassificationProvider
+        {
+            Behavior = (_, model, _, _) => Task.FromResult(new ClassificationAttemptResult(
+                true, "OpenRouter", model,
+                new ClassificationResponse(true, "PRICE_REQUEST", true, true, "HIGH", 0.92, "Pricing request."),
+                null, 10))
+        };
+        var logger = new CapturingLogger<EmailClassificationService>();
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), logger);
+
+        await service.RunAsync(10, CancellationToken.None);
+
+        var summary = Assert.Single(logger.Entries, e => e.Message.Contains("batch processed"));
+        Assert.Contains("1 important", summary.Message);
+    }
+
+    [Fact]
+    public async Task ClassifyOneAsync_OnSuccess_LogsModelUsedAndAttemptCount()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        db.EmailAccounts.Add(account);
+        db.ClassificationProfiles.Add(CreateSalesProfile());
+        db.AiModelConfigs.Add(CreateModel(maxRetries: 2));
+        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        db.EmailMessages.Add(message);
+        await db.SaveChangesAsync();
+
+        var attempts = 0;
+        var provider = new FakeAiClassificationProvider
+        {
+            Behavior = (_, model, _, _) =>
+            {
+                attempts++;
+                if (attempts < 2)
+                {
+                    return Task.FromResult(new ClassificationAttemptResult(
+                        false, "OpenRouter", model, null, "Transient failure", 5, ClassificationFailureCategory.Transient));
+                }
+                return Task.FromResult(new ClassificationAttemptResult(
+                    true, "OpenRouter", model,
+                    new ClassificationResponse(true, "PRICE_REQUEST", true, true, "HIGH", 0.92, "Pricing request."),
+                    null, 10));
+            }
+        };
+        var logger = new CapturingLogger<EmailClassificationService>();
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), logger);
+
+        await service.ClassifyOneAsync(message.Id, CancellationToken.None);
+
+        var successLog = Assert.Single(logger.Entries, e => e.Message.Contains("classified successfully"));
+        Assert.Contains("openai/gpt-4o-mini", successLog.Message);
+        Assert.Contains("2 attempt", successLog.Message);
+    }
+
+    [Fact]
+    public async Task ClassifyOneAsync_OnRateLimit_LogsRateLimitEventWithRetryAfter()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        db.EmailAccounts.Add(account);
+        db.ClassificationProfiles.Add(CreateSalesProfile());
+        db.AiModelConfigs.Add(CreateModel(maxRetries: 1));
+        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        db.EmailMessages.Add(message);
+        await db.SaveChangesAsync();
+
+        var provider = new FakeAiClassificationProvider
+        {
+            Behavior = (_, model, _, _) => Task.FromResult(new ClassificationAttemptResult(
+                false, "OpenRouter", model, null, "Rate limited", 5,
+                ClassificationFailureCategory.RateLimited, TimeSpan.FromSeconds(3)))
+        };
+        var logger = new CapturingLogger<EmailClassificationService>();
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), logger);
+
+        await service.ClassifyOneAsync(message.Id, CancellationToken.None);
+
+        // Both attempts (initial + the one retry MaxRetries allows) hit the rate limit, so this
+        // logs once per attempt — assert at least one fired, with the Retry-After value present.
+        var rateLimitLogs = logger.Entries.Where(e => e.Message.Contains("rate-limited")).ToList();
+        Assert.NotEmpty(rateLimitLogs);
+        Assert.All(rateLimitLogs, log => Assert.Contains("00:00:03", log.Message));
+    }
 }

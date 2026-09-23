@@ -53,7 +53,7 @@ public class EmailIntakeServiceTests
             FetchBehavior = (_, _, _, _, _) => Task.FromResult(new FetchInboxResult(
                 1, 1, new[] { Message("101") }, Array.Empty<(uint, string)>()))
         };
-        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter));
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), Microsoft.Extensions.Logging.Abstractions.NullLogger<EmailIntakeService>.Instance);
 
         var result = await service.RunForAccountAsync(account.Id, CancellationToken.None);
 
@@ -83,7 +83,7 @@ public class EmailIntakeServiceTests
             FetchBehavior = (_, _, afterUid, _, _) => Task.FromResult(new FetchInboxResult(
                 1, 1, new[] { Message("101") }, Array.Empty<(uint, string)>()))
         };
-        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter));
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), Microsoft.Extensions.Logging.Abstractions.NullLogger<EmailIntakeService>.Instance);
 
         // Simulate the adapter returning the same message twice across two separate runs
         // (e.g. a watermark that didn't advance, or a provider re-delivering the same UID).
@@ -111,7 +111,7 @@ public class EmailIntakeServiceTests
                 new[] { Message("101"), Message("103") },
                 new[] { (102u, "Malformed MIME structure") }))
         };
-        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter));
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), Microsoft.Extensions.Logging.Abstractions.NullLogger<EmailIntakeService>.Instance);
 
         var result = await service.RunForAccountAsync(account.Id, CancellationToken.None);
 
@@ -139,7 +139,7 @@ public class EmailIntakeServiceTests
         {
             FetchBehavior = (_, _, _, _, _) => throw new IOException("Connection reset by peer")
         };
-        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter));
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), Microsoft.Extensions.Logging.Abstractions.NullLogger<EmailIntakeService>.Instance);
 
         var result = await service.RunForAccountAsync(account.Id, CancellationToken.None);
 
@@ -177,7 +177,7 @@ public class EmailIntakeServiceTests
                 return Task.FromResult(new FetchInboxResult(1, 5, new[] { Message("105") }, Array.Empty<(uint, string)>()));
             }
         };
-        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter));
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), Microsoft.Extensions.Logging.Abstractions.NullLogger<EmailIntakeService>.Instance);
 
         await service.RunForAccountAsync(account.Id, CancellationToken.None);
         await service.RunForAccountAsync(account.Id, CancellationToken.None);
@@ -200,7 +200,7 @@ public class EmailIntakeServiceTests
         {
             FetchBehavior = (_, _, _, _, _) => throw new InvalidOperationException("Should never be called")
         };
-        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter));
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), Microsoft.Extensions.Logging.Abstractions.NullLogger<EmailIntakeService>.Instance);
 
         var result = await service.RunForAccountAsync(account.Id, CancellationToken.None);
 
@@ -231,11 +231,60 @@ public class EmailIntakeServiceTests
         {
             FetchBehavior = (settings, _, _, _, _) => Task.FromResult(new FetchInboxResult(1, null, Array.Empty<ProviderMessage>(), Array.Empty<(uint, string)>()))
         };
-        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter));
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), Microsoft.Extensions.Logging.Abstractions.NullLogger<EmailIntakeService>.Instance);
 
         var results = await service.RunAllAsync(CancellationToken.None);
 
         Assert.Single(results);
         Assert.Equal(monitored.Id, results[0].EmailAccountId);
+    }
+
+    // --- Observability (Phase 10 hardening) — IMAP sync duration/result logging ---
+
+    [Fact]
+    public async Task RunForAccountAsync_OnSuccess_LogsSyncDurationAndResultCounts()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        db.EmailAccounts.Add(account);
+        await db.SaveChangesAsync();
+
+        var adapter = new FakeEmailProviderAdapter
+        {
+            FetchBehavior = (_, _, _, _, _) => Task.FromResult(new FetchInboxResult(
+                1, 1, new[] { Message("101") }, Array.Empty<(uint, string)>()))
+        };
+        var logger = new CapturingLogger<EmailIntakeService>();
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), logger);
+
+        await service.RunForAccountAsync(account.Id, CancellationToken.None);
+
+        var logLine = Assert.Single(logger.Entries, e => e.Message.Contains("IMAP sync") && e.Message.Contains("completed"));
+        Assert.Contains("1 fetched", logLine.Message);
+        Assert.Contains("1 persisted", logLine.Message);
+        // Must never log the decrypted secret/credential material.
+        Assert.DoesNotContain("password", logLine.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RunForAccountAsync_OnFailure_LogsWarningWithDurationAndError_ButNeverTheCredential()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        db.EmailAccounts.Add(account);
+        await db.SaveChangesAsync();
+
+        var adapter = new FakeEmailProviderAdapter
+        {
+            FetchBehavior = (_, _, _, _, _) => throw new IOException("Connection reset by peer")
+        };
+        var logger = new CapturingLogger<EmailIntakeService>();
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), logger);
+
+        await service.RunForAccountAsync(account.Id, CancellationToken.None);
+
+        var logLine = Assert.Single(logger.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        Assert.Contains("Connection reset by peer", logLine.Message);
+        Assert.DoesNotContain("password", logLine.Message, StringComparison.OrdinalIgnoreCase);
     }
 }
