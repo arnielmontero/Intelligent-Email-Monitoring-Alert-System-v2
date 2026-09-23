@@ -821,6 +821,48 @@ and no gate marked done on an assumption.
 
 ### 2. End-to-End Workflows — IN PROGRESS
 
+All exercised against the real Docker stack with a real bootstrap-admin JWT and a freshly-enrolled
+real Agent JWT (not fakes/mocks) — evidence recorded as it was gathered, live-test evidence kept
+explicit and separate from the automated-test evidence in item 1 above.
+
+- **Email intake → classification → case pipeline**: injected fresh SMTP messages into the real
+  GreenMail test mailbox (discovered and worked around a stale-watermark edge case — the mailbox's
+  UID counter had been reset by an earlier session while the DB's `LastSeenUid` watermark stayed
+  high, so an initial single test message was silently treated as already-seen; sent filler messages
+  to advance past it, a realistic scenario in its own right). Triggered intake (`POST
+  /email-intake/run`) — 3 messages fetched/persisted, 0 duplicates. Triggered classification (`POST
+  /email-classification/run`) — all 3 correctly reached `ReviewRequired` with `ProcessingError =
+  "OpenRouter API key is not configured."`, the same pre-existing, documented gap as earlier
+  sessions (no real key available in this environment) — reconfirms the pipeline's failure-handling
+  path is still correct, not silently broken by this session's Phase 10 changes. Triggered the case
+  workflow job (`POST /case-workflow/run`) — `consideredCount: 0`, and the real `cases` count stayed
+  at 3 before/after — confirms `ReviewRequired` messages correctly do **not** auto-create Cases
+  (§26/§83 design: only `Important` messages do), so no spurious Case was created.
+- **Reminder → escalation cycle**: triggered both jobs fresh (`POST /reminders/run`, `POST
+  /escalations/run`) — both ran cleanly with no errors; escalation considered 2 real cases and
+  correctly skipped both (not yet due), consistent with real case state.
+- **Agent enrollment/authentication — full fresh lifecycle, not reusing an old agent**: registered a
+  brand-new Agent (`POST /agent-enrollment/register`) against a real inbound mailbox address —
+  succeeded, real opaque token issued. Approved it as the real bootstrap admin (`POST
+  /agents/{id}/approve`) — `204`. Polled status and collected the real one-shot `registrationKey`
+  (confirms the one-shot-collection design still works). Authenticated with it (`POST
+  /agent-auth/authenticate`) — succeeded, real Agent JWT issued (and did not trip this session's new
+  Finding #4 rate limiter, correctly, since it was one real attempt under the 10/min budget).
+  Exercised `GET /agent/sync` with the new Agent JWT — returned real, correctly-scoped Case data
+  (only the Cases owned by this Agent's linked Employee).
+- **Claim-vs-verified-fact boundary — exercised end-to-end through the real agent, not just direct
+  DB writes this time**: submitted an `AlreadyReplied` action (`POST /agent/case-actions`,
+  `actionType: 2`) against a case that was **not** currently `Replied` (`CASE-000003`, sitting at
+  `VerificationFailed`). Response confirmed `replyStatus` remained exactly `"VerificationFailed"` —
+  the claim did **not** flip it to `Replied`. This is the strongest form of this invariant's
+  end-to-end proof gathered this session: the real Agent JWT auth boundary, the real
+  `AgentCaseActionService` write path, and the new DB trigger (Phase 10 data integrity work) all
+  composing correctly together, not just a direct `psql` test of the trigger in isolation. (Also
+  incidentally confirmed `MarkCompleted` submitted without a reason correctly leaves `workStatus` at
+  `ActionRequired` rather than completing the case, per its own documented design — caught because an
+  early test used the wrong numeric `CaseActionType` value by mistake, which itself became a useful
+  extra data point once recognized.)
+
 ### 3. Failure-Path Testing — NOT STARTED
 
 ### 4. Security Regression — NOT STARTED
