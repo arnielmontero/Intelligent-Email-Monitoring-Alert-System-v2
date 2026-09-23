@@ -36,6 +36,14 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             Instance = httpContext.Request.Path
         };
 
+        // Included so a caller can hand this back when reporting the issue — it is not sensitive
+        // (it identifies the request, not the failure) and is already returned in the
+        // X-Correlation-ID response header by CorrelationIdMiddleware regardless of outcome.
+        if (httpContext.Items.TryGetValue("CorrelationId", out var correlationId) && correlationId is string id)
+        {
+            problemDetails.Extensions["correlationId"] = id;
+        }
+
         await httpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken);
 
         return true;

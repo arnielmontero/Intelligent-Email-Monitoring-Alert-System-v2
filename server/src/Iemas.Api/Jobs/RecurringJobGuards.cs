@@ -1,8 +1,11 @@
+using System.Diagnostics;
 using Hangfire;
 using Iemas.Application.EmailClassification;
 using Iemas.Application.EmailIntake;
 using Iemas.Application.Escalations;
 using Iemas.Application.Reminders;
+using Microsoft.Extensions.Logging;
+using Serilog.Context;
 
 namespace Iemas.Api.Jobs;
 
@@ -41,32 +44,68 @@ public class RecurringJobGuards
     private readonly EscalationService _escalationService;
     private readonly EmailIntakeService _emailIntakeService;
     private readonly EmailClassificationService _emailClassificationService;
+    private readonly ILogger<RecurringJobGuards> _logger;
 
     public RecurringJobGuards(
         ReminderExecutionService reminderExecutionService,
         EscalationService escalationService,
         EmailIntakeService emailIntakeService,
-        EmailClassificationService emailClassificationService)
+        EmailClassificationService emailClassificationService,
+        ILogger<RecurringJobGuards> logger)
     {
         _reminderExecutionService = reminderExecutionService;
         _escalationService = escalationService;
         _emailIntakeService = emailIntakeService;
         _emailClassificationService = emailClassificationService;
+        _logger = logger;
     }
 
     [DisableConcurrentExecution(timeoutInSeconds: 60)]
     public Task RunRemindersAsync(int batchSize, CancellationToken cancellationToken) =>
-        _reminderExecutionService.RunAsync(batchSize, cancellationToken);
+        RunJobAsync("reminders", () => _reminderExecutionService.RunAsync(batchSize, cancellationToken));
 
     [DisableConcurrentExecution(timeoutInSeconds: 60)]
     public Task RunEscalationsAsync(int batchSize, CancellationToken cancellationToken) =>
-        _escalationService.RunAsync(batchSize, cancellationToken);
+        RunJobAsync("escalations", () => _escalationService.RunAsync(batchSize, cancellationToken));
 
     [DisableConcurrentExecution(timeoutInSeconds: 60)]
     public Task RunEmailIntakeAsync(CancellationToken cancellationToken) =>
-        _emailIntakeService.RunAllAsync(cancellationToken);
+        RunJobAsync("email-intake", () => _emailIntakeService.RunAllAsync(cancellationToken));
 
     [DisableConcurrentExecution(timeoutInSeconds: 60)]
     public Task RunEmailClassificationAsync(int batchSize, CancellationToken cancellationToken) =>
-        _emailClassificationService.RunAsync(batchSize, cancellationToken);
+        RunJobAsync("email-classification", () => _emailClassificationService.RunAsync(batchSize, cancellationToken));
+
+    // Hangfire jobs have no HTTP request to inherit a correlation ID from (CorrelationIdMiddleware
+    // only covers the API pipeline), so each job execution gets its own, distinguishable by job
+    // name and a short random suffix — this shows up in every structured log line for that run
+    // (Serilog's LogContext is already request-scoped for HTTP, and this gives jobs the same
+    // per-execution grouping) so a single run's log lines can be told apart from the next tick's.
+    // Also logs start/duration/result for every job run here (not inside each service), so all 4
+    // recurring jobs get consistent operational telemetry from one place, including the (previously
+    // silent) common case where a run finds nothing to process.
+    private async Task RunJobAsync(string jobName, Func<Task> action)
+    {
+        var correlationId = $"job-{jobName}-{Guid.NewGuid():n}";
+        using (LogContext.PushProperty("CorrelationId", correlationId))
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Recurring job {JobName} starting", jobName);
+            try
+            {
+                await action();
+                _logger.LogInformation(
+                    "Recurring job {JobName} completed in {ElapsedMilliseconds}ms",
+                    jobName, stopwatch.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Recurring job {JobName} failed after {ElapsedMilliseconds}ms",
+                    jobName, stopwatch.ElapsedMilliseconds);
+                throw;
+            }
+        }
+    }
 }

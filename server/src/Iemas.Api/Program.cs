@@ -26,11 +26,17 @@ const string RequireAgentPolicy = "RequireAgent";
 
 var builder = WebApplication.CreateBuilder(args);
 
+// {Properties} surfaces LogContext-pushed properties (CorrelationId, in particular — see
+// CorrelationIdMiddleware and RecurringJobGuards) in every log line; the default Serilog templates
+// omit arbitrary properties, which would otherwise make the enrichment invisible in practice.
+const string LogOutputTemplate =
+    "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}";
+
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
     .Enrich.FromLogContext()
-    .WriteTo.Console()
-    .WriteTo.File("logs/iemas-.log", rollingInterval: RollingInterval.Day));
+    .WriteTo.Console(outputTemplate: LogOutputTemplate)
+    .WriteTo.File("logs/iemas-.log", rollingInterval: RollingInterval.Day, outputTemplate: LogOutputTemplate));
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -179,6 +185,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseMiddleware<Iemas.Api.CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();

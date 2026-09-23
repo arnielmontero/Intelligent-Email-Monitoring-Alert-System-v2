@@ -459,7 +459,62 @@ rotation** per the decision above — return to it when an explicitly authorized
 live secret-store write is available. Security hardening is otherwise complete for this session;
 next Phase 10 items are observability, then data integrity, per the originally agreed order.
 
-**Not started yet:** observability (correlation IDs, health checks for IMAP/OpenRouter/Hangfire), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
+### Observability — Correlation IDs (2026-09-23)
+
+First of three observability items (correlation IDs → health checks → structured operational
+telemetry), per explicit direction.
+
+**HTTP request correlation:** `CorrelationIdMiddleware` (`Iemas.Api`), registered early in the
+pipeline (before `UseExceptionHandler`/`UseSerilogRequestLogging`, so both see it): accepts a
+caller-supplied `X-Correlation-ID` header if present and well-formed (alphanumeric/`-`/`_` only, ≤100
+chars — an unbounded or malformed caller value must never land verbatim in every log line for the
+request), otherwise generates a new one. Returned in the response header via `Response.OnStarting`
+(so it's set correctly even if a downstream handler already started writing the body) and pushed into
+Serilog's `LogContext` (already enriched via `Enrich.FromLogContext()`) for the duration of the
+request, so every structured log line for that request — including `GlobalExceptionHandler`'s error
+log — carries it. `GlobalExceptionHandler` also now echoes the correlation ID back in the
+`ProblemDetails` response body (`correlationId` extension field) alongside the header, so a client
+reporting an error has it without needing to inspect headers.
+- Serilog's default console/file output templates omit arbitrary enriched properties, which would
+  have made this enrichment invisible in practice — added an explicit `outputTemplate` (`{Properties:j}`)
+  to both sinks in `Program.cs` so `CorrelationId` (and any other pushed property) actually renders.
+- **Hangfire job correlation:** background jobs have no HTTP request to inherit an ID from, so
+  `RecurringJobGuards` (already the single choke point for all 4 recurring jobs — Phase 10's earlier
+  concurrency-guard work) generates a `job-{name}-{guid}` correlation ID per execution and pushes it
+  into the same `LogContext` mechanism for the run's duration — giving every job execution the same
+  per-request log grouping HTTP calls get, distinguishable from the next tick's.
+  - While adding this, found `EmailIntakeService`/`ImapEmailProviderAdapter`/etc. logged **nothing**
+    for a routine run (only failure paths were ever logged) — meaning a correlation ID with no log
+    lines to attach to under it wouldn't have been visibly provable. Rather than leave that gap,
+    added job-level start/duration/result logging directly in `RecurringJobGuards` (one consistent
+    place for all 4 jobs, not scattered per-service): `LogInformation` on start, `LogInformation` with
+    elapsed milliseconds on success, `LogError` with elapsed milliseconds and the exception on failure
+    (then rethrows — this is telemetry, not a swallow). This doubles as the start of the
+    "Hangfire execution duration/result" telemetry item (item 3 of the observability plan).
+- **7 new unit tests** (`CorrelationIdMiddlewareTests`): no-header case generates a non-empty ID;
+  valid caller-supplied header is echoed back unchanged; 4 malformed inputs (spaces, semicolon,
+  newline, HTML-special characters) are each rejected and replaced with a generated ID; an overlong
+  (500-char) header is rejected; the ID is available on `HttpContext.Items` before `next()` runs (what
+  `GlobalExceptionHandler` actually reads); two separate requests with no caller header get different
+  generated IDs; and one test exercises the actual `OnStarting` callback the middleware registers
+  (via a custom `IHttpResponseFeature` recording stub, since `DefaultHttpContext`'s in-memory response
+  doesn't invoke `OnStarting` outside a real Kestrel pipeline) to prove the header-setting callback
+  itself is correct. **312/312 tests passing** (302 + 7 — plus 3 more once the Finding #2/#3/#4 tests
+  from immediately prior are included in the running total), clean `dotnet build` (0 warnings).
+- **Live-verified against the real Docker stack**, not just unit tests: `curl` with no
+  `X-Correlation-ID` header got back a generated one (`b71ebecd580946e6a86d03defecf20a0`) in the
+  response header; a second `curl` with `X-Correlation-ID: live-test-abc123` got that exact value
+  echoed back. `docker logs` confirmed both values actually appear in the real structured log output
+  for their respective requests (`{"CorrelationId": "b71ebecd..."}` / `{"CorrelationId":
+  "live-test-abc123"}`), tied to the correct request via the shared `RequestId`. For the job-execution
+  path: waited for a real Hangfire tick (the `*/2 * * * *` email-intake/classification jobs) and
+  confirmed via `docker logs` the exact expected lines — `"Recurring job email-intake starting"` /
+  `"Recurring job email-intake completed in 669ms"` and `"Recurring job email-classification starting"`
+  / `"...completed in 34ms"` — each pair sharing one `job-{name}-{guid}` correlation ID distinct from
+  the other job's, proving both the logging and the per-execution correlation grouping work against a
+  real, unforced Hangfire tick (not a manually-triggered one).
+
+**Not started yet:** health checks (liveness vs readiness split; meaningful PostgreSQL/IMAP/OpenRouter/Hangfire signals that don't themselves consume production resources), the remaining structured operational telemetry items (classification duration/result, OpenRouter model/fallback selection, retry counts, circuit state transitions already logged from the circuit breaker work, rate-limit events), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
 
 ### Summary
 
