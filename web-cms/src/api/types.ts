@@ -309,3 +309,129 @@ export interface ReminderDto {
   deliveryAttempts: number;
   lastFailureDetail: string | null;
 }
+
+// §57-§65 Escalation
+export type EscalationRecipientType = 0 | 1 | 2 | 3 | 4; // Employee | EmployeeSupervisor | DepartmentManager | SpecificEmployee | SpecificGroup
+export type EscalationOutcome = 0 | 1 | 2 | 3; // Executed | Skipped | RecipientUnresolved | Failed
+export type EscalationSkipReason = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export type ClassificationPriority = 0 | 1 | 2; // Low | Medium | High
+
+export const ESCALATION_RECIPIENT_TYPE_LABELS: Record<EscalationRecipientType, string> = {
+  0: "Employee (Owner)", 1: "Employee's Supervisor", 2: "Department Manager", 3: "Specific Employee", 4: "Specific Group",
+};
+
+export const ESCALATION_OUTCOME_LABELS: Record<EscalationOutcome, string> = {
+  0: "Executed", 1: "Skipped", 2: "Recipient Unresolved", 3: "Failed",
+};
+
+export const ESCALATION_SKIP_REASON_LABELS: Record<EscalationSkipReason, string> = {
+  0: "Case Not Found", 1: "Case Not Active", 2: "Reply Verified", 3: "Level Already Executed",
+  4: "Policy Disabled", 5: "Threshold Not Reached", 6: "Cooldown Active", 7: "Maximum Level Reached",
+  8: "No Applicable Policy",
+};
+
+export const CLASSIFICATION_PRIORITY_LABELS: Record<ClassificationPriority, string> = {
+  0: "Low", 1: "Medium", 2: "High",
+};
+
+export interface EscalationLevelDto {
+  id: string;
+  level: number;
+  delayAfterPreviousLevel: string;
+  recipientType: EscalationRecipientType;
+  specificEmployeeId: string | null;
+  specificEmployeeName: string | null;
+  specificGroupId: string | null;
+  specificGroupName: string | null;
+}
+
+export interface SaveEscalationLevelRequest {
+  level: number;
+  delayAfterPreviousLevel: string;
+  recipientType: EscalationRecipientType;
+  specificEmployeeId: string | null;
+  specificGroupId: string | null;
+}
+
+export interface EscalationPolicyDto {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  isDefault: boolean;
+  classificationProfileId: string | null;
+  classificationProfileName: string | null;
+  categories: string | null;
+  priority: ClassificationPriority | null;
+  triggerReminderCount: number;
+  gracePeriod: string;
+  cooldown: string;
+  maximumLevel: number;
+  channel: string;
+  levels: EscalationLevelDto[];
+}
+
+export interface SaveEscalationPolicyRequest {
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  isDefault: boolean;
+  classificationProfileId: string | null;
+  categories: string | null;
+  priority: ClassificationPriority | null;
+  triggerReminderCount: number;
+  gracePeriod: string;
+  cooldown: string;
+  maximumLevel: number;
+  channel: string;
+  levels: SaveEscalationLevelRequest[];
+}
+
+export interface EscalationGroupMemberDto {
+  employeeId: string;
+  employeeName: string;
+}
+
+export interface EscalationGroupDto {
+  id: string;
+  name: string;
+  members: EscalationGroupMemberDto[];
+}
+
+export interface SaveEscalationGroupRequest {
+  name: string;
+  employeeIds: string[];
+}
+
+export interface EscalationEventDto {
+  id: string;
+  caseId: string;
+  caseNumber: string;
+  escalationPolicyId: string | null;
+  escalationPolicyName: string | null;
+  level: number;
+  trigger: string;
+  recipientType: EscalationRecipientType | null;
+  recipientDisplay: string | null;
+  channel: string | null;
+  outcome: EscalationOutcome;
+  skipReason: EscalationSkipReason | null;
+  detail: string | null;
+  occurredAt: string;
+}
+
+export interface EscalationRunResult {
+  considered: number;
+  executed: number;
+  skipped: number;
+  recipientUnresolved: number;
+  failed: number;
+  durationMs: number;
+}
+
+export interface TestEscalationPolicyResult {
+  wouldEscalate: boolean;
+  eligibleLevel: number | null;
+  recipientDisplay: string | null;
+  reason: string;
+}

@@ -12,13 +12,15 @@ import AiModelsPage from "./pages/ai-models/AiModelsPage";
 import CasesPage from "./pages/cases/CasesPage";
 import AgentsPage from "./pages/agents/AgentsPage";
 import ReminderPoliciesPage from "./pages/reminder-policies/ReminderPoliciesPage";
+import EscalationPoliciesPage from "./pages/escalation-policies/EscalationPoliciesPage";
+import EscalationGroupsPage from "./pages/escalation-groups/EscalationGroupsPage";
+import EscalationHistoryPage from "./pages/escalation-history/EscalationHistoryPage";
 
 const PLACEHOLDER_ROUTES: Array<{ path: string; title: string }> = [
   { path: "/outbound-email", title: "Outbound Email" },
   { path: "/case-workflow", title: "Case Workflow" },
   { path: "/reply-verification", title: "Reply Verification" },
   { path: "/notifications", title: "Notifications" },
-  { path: "/escalation-policies", title: "Escalation Policies" },
   { path: "/users", title: "Users & Permissions" },
   { path: "/employee-activity", title: "Employee Activity" },
   { path: "/case-history", title: "Case History & Logs" },
@@ -44,6 +46,9 @@ export default function App() {
           <Route path="/cases" element={<CasesPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/reminder-policies" element={<ReminderPoliciesPage />} />
+          <Route path="/escalation-policies" element={<EscalationPoliciesPage />} />
+          <Route path="/escalation-groups" element={<EscalationGroupsPage />} />
+          <Route path="/escalation-history" element={<EscalationHistoryPage />} />
           {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<PlaceholderPage title={route.title} />} />
           ))}

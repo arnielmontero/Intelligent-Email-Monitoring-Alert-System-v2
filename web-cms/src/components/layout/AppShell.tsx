@@ -25,6 +25,8 @@ const NAV_SECTIONS = [
       { label: "Notifications", path: "/notifications" },
       { label: "Reminder Policies", path: "/reminder-policies" },
       { label: "Escalation Policies", path: "/escalation-policies" },
+      { label: "Escalation Groups", path: "/escalation-groups" },
+      { label: "Escalation History", path: "/escalation-history" },
     ],
   },
   {
