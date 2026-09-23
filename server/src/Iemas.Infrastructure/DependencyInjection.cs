@@ -5,6 +5,7 @@ using Iemas.Application.Common.Interfaces;
 using Iemas.Application.Common.Providers;
 using Iemas.Infrastructure.Ai;
 using Iemas.Infrastructure.Audit;
+using Iemas.Infrastructure.Common;
 using Iemas.Infrastructure.Persistence;
 using Iemas.Infrastructure.Providers;
 using Iemas.Infrastructure.Security;
@@ -36,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IAgentTokenService, AgentTokenService>();
         services.AddScoped<ICredentialEncryptionService, AesGcmCredentialEncryptionService>();
+        services.AddSingleton<IRetryDelay, SystemRetryDelay>();
 
         services.AddScoped<IEmailProviderAdapter, ImapEmailProviderAdapter>();
         services.AddScoped<IEmailProviderAdapter, MicrosoftGraphEmailProviderAdapter>();

@@ -46,8 +46,10 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
             // §16/§82 — a missing key is a configuration problem, not a secret to describe in
             // detail. Reported as a normal failed attempt so the caller's retry/fallback/
             // REVIEW_REQUIRED path handles it exactly like any other provider failure (§83).
+            // Phase 10: AuthenticationFailure — retrying with the same missing key cannot succeed.
             return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
-                "OpenRouter API key is not configured.", stopwatch.ElapsedMilliseconds);
+                "OpenRouter API key is not configured.", stopwatch.ElapsedMilliseconds,
+                ClassificationFailureCategory.AuthenticationFailure);
         }
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -75,7 +77,8 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
                 var body = await SafeReadBodyAsync(httpResponse, cts.Token);
                 _logger.LogWarning("OpenRouter request failed with status {StatusCode} for model {Model}", httpResponse.StatusCode, modelIdentifier);
                 return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
-                    $"OpenRouter returned HTTP {(int)httpResponse.StatusCode}: {Truncate(body, 500)}", stopwatch.ElapsedMilliseconds);
+                    $"OpenRouter returned HTTP {(int)httpResponse.StatusCode}: {Truncate(body, 500)}", stopwatch.ElapsedMilliseconds,
+                    CategorizeHttpFailure(httpResponse), ParseRetryAfter(httpResponse));
             }
 
             var chatResponse = await httpResponse.Content.ReadFromJsonAsync<OpenRouterChatResponse>(cts.Token);
@@ -84,7 +87,8 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
             if (string.IsNullOrWhiteSpace(content))
             {
                 return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
-                    "OpenRouter returned an empty response.", stopwatch.ElapsedMilliseconds);
+                    "OpenRouter returned an empty response.", stopwatch.ElapsedMilliseconds,
+                    ClassificationFailureCategory.MalformedResponse);
             }
 
             var parsed = TryParseClassification(content, out var parseError);
@@ -93,7 +97,8 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
                 // §83 — a malformed/unexpected AI response must not be silently treated as a
                 // classification; it is reported as a failed attempt like any other provider error.
                 return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
-                    $"Could not parse a valid classification from the model response: {parseError}", stopwatch.ElapsedMilliseconds);
+                    $"Could not parse a valid classification from the model response: {parseError}", stopwatch.ElapsedMilliseconds,
+                    ClassificationFailureCategory.MalformedResponse);
             }
 
             stopwatch.Stop();
@@ -103,18 +108,54 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
         {
             // The linked CTS fired from CancelAfter(timeout), not from the caller's own token.
             return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
-                $"OpenRouter request timed out after {timeout.TotalSeconds:0}s.", stopwatch.ElapsedMilliseconds);
+                $"OpenRouter request timed out after {timeout.TotalSeconds:0}s.", stopwatch.ElapsedMilliseconds,
+                ClassificationFailureCategory.Transient);
         }
         catch (OperationCanceledException)
         {
             throw;
         }
+        catch (JsonException ex)
+        {
+            // The HTTP call itself succeeded (2xx) but the response body wasn't valid JSON at all
+            // — a different failure than TryParseClassification's "valid JSON, wrong shape" case,
+            // but the same MalformedResponse category: retrying the identical request against a
+            // server that just sent back garbage is exactly as unlikely to help as a request that
+            // parsed but didn't match the expected schema.
+            _logger.LogWarning(ex, "OpenRouter response body was not valid JSON for model {Model}", modelIdentifier);
+            return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
+                $"OpenRouter response was not valid JSON: {ex.Message}", stopwatch.ElapsedMilliseconds,
+                ClassificationFailureCategory.MalformedResponse);
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "OpenRouter request threw for model {Model}", modelIdentifier);
+            // Everything else here (HttpRequestException, socket/DNS/TLS failures) means the
+            // request never reached OpenRouter to produce a definitive answer at all — the same
+            // "worth retrying" class as a timeout.
             return new ClassificationAttemptResult(false, "OpenRouter", modelIdentifier, null,
-                $"OpenRouter request failed: {ex.Message}", stopwatch.ElapsedMilliseconds);
+                $"OpenRouter request failed: {ex.Message}", stopwatch.ElapsedMilliseconds,
+                ClassificationFailureCategory.Transient);
         }
+    }
+
+    /// <summary>Maps an OpenRouter HTTP failure status to a retry category (§82/§83, Phase 10 hardening).</summary>
+    private static ClassificationFailureCategory CategorizeHttpFailure(HttpResponseMessage response) => response.StatusCode switch
+    {
+        System.Net.HttpStatusCode.TooManyRequests => ClassificationFailureCategory.RateLimited,
+        System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden => ClassificationFailureCategory.AuthenticationFailure,
+        >= System.Net.HttpStatusCode.InternalServerError => ClassificationFailureCategory.Transient,
+        _ => ClassificationFailureCategory.InvalidRequest,
+    };
+
+    /// <summary>OpenRouter (like most APIs) sends `Retry-After` as either delay-seconds or an HTTP-date; both are supported by <see cref="RetryConditionHeaderValue"/>.</summary>
+    private static TimeSpan? ParseRetryAfter(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter is null) return null;
+        if (retryAfter.Delta.HasValue) return retryAfter.Delta.Value;
+        if (retryAfter.Date.HasValue) return retryAfter.Date.Value - DateTimeOffset.UtcNow;
+        return null;
     }
 
     private static object BuildChatRequest(ClassificationRequest request, string modelIdentifier) => new

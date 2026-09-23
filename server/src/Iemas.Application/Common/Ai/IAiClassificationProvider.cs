@@ -27,6 +27,35 @@ public record ClassificationResponse(
     string Summary);
 
 /// <summary>
+/// Phase 10 hardening — lets the provider (which alone knows whether a failure was an HTTP status,
+/// a timeout, or a parse problem) tell the caller whether retrying is worth attempting, instead of
+/// the caller string-matching <see cref="ClassificationAttemptResult.ErrorMessage"/>. A retry can
+/// only help <see cref="Transient"/>; every other category means "the next attempt with the same
+/// model would fail the same way," so retrying it only burns time and (for a rate limit) makes the
+/// underlying problem worse.
+/// </summary>
+public enum ClassificationFailureCategory
+{
+    /// <summary>No failure — <see cref="ClassificationAttemptResult.Succeeded"/> is true.</summary>
+    None = 0,
+
+    /// <summary>Network/timeout/HTTP 5xx — worth an immediate retry.</summary>
+    Transient = 1,
+
+    /// <summary>HTTP 429 — worth retrying, but only after honoring the server's back-off signal.</summary>
+    RateLimited = 2,
+
+    /// <summary>Missing/invalid API key, HTTP 401/403 — retrying with the same key cannot succeed.</summary>
+    AuthenticationFailure = 3,
+
+    /// <summary>HTTP 400/404/422-class client error — the request itself is wrong; retrying it unchanged cannot succeed.</summary>
+    InvalidRequest = 4,
+
+    /// <summary>Response received but not parseable as the expected classification shape.</summary>
+    MalformedResponse = 5,
+}
+
+/// <summary>
 /// Requirements §82 — a specific AI model this call was attempted/answered with, so the caller can
 /// record provider/model/duration regardless of success or failure (§25 "Store: ... Error if any").
 /// </summary>
@@ -36,7 +65,9 @@ public record ClassificationAttemptResult(
     string ModelIdentifier,
     ClassificationResponse? Response,
     string? ErrorMessage,
-    long DurationMs);
+    long DurationMs,
+    ClassificationFailureCategory FailureCategory = ClassificationFailureCategory.None,
+    TimeSpan? RetryAfter = null);
 
 /// <summary>
 /// Requirements §82 (AI Provider Management) — provider-specific integration logic (OpenRouter

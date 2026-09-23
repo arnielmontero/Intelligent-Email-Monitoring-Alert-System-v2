@@ -27,11 +27,13 @@ public class EmailClassificationService
 {
     private readonly IAppDbContext _db;
     private readonly IAiClassificationProvider _aiProvider;
+    private readonly IRetryDelay _retryDelay;
 
-    public EmailClassificationService(IAppDbContext db, IAiClassificationProvider aiProvider)
+    public EmailClassificationService(IAppDbContext db, IAiClassificationProvider aiProvider, IRetryDelay retryDelay)
     {
         _db = db;
         _aiProvider = aiProvider;
+        _retryDelay = retryDelay;
     }
 
     public async Task<ClassificationRunResult> RunAsync(int batchSize, CancellationToken cancellationToken)
@@ -127,6 +129,14 @@ public class EmailClassificationService
 
         // §83 — retry, then fall back through the configured model order; only after every
         // enabled model has been exhausted does this become REVIEW_REQUIRED / PROCESSING_FAILED.
+        //
+        // Phase 10 hardening: not every failure is worth retrying with the same model. A missing
+        // API key or an invalid request will fail identically on every attempt — retrying it only
+        // delays reaching a model that might actually work (or REVIEW_REQUIRED). A malformed
+        // response gets exactly one retry (it might be a one-off generation glitch, but a model
+        // systematically returning bad JSON shouldn't burn its whole retry budget on repeats of
+        // the same failure). A rate limit gets the provider's own Retry-After honored, capped so
+        // one very long Retry-After can't stall the whole classification batch.
         foreach (var model in models)
         {
             for (var attempt = 0; attempt <= model.MaxRetries; attempt++)
@@ -139,6 +149,16 @@ public class EmailClassificationService
                 if (lastAttempt.Succeeded)
                 {
                     return await PersistSuccessAsync(message, profile, filterResult, lastAttempt, stopwatch, cancellationToken);
+                }
+
+                if (!IsRetryable(lastAttempt.FailureCategory, attempt))
+                {
+                    break;
+                }
+
+                if (attempt < model.MaxRetries)
+                {
+                    await _retryDelay.WaitAsync(ComputeRetryDelay(lastAttempt, attempt), cancellationToken);
                 }
             }
         }
@@ -277,4 +297,37 @@ public class EmailClassificationService
     }
 
     private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
+
+    /// <summary>
+    /// Phase 10 hardening — only retry a failure the next attempt could plausibly fix.
+    /// AuthenticationFailure/InvalidRequest will fail identically every time (wrong key, malformed
+    /// request), so retrying them wastes the model's retry budget instead of moving on to fallback.
+    /// MalformedResponse gets exactly one retry (attempt 0 only) per the explicit "limited retry,
+    /// then fail safely" policy — a systematically-bad-JSON model shouldn't consume its whole
+    /// retry budget repeating the same parse failure.
+    /// </summary>
+    private static bool IsRetryable(ClassificationFailureCategory category, int attemptIndex) => category switch
+    {
+        ClassificationFailureCategory.Transient or ClassificationFailureCategory.RateLimited => true,
+        ClassificationFailureCategory.MalformedResponse => attemptIndex == 0,
+        _ => false,
+    };
+
+    private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Phase 10 hardening — bounded exponential backoff (1s, 2s, 4s, ...) for ordinary transient
+    /// failures, or the provider's own Retry-After for a rate limit (capped so one very long
+    /// Retry-After can't stall the whole batch run past the next scheduled poll anyway).
+    /// </summary>
+    private static TimeSpan ComputeRetryDelay(ClassificationAttemptResult attempt, int attemptIndex)
+    {
+        if (attempt.FailureCategory == ClassificationFailureCategory.RateLimited && attempt.RetryAfter is TimeSpan retryAfter)
+        {
+            return retryAfter < TimeSpan.Zero ? TimeSpan.Zero : (retryAfter > MaxRetryDelay ? MaxRetryDelay : retryAfter);
+        }
+
+        var exponential = TimeSpan.FromSeconds(Math.Pow(2, attemptIndex));
+        return exponential > MaxRetryDelay ? MaxRetryDelay : exponential;
+    }
 }

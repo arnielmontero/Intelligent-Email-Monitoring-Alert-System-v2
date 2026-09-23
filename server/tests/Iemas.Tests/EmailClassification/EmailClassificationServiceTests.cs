@@ -92,7 +92,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(true, "PRODUCT_INQUIRY", true, true, "HIGH", 0.96, "Customer requesting pricing."),
                 null, 42))
         };
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -130,7 +130,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(false, "ECOMMERCE_NOTIFICATION", false, false, "LOW", 0.9, "Automated shipping notification."),
                 null, 20))
         };
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -169,7 +169,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(false, "AUTOMATED_NOTIFICATION", false, false, "LOW", 0.88, "Automated billing notice, not a genuine customer inquiry."),
                 null, 15))
         };
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -196,7 +196,7 @@ public class EmailClassificationServiceTests
         await db.SaveChangesAsync();
 
         var provider = new FakeAiClassificationProvider();
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -223,10 +223,13 @@ public class EmailClassificationServiceTests
 
         var provider = new FakeAiClassificationProvider
         {
+            // Phase 10: a 503 is Transient — the real OpenRouterClassificationProvider would
+            // categorize it the same way (see CategorizeHttpFailure), so this is worth retrying.
             Behavior = (_, model, _, _) => Task.FromResult(new ClassificationAttemptResult(
-                false, "OpenRouter", model, null, "OpenRouter returned HTTP 503: Service Unavailable", 5))
+                false, "OpenRouter", model, null, "OpenRouter returned HTTP 503: Service Unavailable", 5,
+                ClassificationFailureCategory.Transient))
         };
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -242,6 +245,122 @@ public class EmailClassificationServiceTests
 
         var failureLog = await db.AiClassificationLogs.SingleAsync(l => l.Outcome == AiClassificationOutcome.ProviderFailed);
         Assert.Contains("503", failureLog.Detail);
+    }
+
+    /// <summary>
+    /// Phase 10 hardening — a failure category the next attempt cannot fix (AuthenticationFailure:
+    /// wrong/missing API key) must not burn the configured retry budget on the same model; it should
+    /// move straight to a fallback model instead, since retrying it produces the identical failure
+    /// every time.
+    /// </summary>
+    [Fact]
+    public async Task ClassifyOneAsync_AuthenticationFailure_DoesNotRetrySameModel_FallsBackImmediately()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        var profile = CreateSalesProfile();
+        db.EmailAccounts.Add(account);
+        db.ClassificationProfiles.Add(profile);
+        db.AiModelConfigs.Add(CreateModel("primary-model", fallbackOrder: 0, maxRetries: 3));
+        db.AiModelConfigs.Add(CreateModel("fallback-model", fallbackOrder: 1, maxRetries: 0));
+        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        db.EmailMessages.Add(message);
+        await db.SaveChangesAsync();
+
+        var provider = new FakeAiClassificationProvider
+        {
+            Behavior = (_, model, _, _) => Task.FromResult(model == "primary-model"
+                ? new ClassificationAttemptResult(false, "OpenRouter", model, null, "OpenRouter API key is not configured.", 1, ClassificationFailureCategory.AuthenticationFailure)
+                : new ClassificationAttemptResult(true, "OpenRouter", model,
+                    new ClassificationResponse(true, "PRODUCT_INQUIRY", true, true, "HIGH", 0.9, "Pricing question."), null, 10))
+        };
+        var delay = new NoOpRetryDelay();
+        var service = new EmailClassificationService(db, provider, delay);
+
+        var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
+
+        Assert.Equal(ImportanceDecision.Important, decision);
+        // maxRetries=3 configured on primary-model, but AuthenticationFailure must not be retried —
+        // exactly 1 call to primary-model, then straight to fallback-model, never a wasted retry.
+        Assert.Equal(new[] { "primary-model", "fallback-model" }, provider.CallsByModel);
+        Assert.Empty(delay.RequestedDelays);
+    }
+
+    /// <summary>
+    /// Phase 10 hardening — a malformed/unparseable AI response gets exactly one retry (the model
+    /// might have glitched once), not the full retry budget, since a model systematically returning
+    /// bad JSON would otherwise burn every retry attempt repeating the identical parse failure.
+    /// </summary>
+    [Fact]
+    public async Task ClassifyOneAsync_MalformedResponse_RetriesExactlyOnce_ThenFallsBack()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        var profile = CreateSalesProfile();
+        db.EmailAccounts.Add(account);
+        db.ClassificationProfiles.Add(profile);
+        db.AiModelConfigs.Add(CreateModel("primary-model", fallbackOrder: 0, maxRetries: 3));
+        db.AiModelConfigs.Add(CreateModel("fallback-model", fallbackOrder: 1, maxRetries: 0));
+        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        db.EmailMessages.Add(message);
+        await db.SaveChangesAsync();
+
+        var provider = new FakeAiClassificationProvider
+        {
+            Behavior = (_, model, _, _) => Task.FromResult(model == "primary-model"
+                ? new ClassificationAttemptResult(false, "OpenRouter", model, null, "Could not parse a valid classification from the model response.", 1, ClassificationFailureCategory.MalformedResponse)
+                : new ClassificationAttemptResult(true, "OpenRouter", model,
+                    new ClassificationResponse(true, "PRODUCT_INQUIRY", true, true, "HIGH", 0.9, "Pricing question."), null, 10))
+        };
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+
+        var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
+
+        Assert.Equal(ImportanceDecision.Important, decision);
+        // maxRetries=3 configured, but MalformedResponse only ever gets 1 retry (2 total calls to
+        // primary-model: the initial attempt plus exactly one retry), then falls back.
+        Assert.Equal(new[] { "primary-model", "primary-model", "fallback-model" }, provider.CallsByModel);
+    }
+
+    /// <summary>
+    /// Phase 10 hardening — a RateLimited (HTTP 429) failure honors the provider's own Retry-After
+    /// value rather than the fixed exponential backoff used for ordinary transient failures.
+    /// </summary>
+    [Fact]
+    public async Task ClassifyOneAsync_RateLimited_HonorsRetryAfter_ThenSucceeds()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        var profile = CreateSalesProfile();
+        db.EmailAccounts.Add(account);
+        db.ClassificationProfiles.Add(profile);
+        db.AiModelConfigs.Add(CreateModel(maxRetries: 1));
+        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        db.EmailMessages.Add(message);
+        await db.SaveChangesAsync();
+
+        var callCount = 0;
+        var provider = new FakeAiClassificationProvider
+        {
+            Behavior = (_, model, _, _) =>
+            {
+                callCount++;
+                return Task.FromResult(callCount == 1
+                    ? new ClassificationAttemptResult(false, "OpenRouter", model, null, "OpenRouter returned HTTP 429: rate limited.", 1,
+                        ClassificationFailureCategory.RateLimited, TimeSpan.FromSeconds(7))
+                    : new ClassificationAttemptResult(true, "OpenRouter", model,
+                        new ClassificationResponse(true, "PRODUCT_INQUIRY", true, true, "HIGH", 0.9, "Pricing question."), null, 10));
+            }
+        };
+        var delay = new NoOpRetryDelay();
+        var service = new EmailClassificationService(db, provider, delay);
+
+        var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
+
+        Assert.Equal(ImportanceDecision.Important, decision);
+        Assert.Equal(2, provider.CallsByModel.Count);
+        // The exact Retry-After value was honored, not the exponential-backoff formula.
+        Assert.Equal(TimeSpan.FromSeconds(7), Assert.Single(delay.RequestedDelays));
     }
 
     /// <summary>§83 fallback — when the primary model fails, a lower-priority fallback model must still be tried and can succeed.</summary>
@@ -268,7 +387,7 @@ public class EmailClassificationServiceTests
                     new ClassificationResponse(true, "PRICE_REQUEST", true, true, "HIGH", 0.9, "Pricing request."),
                     null, 12))
         };
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -299,7 +418,7 @@ public class EmailClassificationServiceTests
                 false, "OpenRouter", model, null,
                 "Could not parse a valid classification from the model response: Missing or non-numeric 'confidence' field.", 8))
         };
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -330,7 +449,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(true, "PRICE_REQUEST", true, true, "MEDIUM", 0.3, "Uncertain."),
                 null, 10))
         };
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -354,7 +473,7 @@ public class EmailClassificationServiceTests
         await db.SaveChangesAsync();
 
         var provider = new FakeAiClassificationProvider();
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -377,7 +496,7 @@ public class EmailClassificationServiceTests
         await db.SaveChangesAsync();
 
         var provider = new FakeAiClassificationProvider();
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -408,7 +527,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(true, "PRICE_REQUEST", true, true, "HIGH", 0.92, "Pricing request."),
                 null, 10))
         };
-        var service = new EmailClassificationService(db, provider);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
 
         var result = await service.RunAsync(10, CancellationToken.None);
 

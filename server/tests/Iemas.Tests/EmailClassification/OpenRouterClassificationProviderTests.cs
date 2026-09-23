@@ -44,6 +44,86 @@ public class OpenRouterClassificationProviderTests
 
         Assert.False(result.Succeeded);
         Assert.Contains("API key is not configured", result.ErrorMessage);
+        // Phase 10 — a missing key can never be fixed by retrying the same request.
+        Assert.Equal(ClassificationFailureCategory.AuthenticationFailure, result.FailureCategory);
+    }
+
+    /// <summary>Phase 10 hardening — HTTP 401/403 must be categorized as AuthenticationFailure, never as a generic retryable failure.</summary>
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task ClassifyAsync_AuthHttpStatus_CategorizedAsAuthenticationFailure(HttpStatusCode status)
+    {
+        var handler = new FakeHttpMessageHandler
+        {
+            Behavior = (_, _) => Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent("unauthorized") })
+        };
+        var provider = CreateProvider(handler);
+
+        var result = await provider.ClassifyAsync(SampleRequest, "openai/gpt-4o-mini", TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(ClassificationFailureCategory.AuthenticationFailure, result.FailureCategory);
+    }
+
+    /// <summary>Phase 10 hardening — HTTP 429 must be categorized as RateLimited, and a Retry-After delay-seconds header must be parsed into the result so the caller can honor it.</summary>
+    [Fact]
+    public async Task ClassifyAsync_TooManyRequests_CategorizedAsRateLimited_WithRetryAfterParsed()
+    {
+        var handler = new FakeHttpMessageHandler
+        {
+            Behavior = (_, _) =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StringContent("slow down") };
+                response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(12));
+                return Task.FromResult(response);
+            }
+        };
+        var provider = CreateProvider(handler);
+
+        var result = await provider.ClassifyAsync(SampleRequest, "openai/gpt-4o-mini", TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(ClassificationFailureCategory.RateLimited, result.FailureCategory);
+        Assert.Equal(TimeSpan.FromSeconds(12), result.RetryAfter);
+    }
+
+    /// <summary>Phase 10 hardening — a 429 with no Retry-After header must still be categorized as RateLimited, just with no parsed delay (caller falls back to its own backoff).</summary>
+    [Fact]
+    public async Task ClassifyAsync_TooManyRequests_NoRetryAfterHeader_StillCategorizedAsRateLimited()
+    {
+        var handler = new FakeHttpMessageHandler
+        {
+            Behavior = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StringContent("slow down") })
+        };
+        var provider = CreateProvider(handler);
+
+        var result = await provider.ClassifyAsync(SampleRequest, "openai/gpt-4o-mini", TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(ClassificationFailureCategory.RateLimited, result.FailureCategory);
+        Assert.Null(result.RetryAfter);
+    }
+
+    /// <summary>Phase 10 hardening — HTTP 5xx must be categorized Transient (worth retrying), a 4xx that isn't 401/403/429 must be InvalidRequest (not worth retrying unchanged).</summary>
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable, ClassificationFailureCategory.Transient)]
+    [InlineData(HttpStatusCode.BadGateway, ClassificationFailureCategory.Transient)]
+    [InlineData(HttpStatusCode.InternalServerError, ClassificationFailureCategory.Transient)]
+    [InlineData(HttpStatusCode.BadRequest, ClassificationFailureCategory.InvalidRequest)]
+    [InlineData(HttpStatusCode.NotFound, ClassificationFailureCategory.InvalidRequest)]
+    public async Task ClassifyAsync_HttpStatus_CategorizedCorrectly(HttpStatusCode status, ClassificationFailureCategory expected)
+    {
+        var handler = new FakeHttpMessageHandler
+        {
+            Behavior = (_, _) => Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent("error") })
+        };
+        var provider = CreateProvider(handler);
+
+        var result = await provider.ClassifyAsync(SampleRequest, "openai/gpt-4o-mini", TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(expected, result.FailureCategory);
     }
 
     [Fact]
@@ -105,6 +185,7 @@ public class OpenRouterClassificationProviderTests
 
         Assert.False(result.Succeeded);
         Assert.NotNull(result.ErrorMessage);
+        Assert.Equal(ClassificationFailureCategory.MalformedResponse, result.FailureCategory);
     }
 
     [Fact]
@@ -191,6 +272,8 @@ public class OpenRouterClassificationProviderTests
 
         Assert.False(result.Succeeded);
         Assert.Contains("timed out", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        // Phase 10 — a timeout is worth retrying; it says nothing about whether the request itself was valid.
+        Assert.Equal(ClassificationFailureCategory.Transient, result.FailureCategory);
     }
 
     [Fact]
