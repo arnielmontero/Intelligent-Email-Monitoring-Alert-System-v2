@@ -5,6 +5,7 @@ using Iemas.Application.EmailClassification.Dtos;
 using Iemas.Domain.Ai;
 using Iemas.Domain.Email;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Iemas.Application.EmailClassification;
 
@@ -28,12 +29,18 @@ public class EmailClassificationService
     private readonly IAppDbContext _db;
     private readonly IAiClassificationProvider _aiProvider;
     private readonly IRetryDelay _retryDelay;
+    private readonly AiCircuitBreakerStore _circuitBreaker;
+    private readonly ILogger<EmailClassificationService> _logger;
 
-    public EmailClassificationService(IAppDbContext db, IAiClassificationProvider aiProvider, IRetryDelay retryDelay)
+    public EmailClassificationService(
+        IAppDbContext db, IAiClassificationProvider aiProvider, IRetryDelay retryDelay,
+        AiCircuitBreakerStore circuitBreaker, ILogger<EmailClassificationService> logger)
     {
         _db = db;
         _aiProvider = aiProvider;
         _retryDelay = retryDelay;
+        _circuitBreaker = circuitBreaker;
+        _logger = logger;
     }
 
     public async Task<ClassificationRunResult> RunAsync(int batchSize, CancellationToken cancellationToken)
@@ -137,8 +144,28 @@ public class EmailClassificationService
         // systematically returning bad JSON shouldn't burn its whole retry budget on repeats of
         // the same failure). A rate limit gets the provider's own Retry-After honored, capped so
         // one very long Retry-After can't stall the whole classification batch.
+        //
+        // Circuit breaker (per model, see the Build Progress Tracker design): TryAcquire/ReportOutcome
+        // wrap the WHOLE retry loop for a model, not each individual attempt — the circuit only ever
+        // sees one Success/CountedFailure/UncountedFailure per model per message, never one per
+        // internal retry, so its 3-consecutive-failure threshold means 3 failed attempts across
+        // messages, not 3 network blips within a single retry sequence.
+        var anyModelAttempted = false;
+
         foreach (var model in models)
         {
+            if (!_circuitBreaker.TryAcquire(model.Provider, model.ModelIdentifier, out var acquireTransitions))
+            {
+                // OPEN, or HALF-OPEN with another caller already holding the single probe slot —
+                // skip this model entirely, consuming none of its retry budget, straight to fallback.
+                continue;
+            }
+            LogCircuitTransitions(acquireTransitions);
+
+            anyModelAttempted = true;
+
+            var modelSucceeded = false;
+
             for (var attempt = 0; attempt <= model.MaxRetries; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -148,7 +175,8 @@ public class EmailClassificationService
 
                 if (lastAttempt.Succeeded)
                 {
-                    return await PersistSuccessAsync(message, profile, filterResult, lastAttempt, stopwatch, cancellationToken);
+                    modelSucceeded = true;
+                    break;
                 }
 
                 if (!IsRetryable(lastAttempt.FailureCategory, attempt))
@@ -161,11 +189,26 @@ public class EmailClassificationService
                     await _retryDelay.WaitAsync(ComputeRetryDelay(lastAttempt, attempt), cancellationToken);
                 }
             }
+
+            var reportTransitions = _circuitBreaker.ReportOutcome(model.Provider, model.ModelIdentifier, ToCircuitOutcome(modelSucceeded, lastAttempt!.FailureCategory));
+            LogCircuitTransitions(reportTransitions);
+
+            if (modelSucceeded)
+            {
+                return await PersistSuccessAsync(message, profile, filterResult, lastAttempt, stopwatch, cancellationToken);
+            }
         }
+
+        // Explicit design decision (see Build Progress Tracker): every enabled model's circuit
+        // being open is its own named failure reason, distinguishable from "every model was tried
+        // and failed" — no email is ever silently marked classified because nothing was attempted.
+        var failureReason = !anyModelAttempted
+            ? "All configured AI models are currently circuit-open (temporarily unavailable); no model was attempted."
+            : lastAttempt?.ErrorMessage ?? "All configured AI models failed.";
 
         return await PersistFailureAsync(
             message, profile, filterResult,
-            lastAttempt?.ErrorMessage ?? "All configured AI models failed.",
+            failureReason,
             stopwatch, cancellationToken, lastAttempt?.ModelIdentifier);
     }
 
@@ -312,6 +355,37 @@ public class EmailClassificationService
         ClassificationFailureCategory.MalformedResponse => attemptIndex == 0,
         _ => false,
     };
+
+    /// <summary>
+    /// Circuit breaker design decision (see Build Progress Tracker) — AuthenticationFailure/
+    /// InvalidRequest never affect circuit state: they are static configuration facts a cooldown
+    /// cannot fix, not a "the model is temporarily unhealthy" signal. Every other failure category
+    /// counts toward the opening threshold.
+    /// </summary>
+    private static CircuitOutcome ToCircuitOutcome(bool succeeded, ClassificationFailureCategory failureCategory)
+    {
+        if (succeeded) return CircuitOutcome.Success;
+        return failureCategory is ClassificationFailureCategory.AuthenticationFailure or ClassificationFailureCategory.InvalidRequest
+            ? CircuitOutcome.UncountedFailure
+            : CircuitOutcome.CountedFailure;
+    }
+
+    /// <summary>
+    /// Circuit breaker observability (design decision — see Build Progress Tracker): every state
+    /// transition is logged, naming the model/provider, the transition, the consecutive-failure
+    /// count, and the cooldown duration. Never logs the API key, prompt, email content, or raw AI
+    /// response — matching the discipline already followed by OpenRouterClassificationProvider's
+    /// own logging (Infrastructure layer), even though this call site is in Application.
+    /// </summary>
+    private void LogCircuitTransitions(IReadOnlyList<CircuitTransition> transitions)
+    {
+        foreach (var t in transitions)
+        {
+            _logger.LogWarning(
+                "AI classification circuit breaker for {Provider}/{Model} transitioned {From} -> {To} (consecutive failures: {ConsecutiveFailures}, cooldown: {Cooldown})",
+                t.Provider, t.ModelIdentifier, t.From, t.To, t.ConsecutiveFailures, t.CooldownDuration);
+        }
+    }
 
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
 

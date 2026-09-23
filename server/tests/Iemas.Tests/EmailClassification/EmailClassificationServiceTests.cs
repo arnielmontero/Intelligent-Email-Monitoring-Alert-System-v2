@@ -4,6 +4,7 @@ using Iemas.Domain.Ai;
 using Iemas.Domain.Email;
 using Iemas.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Iemas.Tests.EmailClassification;
@@ -92,7 +93,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(true, "PRODUCT_INQUIRY", true, true, "HIGH", 0.96, "Customer requesting pricing."),
                 null, 42))
         };
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -130,7 +131,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(false, "ECOMMERCE_NOTIFICATION", false, false, "LOW", 0.9, "Automated shipping notification."),
                 null, 20))
         };
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -169,7 +170,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(false, "AUTOMATED_NOTIFICATION", false, false, "LOW", 0.88, "Automated billing notice, not a genuine customer inquiry."),
                 null, 15))
         };
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -196,7 +197,7 @@ public class EmailClassificationServiceTests
         await db.SaveChangesAsync();
 
         var provider = new FakeAiClassificationProvider();
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -229,7 +230,7 @@ public class EmailClassificationServiceTests
                 false, "OpenRouter", model, null, "OpenRouter returned HTTP 503: Service Unavailable", 5,
                 ClassificationFailureCategory.Transient))
         };
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -275,7 +276,7 @@ public class EmailClassificationServiceTests
                     new ClassificationResponse(true, "PRODUCT_INQUIRY", true, true, "HIGH", 0.9, "Pricing question."), null, 10))
         };
         var delay = new NoOpRetryDelay();
-        var service = new EmailClassificationService(db, provider, delay);
+        var service = new EmailClassificationService(db, provider, delay, new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -312,7 +313,7 @@ public class EmailClassificationServiceTests
                 : new ClassificationAttemptResult(true, "OpenRouter", model,
                     new ClassificationResponse(true, "PRODUCT_INQUIRY", true, true, "HIGH", 0.9, "Pricing question."), null, 10))
         };
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -353,7 +354,7 @@ public class EmailClassificationServiceTests
             }
         };
         var delay = new NoOpRetryDelay();
-        var service = new EmailClassificationService(db, provider, delay);
+        var service = new EmailClassificationService(db, provider, delay, new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -387,7 +388,7 @@ public class EmailClassificationServiceTests
                     new ClassificationResponse(true, "PRICE_REQUEST", true, true, "HIGH", 0.9, "Pricing request."),
                     null, 12))
         };
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -396,6 +397,104 @@ public class EmailClassificationServiceTests
 
         var classification = await db.EmailClassifications.SingleAsync(c => c.EmailMessageId == message.Id);
         Assert.Equal("fallback-model", classification.AiModel);
+    }
+
+    /// <summary>
+    /// Phase 10 circuit breaker — checklist item 2/8 integration: once a model's circuit is OPEN,
+    /// subsequent messages must skip it entirely (no HTTP call, no retry budget spent) and go
+    /// straight to the fallback model. Uses a real (not shared-instance) AiCircuitBreakerStore
+    /// across three sequential ClassifyOneAsync calls to prove the circuit persists across messages
+    /// within one classification run, the way it would across a real batch.
+    /// </summary>
+    [Fact]
+    public async Task ClassifyOneAsync_PrimaryModelCircuitOpensAfterRepeatedFailures_SubsequentMessagesSkipItEntirely()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        var profile = CreateSalesProfile();
+        db.EmailAccounts.Add(account);
+        db.ClassificationProfiles.Add(profile);
+        db.AiModelConfigs.Add(CreateModel("primary-model", fallbackOrder: 0, maxRetries: 0));
+        db.AiModelConfigs.Add(CreateModel("fallback-model", fallbackOrder: 1, maxRetries: 0));
+        var messages = Enumerable.Range(1, 4)
+            .Select(i => CreateMessage(account.Id, $"Price inquiry {i}", "Please send your latest price list."))
+            .ToList();
+        db.EmailMessages.AddRange(messages);
+        await db.SaveChangesAsync();
+
+        var provider = new FakeAiClassificationProvider
+        {
+            Behavior = (_, model, _, _) => model == "primary-model"
+                ? Task.FromResult(new ClassificationAttemptResult(false, "OpenRouter", model, null, "primary down", 5, ClassificationFailureCategory.Transient))
+                : Task.FromResult(new ClassificationAttemptResult(
+                    true, "OpenRouter", model,
+                    new ClassificationResponse(true, "PRICE_REQUEST", true, true, "HIGH", 0.9, "Pricing request."),
+                    null, 12))
+        };
+        var circuitBreaker = new AiCircuitBreakerStore(TimeProvider.System);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), circuitBreaker, NullLogger<EmailClassificationService>.Instance);
+
+        // Messages 1-3: primary-model fails each time (3 consecutive counted failures -> opens).
+        foreach (var message in messages.Take(3))
+        {
+            await service.ClassifyOneAsync(message.Id, CancellationToken.None);
+        }
+        Assert.Equal(CircuitState.Open, circuitBreaker.GetState("OpenRouter", "primary-model"));
+
+        provider.CallsByModel.Clear();
+
+        // Message 4: primary-model's circuit is OPEN, so it must be skipped entirely.
+        var decision = await service.ClassifyOneAsync(messages[3].Id, CancellationToken.None);
+
+        Assert.Equal(ImportanceDecision.Important, decision);
+        Assert.DoesNotContain("primary-model", provider.CallsByModel);
+        Assert.Equal(new[] { "fallback-model" }, provider.CallsByModel);
+    }
+
+    /// <summary>
+    /// Phase 10 circuit breaker — checklist item 8: if every enabled model's circuit is open, no
+    /// model is even attempted, and the message must reach the same safe ReviewRequired outcome as
+    /// "every model was tried and failed" — never a silent/false success, per the explicit design
+    /// decision recorded in the tracker.
+    /// </summary>
+    [Fact]
+    public async Task ClassifyOneAsync_AllModelsCircuitOpen_ProducesReviewRequired_NoModelAttempted()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        var profile = CreateSalesProfile();
+        db.EmailAccounts.Add(account);
+        db.ClassificationProfiles.Add(profile);
+        db.AiModelConfigs.Add(CreateModel("only-model", fallbackOrder: 0, maxRetries: 0));
+        var messages = Enumerable.Range(1, 4)
+            .Select(i => CreateMessage(account.Id, $"Price inquiry {i}", "Please send your latest price list."))
+            .ToList();
+        db.EmailMessages.AddRange(messages);
+        await db.SaveChangesAsync();
+
+        var provider = new FakeAiClassificationProvider
+        {
+            Behavior = (_, model, _, _) => Task.FromResult(new ClassificationAttemptResult(
+                false, "OpenRouter", model, null, "down", 5, ClassificationFailureCategory.Transient))
+        };
+        var circuitBreaker = new AiCircuitBreakerStore(TimeProvider.System);
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), circuitBreaker, NullLogger<EmailClassificationService>.Instance);
+
+        foreach (var message in messages.Take(3))
+        {
+            await service.ClassifyOneAsync(message.Id, CancellationToken.None);
+        }
+        Assert.Equal(CircuitState.Open, circuitBreaker.GetState("OpenRouter", "only-model"));
+
+        provider.CallsByModel.Clear();
+        var decision = await service.ClassifyOneAsync(messages[3].Id, CancellationToken.None);
+
+        Assert.Equal(ImportanceDecision.ReviewRequired, decision);
+        Assert.Empty(provider.CallsByModel); // no HTTP call was made — the circuit was open before any attempt.
+
+        var reloaded = await db.EmailMessages.SingleAsync(m => m.Id == messages[3].Id);
+        Assert.Equal(EmailProcessingStatus.ReviewRequired, reloaded.ProcessingStatus);
+        Assert.Contains("circuit-open", reloaded.ProcessingError, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>§83 — a malformed/unrecognizable AI response (surfaced by the provider as a failed attempt) must not crash and must go to ReviewRequired.</summary>
@@ -418,7 +517,7 @@ public class EmailClassificationServiceTests
                 false, "OpenRouter", model, null,
                 "Could not parse a valid classification from the model response: Missing or non-numeric 'confidence' field.", 8))
         };
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -449,7 +548,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(true, "PRICE_REQUEST", true, true, "MEDIUM", 0.3, "Uncertain."),
                 null, 10))
         };
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -473,7 +572,7 @@ public class EmailClassificationServiceTests
         await db.SaveChangesAsync();
 
         var provider = new FakeAiClassificationProvider();
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -496,7 +595,7 @@ public class EmailClassificationServiceTests
         await db.SaveChangesAsync();
 
         var provider = new FakeAiClassificationProvider();
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var decision = await service.ClassifyOneAsync(message.Id, CancellationToken.None);
 
@@ -527,7 +626,7 @@ public class EmailClassificationServiceTests
                 new ClassificationResponse(true, "PRICE_REQUEST", true, true, "HIGH", 0.92, "Pricing request."),
                 null, 10))
         };
-        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay());
+        var service = new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance);
 
         var result = await service.RunAsync(10, CancellationToken.None);
 

@@ -38,6 +38,8 @@ public static class DependencyInjection
         services.AddScoped<IAgentTokenService, AgentTokenService>();
         services.AddScoped<ICredentialEncryptionService, AesGcmCredentialEncryptionService>();
         services.AddSingleton<IRetryDelay, SystemRetryDelay>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<AiCircuitBreakerStore>();
 
         services.AddScoped<IEmailProviderAdapter, ImapEmailProviderAdapter>();
         services.AddScoped<IEmailProviderAdapter, MicrosoftGraphEmailProviderAdapter>();

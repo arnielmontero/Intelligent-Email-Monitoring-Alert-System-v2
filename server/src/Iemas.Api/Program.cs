@@ -200,11 +200,16 @@ if (builder.Configuration.GetValue("EmailIntake:Enabled", true))
 // handled inside EmailClassificationService itself (§83) and never surface as a failed Hangfire
 // job for a single bad message — a whole-batch exception would still be retried by Hangfire and
 // is safe to retry since classification re-checks PendingClassification state per message.
+//
+// Phase 10 hardening: routed through RecurringJobGuards, same [DisableConcurrentExecution] reason
+// as the jobs above — here it is also load-bearing for the circuit breaker's HALF-OPEN "exactly one
+// probe" guarantee against the common case (this scheduled job racing the manual
+// POST /email-classification/run trigger), not just an efficiency concern.
 if (builder.Configuration.GetValue("AiClassification:Enabled", true))
 {
-    RecurringJob.AddOrUpdate<EmailClassificationService>(
+    RecurringJob.AddOrUpdate<RecurringJobGuards>(
         "ai-classification-poll-pending-messages",
-        service => service.RunAsync(builder.Configuration.GetValue("AiClassification:BatchSize", 25), CancellationToken.None),
+        guards => guards.RunEmailClassificationAsync(builder.Configuration.GetValue("AiClassification:BatchSize", 25), CancellationToken.None),
         builder.Configuration["AiClassification:CronSchedule"] ?? "*/2 * * * *");
 }
 

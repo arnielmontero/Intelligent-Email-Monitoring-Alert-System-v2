@@ -224,19 +224,77 @@ transition), the consecutive-failure count (on open), and the new cooldown durat
 logs the API key, the prompt, email content, or the raw AI response — matching the existing discipline
 already followed by `OpenRouterClassificationProvider`'s own logging.
 
-**Implementation is not started.** This design is written up for review before any `CircuitState`
-enum, `AiCircuitBreakerStore` class, or wiring into `EmailClassificationService`/`RecurringJobGuards`
-exists. Next step once this design is confirmed: implement `AiCircuitBreakerStore` as a pure,
-directly-unit-testable state machine (no I/O, easy to drive with fake clock/time injection for
-cooldown-expiry tests — the same "extract the part that can be a pure function" pattern used for
-`ImapFailureClassifier` and `ClassificationDecisionPolicy`), wire it into
-`EmailClassificationService`'s model loop, add the classification job to `RecurringJobGuards`, add
-unit tests for every state transition and the fallback-interaction behavior, then live-verify against
-the real Docker stack the same way OpenRouter retry/backoff and IMAP retry were live-verified this
-session (though a genuine live circuit-open/half-open/close cycle against *real* OpenRouter would
-still need a real API key or a way to force repeated failures against the real provider — likely
-achievable via a deliberately-wrong model identifier or a fake `HttpMessageHandler`-backed live test
-rather than needing a real outage, unlike IMAP where a real GreenMail stop/start was straightforward).
+**Implemented and live-verified (2026-09-23).**
+
+- `AiCircuitBreakerStore` (`Iemas.Application.Common.Ai`) — a pure state machine driven by the .NET 8
+  built-in `TimeProvider` (not a bespoke clock abstraction), `ConcurrentDictionary<(Provider,
+  ModelIdentifier), CircuitEntry>` with a per-entry lock guarding every transition, matching the
+  design exactly: `TryAcquire` (CLOSED → proceed; OPEN with elapsed cooldown → lazily transitions to
+  HALF-OPEN and grants the caller the one probe; OPEN otherwise or HALF-OPEN with a probe already in
+  flight → refused) and `ReportOutcome` (Success → CLOSED + reset; CountedFailure reaching the
+  3-consecutive threshold → OPEN; a failed probe → straight back to OPEN with doubled cooldown,
+  never given the ordinary retry treatment; UncountedFailure → no state change at all).
+- Wired into `EmailClassificationService`'s model loop: `TryAcquire`/`ReportOutcome` wrap the whole
+  per-model retry loop (commit `100be59`), not each individual attempt, so the circuit only ever
+  sees one Success/CountedFailure/UncountedFailure per model per message — confirmed by a dedicated
+  unit test asserting the circuit doesn't open after fewer than 3 *messages* even when a single
+  message's retry sequence itself contains multiple failed HTTP attempts.
+- All-models-open is a named outcome (`anyModelAttempted` tracked explicitly), never a silent
+  fallthrough: `email_messages.ProcessingError` reads "All configured AI models are currently
+  circuit-open (temporarily unavailable); no model was attempted" — distinguishable in the data from
+  "every model was tried and failed" — and the message still reaches `ReviewRequired`, never a false
+  success (confirmed live, see below).
+- Structured logging added alongside the breaker (not deferred): every transition logs `Provider`,
+  `ModelIdentifier`, `From`→`To`, consecutive-failure count, and cooldown duration via
+  `ILogger<EmailClassificationService>` — required adding `Microsoft.Extensions.Logging.Abstractions`
+  to `Iemas.Application`'s package references (previously EF Core + DI abstractions only); no secrets/
+  prompts/email content/raw AI responses are ever logged, matching `OpenRouterClassificationProvider`'s
+  existing discipline.
+- Bundled per explicit approval: the AI Classification recurring job
+  (`ai-classification-poll-pending-messages`, `*/2 * * * *`) had no `[DisableConcurrentExecution]`
+  guard — the same class of gap already fixed for Reminder/Escalation/Email-Intake this session, but
+  here directly load-bearing for the HALF-OPEN "exactly one probe" guarantee against the common case
+  (the scheduled job racing the manual `POST /email-classification/run` trigger), not just an
+  efficiency concern. Routed through `RecurringJobGuards` (now 4 jobs).
+- **15 new unit tests**: 13 in `AiCircuitBreakerStoreTests` (using `FakeTimeProvider` —
+  `Microsoft.Extensions.TimeProvider.Testing` added to the test project — for deterministic cooldown-
+  expiry timing, no real waiting) covering every checklist scenario explicitly — 3-consecutive-
+  failures opens; a pre-threshold success resets the count; uncounted failures never open the
+  circuit even after 10 attempts; OPEN refuses `TryAcquire` before cooldown; cooldown elapsing grants
+  exactly one HALF-OPEN probe; a second concurrent caller during an in-flight probe is refused;
+  success closes and resets; a failed probe returns to OPEN with doubled cooldown and does *not* get
+  an extra retry; cooldown doubles correctly across repeated failures up to the 10-minute cap; a
+  fresh store (simulating restart) starts CLOSED; circuits are independent per model (opening one
+  doesn't affect another) — plus 2 integration-level tests in `EmailClassificationServiceTests`
+  proving the model loop actually skips an OPEN model's HTTP calls entirely and reaches
+  `ReviewRequired` with zero calls when every model is OPEN. **296/296 tests passing** (281 + 15),
+  clean `dotnet build` (0 new warnings, same 2 pre-existing).
+- **Live-verified against the real Docker stack with a genuine forced CLOSED→OPEN transition**, not
+  just unit tests: since no real OpenRouter API key exists (pre-existing gap — every real attempt
+  would fail as `AuthenticationFailure`, which by design never touches the circuit), temporarily
+  pointed `AiClassification:OpenRouter:BaseUrl` at an unreachable host
+  (`docker-compose.circuit-test.override.yml`, applied via `docker compose -f ... -f ... up -d api`,
+  removed immediately after and the container restarted back to normal config — confirmed via `docker
+  exec iemas-api env` before and after) with a placeholder API key so requests actually reached HTTP
+  rather than failing the pre-flight key check. Inserted 4 real `PendingClassification` rows directly
+  via `psql` (no live IMAP fetch needed for this test) and ran `POST /email-classification/run` four
+  times: runs 1-3 each produced a genuine `HttpRequestException`/DNS failure (`Name or service not
+  known`) logged from the real `OpenRouterClassificationProvider` code path, each taking ~3.2-3.5s
+  (the real retry/backoff sequence actually running); run 3's log line read exactly **"AI
+  classification circuit breaker for OpenRouter/openai/gpt-4o-mini transitioned Closed -> Open
+  (consecutive failures: 3, cooldown: 00:00:30)"** — a real, observed state transition, not inferred.
+  Run 4 (circuit now OPEN) completed in **12ms** — no HTTP call at all, confirmed via `psql`:
+  `ProcessingError` for that message read "All configured AI models are currently circuit-open...no
+  model was attempted", distinctly different from the other three's genuine connection-failure
+  messages, and all 4 messages correctly reached `ReviewRequired` (`ProcessingStatus = 3`), never a
+  false success. Test data cleaned up afterward (`email_messages`/`email_classifications`/
+  `ai_classification_logs` rows deleted); config confirmed reverted to the real (blank) API key and
+  default `BaseUrl` before finishing. HALF-OPEN/probe-success/probe-failure were not independently
+  live-triggered beyond this OPEN transition (would require waiting out the 30s cooldown against the
+  still-fake host, or a second forced-failure round) — that gap is recorded honestly; the state
+  machine's HALF-OPEN/probe logic is proven by the 13 unit tests' deterministic `FakeTimeProvider`
+  coverage instead, consistent with how much of this session's live verification has combined real
+  partial evidence with thorough unit coverage for the parts a live session couldn't reach cleanly.
 
 **Not started yet:** security hardening (secrets out of `appsettings`/compose, agent token revocation-on-sync), observability (correlation IDs, health checks for IMAP/OpenRouter/Hangfire), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
 
