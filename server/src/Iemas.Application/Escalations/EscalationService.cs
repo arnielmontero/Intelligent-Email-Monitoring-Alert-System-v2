@@ -124,7 +124,7 @@ public class EscalationService
                 $"{sentReminderCount}/{policy.TriggerReminderCount} reminders sent.", cancellationToken);
         }
 
-        if (DateTimeOffset.UtcNow - targetCase.FirstEmailReceivedAt < policy.GracePeriod)
+        if (IsWithinGracePeriod(targetCase, policy))
         {
             return await RecordSkipAsync(caseId, policy.Id, null, EscalationSkipReason.ThresholdNotReached, "Grace period has not yet elapsed.", cancellationToken);
         }
@@ -229,7 +229,7 @@ public class EscalationService
             return new TestEscalationPolicyResult(false, null, null, $"Only {sentReminderCount}/{policy.TriggerReminderCount} reminders sent — threshold not reached.");
         }
 
-        if (DateTimeOffset.UtcNow - targetCase.FirstEmailReceivedAt < policy.GracePeriod)
+        if (IsWithinGracePeriod(targetCase, policy))
         {
             return new TestEscalationPolicyResult(false, null, null, "Grace period has not yet elapsed — would not escalate yet.");
         }
@@ -245,6 +245,13 @@ public class EscalationService
             ? new TestEscalationPolicyResult(false, level.Level, null, $"Level {level.Level} recipient ({level.RecipientType}) could not be resolved.")
             : new TestEscalationPolicyResult(true, level.Level, recipient, $"Would escalate to Level {level.Level}: {recipient}.");
     }
+
+    /// <summary>
+    /// §57 Grace Period — shared by <see cref="EvaluateCaseAsync"/> and <see cref="TestPolicyAsync"/> so
+    /// the dry-run can never drift from the real evaluation's grace-period check again (see Bug #13).
+    /// </summary>
+    private static bool IsWithinGracePeriod(Case targetCase, EscalationPolicy policy) =>
+        DateTimeOffset.UtcNow - targetCase.FirstEmailReceivedAt < policy.GracePeriod;
 
     /// <summary>§59 — recipient resolution, using organizational data where possible. Returns a display string, or null if unresolvable (§60.10).</summary>
     private async Task<string?> ResolveRecipientAsync(Case targetCase, EscalationLevel level, CancellationToken cancellationToken)
