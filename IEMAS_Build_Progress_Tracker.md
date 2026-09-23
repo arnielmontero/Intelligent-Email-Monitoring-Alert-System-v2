@@ -3,7 +3,7 @@
 ## Overall Status
 
 **Status:** In Progress
-**Current Phase:** Phase 10 — Hardening, **IN PROGRESS.** Phase 9 is Substantially Complete and Phases 4-9 are all live-verified (see below). Phase 10 work started 2026-09-23: Hangfire concurrency guards, missed-cron-window policy, OpenRouter resilience, IMAP resilience, and the OpenRouter circuit breaker are all done, committed, and live-verified. Security hardening (audit-first, per explicit instruction) is also done: Findings #2 (global exception handler), #3 (AI prompt-injection defense), and #4 (auth endpoint rate limiting) are resolved, tested, and live-verified; Finding #1 (committed production-identical secrets) is deliberately left **OPEN / Awaiting authorized secret rotation** — a migration tool was built and dry-run-verified against the live DB, but the live key-rotation write was not executed, since it requires an explicitly authorized environment for a live secret-store write and the two currently-protected credentials are test data only. Observability is also done: correlation IDs (HTTP + Hangfire jobs), liveness/readiness health checks (PostgreSQL/IMAP/OpenRouter/Hangfire, each reporting on real already-collected signal rather than causing fresh production work per poll), and structured operational telemetry (classification/IMAP duration+result, model/fallback selection, retry counts, rate-limit events) are all implemented, tested, and live-verified. Next: data integrity, the last Phase 10 item.
+**Current Phase:** Phase 10 — Hardening, **SUBSTANTIALLY COMPLETE.** Phase 9 is Substantially Complete and Phases 4-9 are all live-verified (see below). Phase 10 work (started 2026-09-23) is done across every item except one deliberately-open exception: Hangfire concurrency guards, missed-cron-window policy, OpenRouter resilience, IMAP resilience, the OpenRouter circuit breaker, security hardening (Findings #2-#4: global exception handler, AI prompt-injection defense, auth endpoint rate limiting), all three observability items (correlation IDs, liveness/readiness health checks, structured operational telemetry), and data integrity (a real PostgreSQL trigger enforcing the Phase 7 claim-vs-verified-fact invariant at the DB level, live-verified including under genuine concurrency; a full backup/restore drill against a separate disposable instance with application-level read/write verification) are all implemented, tested, and live-verified. **The one remaining item is Finding #1** (committed production-identical secrets) — deliberately left **OPEN / Awaiting authorized secret rotation**: a migration tool was built and dry-run-verified against the live DB, but the live key-rotation write was not executed, since it requires an explicitly authorized environment for a live secret-store write and the two currently-protected credentials are test data only.
 **Overall Progress:** 75% (9 of 12 phases substantially complete; all 9 now carry real Docker-stack live verification, not just unit tests; Phase 10 hardening underway on top of that foundation)
 
 ### Current Focus — Phase 10 Hardening (session in progress, 2026-09-23)
@@ -645,7 +645,146 @@ item asks for).
 complete for this session**, each implemented, tested, and live-verified per this project's standing
 verification discipline.
 
-**Not started yet:** data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite). Finding #1 (committed production-identical secrets) remains explicitly **OPEN / Awaiting authorized secret rotation**.
+### Data Integrity (2026-09-23) — final Phase 10 hardening item
+
+Two distinct deliverables, per explicit instruction: (1) a real DB-level constraint backing the
+Phase 7 claim-vs-verified-fact guarantee, not just application-code discipline; (2) a genuine
+backup/restore drill against a separate disposable instance, not merely confirming a backup command
+exits 0.
+
+#### 1. Claim-vs-verified-fact DB constraint
+
+**The invariant, as it already existed in code** (`AgentCaseActionService.cs`'s own class doc,
+Requirements §43/§46): an Agent's `ALREADY_REPLIED` action is an employee **claim**, recorded only as
+a `CaseEvent` — it must never set `Case.ReplyStatus` itself. Only `ReplyVerificationService`,
+inspecting the real Sent mailbox, may set `ReplyStatus = Replied`. Before this item, that guarantee
+existed only because no line in `AgentCaseActionService.cs` happens to assign to `ReplyStatus` —
+true, but structurally unenforced; a future code change could silently violate it.
+
+**Enforcement chosen: a PostgreSQL `BEFORE INSERT OR UPDATE OF "ReplyStatus"` trigger** on `cases`
+(migration `20260923090552_AddReplyStatusVerificationTrigger`), not a column-level `CHECK` (which
+cannot reference another table and so cannot express this invariant at all). The trigger rejects any
+write setting `ReplyStatus = 5` (`Replied`) unless a `reply_verification_attempts` row with
+`Outcome = 0` (`VerifiedReply`) already exists for that case — enforced regardless of which future
+code path writes to `cases`, EF Core or otherwise, closing the exact structural gap above.
+- **Pre-migration compliance check**: queried the one existing `Replied` case before applying the
+  migration — it already had a backing `VerifiedReply` attempt, so no data cleanup was needed.
+- **Reversible**: `Down()` drops the trigger then the function; both are plain, clean DDL with no
+  data-shape dependency, so the rollback path needs no special handling.
+- **No sensitive information leaks through the exception**: the trigger's `RAISE EXCEPTION` message
+  contains only the Case GUID and the business-rule text — no credentials, connection strings, or
+  schema internals. Additionally, this can only ever reach an HTTP response through
+  `GlobalExceptionHandler` (Finding #2, this session), which already strips all exception detail
+  before it reaches a client — verified structurally, not just asserted.
+- **Application-level safety already correct, verified by inspection**: `AgentCaseActionService`'s
+  `SubmitActionAsync` catches `DbUpdateException` for its own idempotency race (§78, the unique
+  `(AgentId, RequestId)` index) — since `ApplyAction`'s `AlreadyReplied` branch never touches
+  `ReplyStatus`, this trigger can never fire from that code path; if it somehow did in the future
+  (a bug), the existing catch block's `raced is null` check would correctly fall through to `throw`
+  rather than silently swallowing a real constraint violation. `ReplyVerificationService`'s own write
+  (`RecordAttemptAsync`) is always valid by construction — it adds the `ReplyVerificationAttempt` and
+  sets `ReplyStatus` in the same `SaveChangesAsync` call/transaction, which is exactly the pattern
+  verified to satisfy the trigger below.
+- **Live-verified against the real Docker stack** (not unit-tested — this is Npgsql/PostgreSQL-
+  specific server-side behavor with no EF InMemory equivalent, consistent with this project's
+  established pattern of verifying such behavior live rather than forcing an artificial mock):
+  - Migration applied cleanly on container startup (confirmed via `__EFMigrationsHistory` and
+    `pg_trigger`).
+  - **Invalid write rejected**: a raw `UPDATE cases SET "ReplyStatus" = 5` against a case with no
+    backing attempt failed with the trigger's exact error message, at the DB boundary, via `psql`
+    directly (not routed through any application code that might mask it).
+  - **Valid non-`Replied` write still works**: an ordinary `ReplyStatus` update to a non-`Replied`
+    value succeeded normally.
+  - **Valid `Replied` write succeeds once backed by real evidence**: inserting a real
+    `VerifiedReply` `reply_verification_attempts` row, then updating `ReplyStatus = 5`, succeeded.
+  - **Genuine concurrency tested, not just sequential calls**: ran two simultaneous `psql` processes
+    (real, separate OS processes/connections) both attempting the same invalid `ReplyStatus = 5`
+    write against the same case at the same time — **both were correctly rejected**, proving the
+    trigger holds under real concurrent access, not merely "an application-level check followed by
+    an insert/update" race window.
+  - **The actual legitimate write pattern tested as a single transaction**: `BEGIN; INSERT
+    reply_verification_attempts (Outcome=VerifiedReply); UPDATE cases SET ReplyStatus=5; COMMIT;` —
+    exactly how `ReplyVerificationService.RecordAttemptAsync` really writes — succeeded, confirming
+    the trigger correctly sees an uncommitted `INSERT` from earlier in the same transaction (Postgres
+    trigger semantics: statement-level visibility within a transaction), not just already-committed
+    rows.
+  - All test writes were made against this session's existing test/demo Cases (`CASE-000001/2/3`,
+    created in earlier live-verification sessions, not production data); the two `Replied` test cases
+    were restored to a fully constraint-compliant state afterward (each re-backed with a genuine
+    `VerifiedReply` attempt) and the third was reverted to its prior `AwaitingReply`-family state —
+    confirmed via a final table-wide query that every `Replied` case has backing evidence and no
+    orphaned/invalid state remains.
+  - 329/329 existing unit tests still passing, clean `dotnet build` (0 new warnings, same 2
+    pre-existing) — this migration made no C# behavioral change, only added DDL.
+
+#### 2. Backup/restore drill
+
+Performed as a genuine operational test against a **separate, disposable** PostgreSQL instance —
+never against the only live database, per explicit instruction.
+
+- **Backup**: `pg_dump -F c` (custom/compressed format) taken from the real `iemas-postgres`
+  container. Succeeded (exit 0), produced a non-empty 189,667-byte artifact, copied out of the
+  container to the session scratchpad. Confirmed via `pg_restore -l` that it contains every real
+  table, including both `hangfire.*` and application tables. Confirmed the artifact contains no
+  plaintext secrets: `email_credentials.EncryptedSecret` is stored (and thus backed up) as opaque
+  AES-256-GCM ciphertext bytes — spot-checked via `encode(..., 'hex')` against the live source both
+  before and after the restore, byte-identical, never plaintext. The `CredentialEncryption` key
+  itself lives only in environment configuration, never in any database table, so it cannot appear
+  in a DB backup by construction.
+- **Restore**: started a brand-new, separate `iemas-restore-drill` PostgreSQL 16 container on the
+  project's Docker network (not reusing `iemas-postgres`), restored the backup into it via
+  `pg_restore --no-owner --no-privileges` — succeeded with no errors.
+  - **Schema verified**: `__EFMigrationsHistory` in the restored DB shows the exact same migrations
+    as the source, including this session's brand-new `AddReplyStatusVerificationTrigger` — and the
+    trigger itself (`pg_trigger` query) is present and enabled in the restored database, confirming
+    triggers/functions survive a `pg_dump`/`pg_restore` round-trip, not just tables.
+  - **Representative row counts compared**: `cases`, `email_messages`, `email_credentials`,
+    `case_emails`, `agents`, `users` all matched exactly between source and restore.
+    `reply_verification_attempts` showed 3 (source) vs 2 (restore) — investigated and confirmed as an
+    **honest, expected divergence**, not a restore defect: a 3rd attempt row was inserted directly
+    into the live source during this same session's trigger-testing above, i.e. *after* the backup
+    was taken — the restore is correctly a point-in-time snapshot, and the drill's job is to surface
+    exactly this kind of discrepancy rather than hide it.
+  - **Relationship/integrity checks, not just row counts**: zero orphaned `email_credentials` (every
+    row's `EmailAccountId` resolves to a real `email_accounts` row) and zero orphaned `case_emails`
+    (every row's `CaseId` resolves to a real `cases` row) in the restored database. The
+    claim-vs-verified-fact invariant itself was re-checked against the restored data and held for
+    every case (every `Replied` case has a backing `VerifiedReply` attempt) — proving the new trigger
+    logic and the data it depends on both survive a restore together, consistently.
+  - **Application started against the restored database**: a real `iemas-api` container instance,
+    built from the same image as the live stack, pointed at `iemas-restore-drill` via
+    `ConnectionStrings__Default` (a separate port, `8091`, so it never touched the live stack).
+    Started cleanly with no errors; Hangfire recurring jobs registered and ran their first tick
+    immediately, including a **real IMAP connection using the restored, still-encrypted credential**
+    — decrypted correctly with the live `CredentialEncryption` key and connected to the real
+    GreenMail test server, proving the encrypted credential is genuinely usable after restore, not
+    just present as bytes.
+  - **Representative read/write operations exercised**: `/health/ready` executed real EF/Npgsql
+    queries against the restored database (`ImapHealthCheck`'s `EmailSyncState` read correctly showed
+    the failure count that had continued climbing on this *restored* instance's own subsequent
+    intake ticks — 114, distinct from the source's own independently-climbing count — proving genuine
+    isolation, not a shared/aliased connection). A real login attempt against the restored `users`
+    table correctly returned `401` for a guessed password (proving the read + password-hash
+    comparison path executes against restored data, not a crash). A real agent-enrollment write
+    attempt correctly hit real business-rule validation reading restored `Employee`/`EmailAccount`
+    data. Confirmed via direct query that **9 new real Hangfire job rows** were written to the
+    restored database within 2 minutes of the app starting — unambiguous proof of a genuine write
+    path functioning against the restored data, from the application's own real background
+    processing, not a synthetic test write.
+  - **Cleanup**: both disposable containers (`iemas-api-restore-drill`, `iemas-restore-drill`) were
+    stopped and removed after the drill; confirmed the original `iemas-api`/`iemas-postgres` stack was
+    running continuously and unaffected throughout (never stopped, never had its data touched by the
+    restore) — the drill's own explicit purpose (demonstrate recoverability without risking the
+    working environment) was upheld end to end.
+
+**Data integrity is now complete.** Combined with the completed observability work above, **Phase 10
+hardening has exactly one remaining, explicitly-tracked item: Finding #1 — committed
+production-identical secrets — intentionally left OPEN, pending an explicitly authorized environment
+for the live secret-store write.** Every other Phase 10 hardening item (Hangfire concurrency guards,
+missed-cron policy, OpenRouter resilience, IMAP resilience, the circuit breaker, all four security
+findings but #1, and all three observability items) is implemented, tested, and live-verified.
+
+**Not started yet:** closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite). Finding #1 (committed production-identical secrets) remains explicitly **OPEN / Awaiting authorized secret rotation**.
 
 ### Summary
 
