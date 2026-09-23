@@ -3,7 +3,7 @@
 ## Overall Status
 
 **Status:** In Progress
-**Current Phase:** Phase 10 — Hardening, **IN PROGRESS.** Phase 9 is Substantially Complete and Phases 4-9 are all live-verified (see below). Phase 10 work started 2026-09-23: Hangfire concurrency guards are done, committed, and live-verified; the missed-cron-window downtime experiments are complete and the resulting policy is documented (see "Current Focus" below) — decided from two real downtime tests against this project's actual Hangfire configuration, not assumed.
+**Current Phase:** Phase 10 — Hardening, **IN PROGRESS.** Phase 9 is Substantially Complete and Phases 4-9 are all live-verified (see below). Phase 10 work started 2026-09-23: Hangfire concurrency guards, missed-cron-window policy, OpenRouter resilience, IMAP resilience, and the OpenRouter circuit breaker are all done, committed, and live-verified. Security hardening (audit-first, per explicit instruction) is also done: Findings #2 (global exception handler), #3 (AI prompt-injection defense), and #4 (auth endpoint rate limiting) are resolved, tested, and live-verified; Finding #1 (committed production-identical secrets) is deliberately left **OPEN / Awaiting authorized secret rotation** — a migration tool was built and dry-run-verified against the live DB, but the live key-rotation write was not executed, since it requires an explicitly authorized environment for a live secret-store write and the two currently-protected credentials are test data only. Next: observability, then data integrity.
 **Overall Progress:** 75% (9 of 12 phases substantially complete; all 9 now carry real Docker-stack live verification, not just unit tests; Phase 10 hardening underway on top of that foundation)
 
 ### Current Focus — Phase 10 Hardening (session in progress, 2026-09-23)
@@ -417,14 +417,47 @@ Remediated in `OpenRouterClassificationProvider` (`Iemas.Infrastructure.Ai`):
   documented gap as the rest of Phase 4/10's OpenRouter work) — so this finding's live evidence is
   the real outgoing-request-body assertions above, not an end-to-end model response.
 
-**Finding #4 — LOW/MEDIUM — No rate limiting on authentication endpoints.** `/auth/login`,
-`/agent-enrollment/register`, and `/agent-auth/authenticate` have no request-rate limiting, leaving
-them open to credential-stuffing/brute-force attempts. Not yet remediated.
+**Finding #4 — LOW/MEDIUM — No rate limiting on authentication endpoints. RESOLVED 2026-09-23.**
+`/auth/login`, `/agent-enrollment/register`, and `/agent-auth/authenticate` had no request-rate
+limiting, leaving them open to unbounded credential-stuffing/brute-force attempts.
+- Added .NET 8's built-in `Microsoft.AspNetCore.RateLimiting` middleware (`app.UseRateLimiter()`,
+  `Program.cs`), with a single named policy (`AuthRateLimit`): a fixed-window limiter, 10 requests
+  per rolling 1-minute window, **partitioned by remote IP address** (not by any request-supplied
+  field like email, which an attacker could vary per request to bypass a per-account limit), with
+  `QueueLimit = 0` (a limit hit returns `429` immediately — no benefit to queuing a flood of auth
+  attempts) via `options.RejectionStatusCode = 429`.
+  - Applied via `[EnableRateLimiting("AuthRateLimit")]` directly on the three specific actions
+    (`AuthController.Login`, `AgentEnrollmentController.Register`,
+    `AgentAuthController.Authenticate`) — deliberately not global, so it cannot accidentally throttle
+    unrelated traffic (CMS data endpoints, Hangfire polling, health checks) if the limiter's
+    parameters are ever tuned more aggressively later.
+- **Live-verified against the real Docker stack**: 15 rapid sequential `POST /api/v1/auth/login`
+  requests from the same client — the first 10 each returned the normal `401` (invalid credentials,
+  proving the endpoint's own logic still runs normally under the limit), and requests 11-15 each
+  returned `429` immediately (proving the limiter engaged, not merely configured). Confirmed
+  `/health` (a different, unguarded endpoint) still returned `200` throughout, proving the limiter is
+  scoped to the intended endpoints only, not global. Confirmed the window resets: after waiting out
+  the 1-minute window, a subsequent login request returned `401` again (normal behavior resumed),
+  not a stuck `429`.
+  - Noted, not a bug: because the partition key is IP address (not per-endpoint), `/auth/login` and
+    `/agent-auth/authenticate` from the *same* client share one 10-per-minute budget rather than each
+    getting its own — confirmed live (both returned `429` once the shared budget was exhausted). This
+    is the deliberate, stricter interpretation: a single attacker IP is bounded to 10 total
+    authentication attempts per minute across every auth-boundary endpoint combined, not 10 per
+    endpoint (which would have allowed 30/minute by round-robining between the three routes).
+  - No new automated tests were added for this item — rate limiting is ASP.NET Core middleware
+    configuration (`Program.cs`), not application logic reachable from a controller-level unit test
+    without a full `WebApplicationFactory` integration-test harness (which this project does not yet
+    have); the live verification above is this finding's real evidence, consistent with this
+    project's standing principle that a security control is verified by testing the actual boundary,
+    not by the presence of code alone. 302/302 existing unit tests still passing, clean `dotnet build`
+    (0 new warnings, same 2 pre-existing), Docker image rebuilt and confirmed healthy.
 
-**Next step for this item:** proceed with Finding #4 (rate limiting on authentication endpoints) per
-explicit direction — there is no reason the Finding #1 secret-write permission boundary should block
-the rest of the hardening work. Return to Finding #1 when an explicitly authorized environment for
-the live secret-store write is available.
+**Findings #2, #3, and #4 are now all resolved, tested, and live-verified.** Finding #1 remains the
+only open item in this security-hardening pass, explicitly **OPEN / Awaiting authorized secret
+rotation** per the decision above — return to it when an explicitly authorized environment for the
+live secret-store write is available. Security hardening is otherwise complete for this session;
+next Phase 10 items are observability, then data integrity, per the originally agreed order.
 
 **Not started yet:** observability (correlation IDs, health checks for IMAP/OpenRouter/Hangfire), data integrity (DB constraint backing the Phase 7 claim-vs-verified-fact guarantee, backup/restore drill), and closing/formally deferring the three residual gaps (OpenRouter key, Windows Agent/SignalR contract test, CMS Playwright suite).
 

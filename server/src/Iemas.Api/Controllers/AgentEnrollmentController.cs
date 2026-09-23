@@ -2,6 +2,7 @@ using Iemas.Application.Agents;
 using Iemas.Application.Agents.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Iemas.Api.Controllers;
 
@@ -24,6 +25,7 @@ public class AgentEnrollmentController : ControllerBase
     }
 
     [HttpPost("register")]
+    [EnableRateLimiting("AuthRateLimit")]
     public async Task<ActionResult<RegisterAgentResponse>> Register([FromBody] RegisterAgentRequest request, CancellationToken cancellationToken)
     {
         var result = await _service.RegisterAsync(request, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);

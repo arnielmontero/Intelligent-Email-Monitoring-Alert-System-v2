@@ -1,6 +1,8 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Hangfire;
 using Hangfire.Dashboard;
+using Microsoft.AspNetCore.RateLimiting;
 using Iemas.Api.Hubs;
 using Iemas.Api.Jobs;
 using Iemas.Application;
@@ -143,6 +145,25 @@ builder.Services.AddCors(options =>
 builder.Services.AddHealthChecks()
     .AddNpgSql(builder.Configuration.GetConnectionString("Default")!, name: "postgresql");
 
+// Finding #4 (Phase 10 security hardening) — rate limit the unauthenticated auth-boundary
+// endpoints (CMS login, Agent enrollment, Agent authentication) against credential-stuffing/
+// brute-force attempts. Keyed by remote IP (not by any request-supplied identifier, which an
+// attacker could vary to bypass a per-account limit) with a fixed window; a limit hit returns 429
+// rather than queuing, since queuing a flood of auth attempts has no benefit here.
+const string AuthRateLimitPolicy = "AuthRateLimit";
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(AuthRateLimitPolicy, httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+});
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -162,6 +183,7 @@ app.UseExceptionHandler();
 app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();
 app.UseCors(CmsCorsPolicy);
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

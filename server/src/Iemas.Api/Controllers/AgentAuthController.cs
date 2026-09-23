@@ -2,6 +2,7 @@ using Iemas.Application.Agents;
 using Iemas.Application.Agents.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Iemas.Api.Controllers;
 
@@ -19,6 +20,7 @@ public class AgentAuthController : ControllerBase
 
     [HttpPost("authenticate")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
     public async Task<ActionResult<AgentAuthenticateResponse>> Authenticate([FromBody] AgentAuthenticateRequest request, CancellationToken cancellationToken)
     {
         var result = await _service.AuthenticateAsync(request, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
