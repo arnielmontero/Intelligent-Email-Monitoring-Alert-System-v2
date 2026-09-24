@@ -3,8 +3,8 @@
 ## Overall Status
 
 **Status:** In Progress
-**Current Phase:** Phase 11 — Testing, **IN PROGRESS** (started 2026-09-23, immediately following Phase 10). Phase 10 — Hardening is **SUBSTANTIALLY COMPLETE**: Hangfire concurrency guards, missed-cron-window policy, OpenRouter resilience, IMAP resilience, the OpenRouter circuit breaker, security hardening (Findings #2-#4), all three observability items, and data integrity (DB trigger + backup/restore drill) are all implemented, tested, and live-verified — the sole exception, deliberately left open, is **Finding #1** (committed production-identical secrets) — **OPEN / Awaiting authorized secret rotation**, per explicit decision not to hold up further phases for it. Phase 11 is explicitly scoped as more than a `dotnet test` re-run: full regression → end-to-end workflows → failure-path testing → security regression → recovery/regression → final tracker evidence, per explicit direction, so Phase 12 deployment decisions rest on evidence rather than accumulated passing tests alone.
-**Overall Progress:** 80% (10 of 12 phases substantially complete — all with real Docker-stack live verification, not just unit tests; Phase 11 testing underway on top of that foundation)
+**Current Phase:** Phase 11 — Testing, **SUBSTANTIALLY COMPLETE** (started 2026-09-23, finished 2026-09-24). All 6 planned items (Full Regression, End-to-End Workflows, Failure-Path Testing, Security Regression, Recovery/Regression, Final Evidence/Tracker) have live evidence recorded — see the Phase 11 section below. One new, non-blocking gap found during this phase's security regression testing: Employee `fullName` accepts and stores a stored-XSS-shaped payload verbatim with no server-side sanitization on write, currently non-exploitable only because the CMS never uses `dangerouslySetInnerHTML` (a render-layer mitigation, not a write-layer fix) — recorded under Known Gaps, not silently fixed or ignored. Phase 10 — Hardening remains **SUBSTANTIALLY COMPLETE**: Hangfire concurrency guards, missed-cron-window policy, OpenRouter resilience, IMAP resilience, the OpenRouter circuit breaker, security hardening (Findings #2-#4), all three observability items, and data integrity (DB trigger + backup/restore drill) are all implemented, tested, and live-verified — the sole exception, deliberately left open, is **Finding #1** (committed production-identical secrets) — **OPEN / Awaiting authorized secret rotation**, per explicit decision not to hold up further phases for it. Phase 12 (Deployment) is next per §111 order; its exact scope should be confirmed with the user before starting, per the pattern established at every previous phase boundary.
+**Overall Progress:** 92% (11 of 12 phases substantially complete — all with real Docker-stack live verification, not just unit tests; Phase 12 Deployment scope not yet confirmed with the user)
 
 ### Current Focus — Phase 10 Hardening (session in progress, 2026-09-23)
 
@@ -819,7 +819,7 @@ and no gate marked done on an assumption.
   `/health/live` → `200 Healthy` immediately after startup, proving the from-scratch production
   build is not just compilable but actually runnable.
 
-### 2. End-to-End Workflows — IN PROGRESS
+### 2. End-to-End Workflows — DONE
 
 All exercised against the real Docker stack with a real bootstrap-admin JWT and a freshly-enrolled
 real Agent JWT (not fakes/mocks) — evidence recorded as it was gathered, live-test evidence kept
@@ -863,13 +863,104 @@ explicit and separate from the automated-test evidence in item 1 above.
   early test used the wrong numeric `CaseActionType` value by mistake, which itself became a useful
   extra data point once recognized.)
 
-### 3. Failure-Path Testing — NOT STARTED
+### 3. Failure-Path Testing — DONE (2026-09-24)
 
-### 4. Security Regression — NOT STARTED
+Continuing from the resumed session (Docker Desktop's engine went down between sessions and was
+restarted; `iemas-api`/`iemas-postgres` auto-restarted on their own via `docker compose`'s restart
+policy, `greenmail-iemas` needed a manual `docker start`). Scenarios designed and run against the
+real stack, since the phase's own instruction named these three items without prescribing specific
+scenarios:
 
-### 5. Recovery/Regression — NOT STARTED
+- **DB outage while API is live** (`docker stop iemas-postgres` mid-session): `/health/ready`
+  correctly reported `503` with real diagnostics (`postgresql: Unhealthy — Name or service not
+  known`, `hangfire: Unhealthy — Failed to query Hangfire storage`); a real data endpoint
+  (`GET /api/v1/employees`) returned a clean `500` with a generic message and a `correlationId`, not
+  a stack trace or connection string — confirming Phase 10's global exception handler holds under a
+  genuine (not simulated) DB failure. Full exception detail (`Npgsql.PostgresException`,
+  `SocketException`) appeared only in server-side container logs, correctly never in the HTTP
+  response. See item 5 below for the recovery half of this same test.
+- **IMAP bad-credential path** (pre-existing `testuser-badauth` account, already deliberately
+  misconfigured from an earlier session): confirmed still failing cleanly and continuously —
+  `/health/ready` correctly surfaces "145 consecutive failures" without crashing the process or the
+  job loop, and repeated `email-intake` job runs kept completing normally for the *other*, correctly
+  configured account throughout — one account's persistent failure does not take down the batch.
+- **OpenRouter missing API key** (pre-existing, no key in this environment): reconfirmed classification
+  still degrades to `ReviewRequired` per-message rather than failing the batch or crashing the job —
+  same behavior already proven in Phase 4 and the Phase 11 item-2 E2E run, now reconfirmed after
+  Phase 10's retry/circuit-breaker changes.
+- **Malformed request bodies**: garbage (non-JSON) `POST` body → clean `400`; invalid-GUID-shaped
+  route segment → clean `404`, no exception. No unhandled-exception path found that surfaces
+  framework internals to the client.
 
-### 6. Final Evidence/Tracker — NOT STARTED (this document is updated incrementally as each item above completes, not deferred to the end)
+### 4. Security Regression — DONE (2026-09-24)
+
+All scenarios run live against the real Docker stack with a real bootstrap-admin JWT
+(`admin@sawo.com`, credentials from the local, gitignored `.env` — confirmed `git check-ignore .env`
+succeeds, so this is not a Finding-#1-shaped exposure):
+
+- **Auth boundary**: no token → `401`; garbage bearer token → `401`; structurally-valid JWT with a
+  fabricated signature → `401`; real SuperAdministrator token → `200`. All as expected, consistent
+  with every prior phase's RBAC live-verification.
+- **Auth rate limiting (Finding #4 regression check)**: 15 rapid invalid login attempts against
+  `/api/v1/auth/login` — first 10 correctly returned `401`, attempts 11-15 correctly returned `429`,
+  confirming the 10/minute limiter from Phase 10 is still active and correctly scoped to the
+  authentication endpoint after all of this session's subsequent changes.
+- **SQL-injection-shaped input**: `?search=' OR '1'='1` (properly URL-encoded) against
+  `GET /api/v1/cases` returned a clean `200` with no error and no unexpected rows — confirms EF
+  Core's parameterization, not string concatenation, is what actually executes.
+- **Stored-XSS-shaped input**: `<script>alert(1)</script>` submitted as an Employee's `fullName` was
+  accepted and stored verbatim (`201`, no server-side HTML sanitization/escaping on write). Checked
+  whether this is exploitable: grepped the entire `web-cms` CMS source for `dangerouslySetInnerHTML`
+  — zero matches — so React's default output-encoding escapes this value wherever the CMS renders
+  it, meaning the payload cannot currently execute as script in the CMS UI. **Recorded as a real but
+  currently-non-exploitable gap** (missing defense-in-depth input sanitization on the write path,
+  relying entirely on the render layer's default escaping) — see "Known Gaps" below. The test
+  employee was deactivated and relabeled afterward (`isActive: false`) since Employees has no hard-
+  delete endpoint by design (`DELETE` correctly returns `405`).
+- **Log/secret hygiene regression**: grepped 20+ minutes of `iemas-api` container logs spanning all
+  of this session's calls (including the deliberately-failing bad-auth IMAP account and the repeated
+  login-rate-limit hammering) for password/token/secret material — clean; only usernames and
+  correlation IDs appear, consistent with every earlier phase's same check.
+
+### 5. Recovery/Regression — DONE (2026-09-24)
+
+- **API container crash recovery**: snapshotted real row counts (`cases: 3`, `escalation_events: 63`,
+  `reminders: 5`, `audit_logs: 59`), then `docker kill iemas-api` (SIGKILL, simulating a genuine
+  crash rather than a graceful `stop`). Restarted with `docker start iemas-api` — `/health/live`
+  returned `200` again within ~3 seconds. All 4 Hangfire recurring jobs (`email-intake`,
+  `email-classification`, `reminders`, `escalations`) were observed re-registering and firing
+  successfully within seconds of the restart via live log output, with no manual trigger. Post-
+  restart counts confirmed no data loss (`cases` unchanged at 3; `escalation_events` correctly
+  *increased* to 65 from the jobs actively running, not corrupted or reset).
+- **Database outage + self-healing reconnection** (same test as item 3's DB-outage scenario, this
+  half focused on recovery rather than failure behavior): `docker stop iemas-postgres`, confirmed
+  `503`/clean-`500` failure behavior (item 3), then `docker start iemas-postgres`. Waited for
+  Postgres's own health check to report `healthy` (~6s), then re-queried `/health/ready` **without
+  restarting the API container at all** — the `postgresql` check had already recovered to `Healthy`
+  on its own, confirming Npgsql/EF Core's connection pool correctly reconnects after a transient
+  outage rather than requiring an API restart. Final row counts (`cases: 3`, `escalation_events: 65`)
+  matched exactly what they were immediately after the crash-recovery test above — no duplication,
+  no loss, no corruption introduced by either outage window.
+- **No manual data repair was needed after either scenario** — both recoveries were fully automatic,
+  which is itself the result being verified (this project has no manual reconciliation tooling, so an
+  outage that required one would itself be a finding).
+
+### 6. Final Evidence/Tracker — DONE (this document was updated incrementally as each item above
+completed; this entry closes out Phase 11 itself)
+
+Phase 11 (Testing) is now substantially complete: all 6 planned items (Full Regression, End-to-End
+Workflows, Failure-Path Testing, Security Regression, Recovery/Regression, Final Evidence/Tracker)
+have live evidence recorded above and in the Change Log. One new, real, non-blocking gap was found
+and recorded this session (stored-XSS-shaped input accepted without server-side sanitization,
+currently non-exploitable only because the CMS never uses `dangerouslySetInnerHTML` — a render-layer
+mitigation, not a write-layer one). No other new bugs were found during this session's failure/
+security/recovery testing — every failure mode exercised (DB outage, container crash, bad IMAP
+creds, missing OpenRouter key, malformed input, auth bypass attempts, rate-limit trip) degraded
+exactly as designed, with clean client-facing responses and no data corruption. Phase 12 (Deployment)
+is next per §111 order; per the pattern established at every previous phase boundary, its exact scope
+should be confirmed with the user before starting rather than assumed. Finding #1 (committed
+production-identical secrets) remains the one open item carried forward from Phase 10, unchanged and
+still explicitly not silently closed.
 
 ### Summary
 
@@ -900,6 +991,17 @@ explicit and separate from the automated-test evidence in item 1 above.
 
 ### Known Gaps Carried Forward (not blocking, tracked for later)
 
+- **NEW 2026-09-24 (Phase 11 Security Regression)**: Employee `fullName` (and likely other free-text
+  fields following the same pattern — not individually re-tested) accepts and persists a
+  stored-XSS-shaped payload (`<script>...</script>`) verbatim with no server-side sanitization or
+  encoding on write. Currently non-exploitable in the CMS specifically because the entire `web-cms`
+  codebase was grepped and contains zero uses of `dangerouslySetInnerHTML` — React's default output
+  escaping neutralizes it wherever this data is rendered there. This is a render-layer mitigation,
+  not a write-layer fix: any future consumer of this data that doesn't go through React's default
+  escaping (a different frontend, a report export, a raw API consumer rendering HTML) would be
+  exposed. Recommended follow-up: add server-side input sanitization/encoding at the write boundary
+  (e.g. HTML-encode or strip markup on free-text fields) rather than relying solely on the current
+  render layer's behavior.
 - Microsoft Graph provider adapter is a stub only — real Graph OAuth2 needs an Azure AD app registration (§112 items 1–2).
 - `ClassificationProfileName` on `EmailAccount` remains a plain string, **still not migrated to an FK even though `ClassificationProfile` now exists (Phase 4)**. Deliberate scope decision this session — see Assumption Log #21 below for why and what a follow-up migration would involve.
 - CMS screens (Employees, Email Accounts, Email Monitoring, and now Email Classification, AI Models) were verified by calling the exact API endpoints they use and by reading the component code, not by headless-browser click-through — no browser automation tool was available in this session.
@@ -1799,3 +1901,4 @@ Master list. Phase 1 issues (#1–3), Phase 2 issues (#4–7), Phase 3 issue (#8
 | 2026-09-22 | **Phase 9 (Escalation) work paused mid-session at the user's explicit instruction, triggered by a session usage-limit warning (93% used, resets in ~3h) — "just update the tracker before the session limit reaches 95% and hold it until it resets."** Not a technical blocker. What was completed and verified before pausing (229/229 tests passing, clean build): `EscalationPolicy`/`EscalationLevel`/`EscalationGroup`/`EscalationGroupMember`/`EscalationEvent` domain entities (§57-§60, §63-§64); `EscalationService` implementing every §60 recheck condition as its own branch with a dedicated `EscalationSkipReason`, §59 recipient resolution via existing organizational data (Employee.SupervisorEmployeeId, Department.ManagerEmployeeId) plus a new minimal EscalationGroup concept for "Specific Group," §64 ownership-never-transfers enforced by construction and tested across multiple levels, §63 audit trail via EscalationEvent (Executed/RecipientUnresolved also append a CaseEvent; Skipped attempts deliberately do not, to avoid flooding Case History with per-poll noise — a documented, deliberate difference from Phase 8's pattern), §60.8/§78 idempotency against Hangfire-retry-style double execution (tested); `EscalationPolicyService`/`EscalationGroupService` (CMS CRUD, §58's max-3-levels validated, §57 Test Policy dry-run); `EscalationQueryService`; three API controllers; the `escalation-engine-evaluate-cases` Hangfire job; the `AddEscalations` EF Core migration (generated and read in full). Caught and fixed one real bug (same "Levels.Clear() on a pre-existing tracked parent" EF Core change-tracking class as Phase 7's Bug #11) — not yet added to the numbered Bugs table. **Explicitly not done yet**: no CMS screens (Escalation Policies/Groups/history all still placeholder or API-only), no Phase 9 Completion Gate write-up against the user's 18-point list, no Requirements Traceability/Implementation Status subsections, no Bugs table entry, no live verification attempted. §61/§62/§65 (email content template, Outbound Email SENDING/SENT lifecycle, CMS Case-detail Supervisor access) deliberately not built per the user's explicit delivery-mechanism boundary. Phase 9 is NOT being reported as complete — Phase Overview marks it "In Progress." Resume by finishing the completion-gate write-up first, then decide CMS screen scope, before declaring the phase done. |
 | 2026-09-23 | Phase 9 (Escalation) finished and substantially completed, answered against an 18-point completion gate. Built the 3 remaining CMS screens: `EscalationPoliciesPage.tsx` (list/create/edit/enable-disable/delete, repeatable Levels sub-form with conditional Specific Employee/Group pickers, inline per-row Test Policy), `EscalationGroupsPage.tsx` (list/create/edit/delete, employee checkbox multi-select), `EscalationHistoryPage.tsx` (filterable read-only Escalation Event table, manual "Run Now" with `EscalationRunResult` summary) — replacing the last `/escalation-policies` nav placeholder and adding two new nav entries under "Case Management." Added the matching TypeScript types (`EscalationPolicyDto`/`SaveEscalationPolicyRequest`/`EscalationLevelDto`/`SaveEscalationLevelRequest`/`EscalationGroupDto`/`SaveEscalationGroupRequest`/`EscalationEventDto`/`EscalationRunResult`/`TestEscalationPolicyResult` plus label lookups for the three new enums) to `types.ts`. `npm run build` passes cleanly with 0 TypeScript errors. Added controller-level tests for the first time in this codebase's history — added `Iemas.Api` as a new `ProjectReference` to `Iemas.Tests.csproj` and wrote `EscalationPoliciesControllerTests`/`EscalationGroupsControllerTests`/`EscalationsControllerTests` (23 tests total), instantiating each controller directly against a real service backed by `TestDbContext.CreateNew()` and asserting on `ActionResult` shape; each file states its scope boundary explicitly (controller action logic only, not `[Authorize]` HTTP-pipeline enforcement). 252/252 tests passing (229 prior + 23 new), `dotnet build` 0 errors/0 new warnings (2 pre-existing `CS8602` warnings in `ImapEmailProviderAdapter.cs`, confirmed via `git diff` to be untouched this session). Added the Phase 9 Completion Gate (18 items, all Implemented+Unit-Tested or Implemented+Controller-Tested; CMS/live-verification items correctly marked Not Live-Verified rather than claimed), Requirements Traceability rows for §57-§65, and Database/Backend/Web/Security/Testing Implementation Status subsections matching Phase 8's structure. Added Bug #12 to the numbered Bugs table (the `EscalationPolicyService.UpdateAsync` `Levels.Clear()` EF Core change-tracking issue found in the paused session, same root-cause class as Bug #11, fixed with explicit RemoveRange/Add — this fix already existed in the code from the prior session; this session only added the tracker entry documenting it, per the task instruction to record it as a new numbered bug). No Docker, live database, or browser click-through verification was attempted this session (explicitly out of scope for this task) — Phase 9 becomes the sixth phase (after 4-8) awaiting live/Docker verification, recorded honestly rather than claimed. §61/§62/§65 (email content template, Outbound Email SENDING/SENT delivery lifecycle, CMS Case-detail Supervisor Case Access) remain deliberately out of this phase's scope, unchanged from the prior session's boundary decision. Phase 9 moves from "In Progress" to "Substantially Complete" in the Phase Overview table, consistent with the same implemented+unit-tested+CMS-built-but-not-live-verified standard already applied to Phases 4-8. Phase 10 (Hardening) was explicitly not started this session, per instruction. |
 | 2026-09-23 | **Docker Desktop's engine came back healthy for the first time in 5-6 sessions, unblocking live verification of Phases 4-9 against a real stack — this session's entire focus.** `docker compose up -d --build` (api + postgres) was already confirmed running at session start, all 9 EF Core migrations applied (34 tables), bootstrap admin login working. A throwaway GreenMail IMAP/SMTP container (`greenmail-iemas`, `greenmail/standalone:latest`, ports 3143/3025) was started and connected onto the `iemas` Docker Compose network (`docker network connect intelligent-email-monitoring-alert-system-v2_default greenmail-iemas`) so `iemas-api` could reach it by container name. Real test data was created via live API calls: a Department, a Supervisor Employee and an Owner Employee (with the supervisor relationship set, for Phase 9's `EmployeeSupervisor` recipient-type test), two Email Accounts (one correctly configured against GreenMail, one deliberately misconfigured with a wrong password to exercise the auth-failure path), a Reminder Policy (10s initial delay / 1min follow-up interval, business hours disabled, for fast live observation), and an Escalation Policy + Escalation Group. Three real emails were injected into GreenMail via SMTP (`curl --url smtp://...`) and one real Sent-folder reply was injected via raw IMAP `APPEND` into a manually-created "Sent" folder deliberately left without a SPECIAL-USE flag, to specifically exercise the previously-untested conventional-folder-name fallback path. **Phase 4**: live classification run against the real API correctly hit the missing-OpenRouter-key failure path non-fatally (message correctly landed in `ReviewRequired`, not lost/duplicated — confirmed via `psql`), with zero key material found in `docker logs iemas-api` or `audit_logs`. **Phase 5**: a real Case (`CASE-000001`) was created live via `POST /case-workflow/run` (classification `Decision` set to `Important` via direct `psql UPDATE` to stand in for a real OpenRouter "important" verdict, since no key is available — the real `CaseWorkflowService` code itself ran unmodified), correctly owned by the real Employee, with correct `CaseEmail`/`CaseEvent` rows; live search (`?search=Urgent`) proved `.Contains()` correctly translates to Npgsql `ILIKE`. **Phase 6**: a real reply-verification run against the real GreenMail Sent folder correctly verified the reply via `InReplyTo`, advanced `WorkStatus` to `InProgress` (not `Completed`, per §45), and proved the conventional-Sent-folder-name fallback resolves correctly against a real server with no SPECIAL-USE flag. **Phase 7**: a full live Agent lifecycle was exercised via REST — register → CMS-list → approve (real AES-256-GCM credential generated) → one-shot key collection (confirmed the key is returned exactly once, `null` on a second poll) → authenticate (rejected a client-fabricated key, accepted the real one, issued a real second JWT scheme with `iss: Iemas.Agent`/`aud: IemasAgents`) → heartbeat (204, `ConnectionStatus` updated) → sync (correctly scoped to the Agent's own Employee's Cases) → submitted a real "Already Replied" claim against a Case whose `ReplyStatus` was independently live-verified as `NoReplyFound` — confirmed via `psql` that the claim never touched `ReplyStatus`, only recorded a `CaseEvent` with the code's own "this is a claim, not a verified fact" language, and that resubmitting the same `requestId` correctly returned `wasIdempotentReplay: true`. **Phase 8**: a real Reminder was automatically scheduled on live Case creation, sent via manual trigger, automatically rescheduled as a follow-up, and — critically — the real Hangfire `reminder-engine-execute-due-reminders` recurring job was directly observed firing **on its own cron schedule** (its `LastExecution` timestamp in `hangfire.hash` advanced with no manual trigger call made in between: `1790140812524` → `1790141112742`, ~5 minutes apart, matching its `*/5 * * * *` schedule). A real `docker compose up -d --build api` container restart was performed mid-session (to ship the Bug #13 fix, see below) and all Reminder/Case/Escalation state was confirmed to survive intact. **Phase 9**: a real Escalation Policy/Group were created live; `EmployeeSupervisor` recipient resolution was confirmed against real organizational data (`Employee.SupervisorEmployeeId`); the Escalation Recheck Rule's grace-period and reminder-threshold conditions were both confirmed live, and a real Level-1 escalation executed correctly once both were genuinely satisfied, with `Case.OwnerEmployeeId` confirmed unchanged before/after (§64) and the correct `EscalationEvent`/`CaseEvent` audit rows recorded. **Found and fixed one real bug live: Bug #13** — the §57 "Test Policy" dry-run (`EscalationService.TestPolicyAsync`) disagreed with the real engine (`EvaluateCaseAsync`) for the identical Case/Policy pair, reporting `wouldEscalate: true` when the real engine correctly skipped with `SkipReason.ThresholdNotReached` ("Grace period has not yet elapsed") — root cause: `TestPolicyAsync` never checked the grace period at all. Fixed by adding the identical check; re-ran `dotnet test` (252/252 still passing), rebuilt the Docker image (`docker compose up -d --build api`), and re-confirmed live that both endpoints now agree. **RBAC**: real `401` responses confirmed for unauthenticated/garbage-token requests against multiple RBAC-gated endpoints; real `403` (role-based, as opposed to no-token) was not exercised since only the bootstrap `SuperAdministrator` account exists in this environment. **CMS**: `npm run dev` was run for the first time in this project's history; curl confirmed the Vite dev server serves the SPA shell and correctly transpiles/resolves real page modules (including the Phase 9 Escalation pages) — real evidence that the server responds correctly, but (no browser automation tool being available) not proof that a human clicking through any form actually works; this limit is stated explicitly rather than glossed over. **Final state**: `dotnet test` 252/252 passing after the Bug #13 fix; `iemas-api`/`iemas-postgres`/`greenmail-iemas` all left running; Docker logs grepped extensively throughout and showed no unexpected errors/exceptions beyond the deliberately-induced test failures (wrong password, missing OpenRouter key) and one pre-existing benign HTTPS-redirect warning. Updated every phase's (4-9) Completion Gate with item-by-item live evidence, the "Known Gaps Carried Forward" section to mark resolved items, "Current Blockers" (now empty of the Docker-unavailability blocker), and the top "Overall Status"/"Summary" section to precisely distinguish what is now genuinely live-verified from the three irreducible gaps that remain (OpenRouter key, Windows Agent binary, browser automation) plus two smaller residual gaps (role-based 403, genuine concurrency races). Did not start Phase 10, did not modify EscalationService/EscalationPolicyService/etc. beyond the one documented bug fix, did not commit anything (working tree left for review), did not delete or reset the real database (only clearly-named "Live Verification Test ..." entities were added, left in place per instruction). |
+| 2026-09-24 | **Resumed Phase 11 (Testing) where the prior session left off** — item 1 (Full Regression) and item 2 (End-to-End Workflows) were already done; items 3-5 (Failure-Path Testing, Security Regression, Recovery/Regression) were named but had no concrete scenarios defined, and the user confirmed designing/running them independently was the right approach rather than waiting for a scenario list. Docker Desktop's engine was found down at session start (service running, engine pipe unreachable) — same intermittent pattern as earlier sessions; started Docker Desktop and it came up in ~10 seconds this time. `iemas-api`/`iemas-postgres` had auto-restarted via Compose's restart policy; `greenmail-iemas` needed a manual `docker start` (its network attachment persisted). **Failure-Path Testing**: live `docker stop iemas-postgres` while the API was running confirmed `/health/ready` correctly reports `503` with real diagnostics and a real data endpoint returns a clean, generic `500` + correlationId (no stack trace) — Phase 10's exception handler holds under a genuine, not simulated, DB outage; reconfirmed the pre-existing bad-IMAP-credential and missing-OpenRouter-key failure paths still degrade cleanly without crashing the job loop; malformed request bodies and invalid-GUID routes both fail cleanly. **Security Regression**: auth boundary (401/401/401/200 across no-token/garbage-token/bad-signature/real-token) unchanged; the Phase 10 Finding #4 login rate limiter re-verified live (10 real 401s then 429s on attempts 11-15); SQL-injection-shaped search input confirmed parameterized (clean 200, no error); **found one new, real, non-blocking gap**: a stored-XSS-shaped payload (`<script>alert(1)</script>`) submitted as an Employee's `fullName` is accepted and persisted verbatim with no server-side sanitization on write — checked exploitability by grepping all of `web-cms` for `dangerouslySetInnerHTML` (zero matches), so React's default escaping currently neutralizes it in the CMS, but the gap is real and recorded under Known Gaps rather than dismissed; log/secret hygiene re-confirmed clean across the session's calls. **Recovery/Regression**: `docker kill iemas-api` (SIGKILL) followed by `docker start` recovered to `/health/live` 200 in ~3 seconds with all 4 Hangfire recurring jobs re-registering and firing automatically, no data loss (`cases`/`reminders`/`audit_logs` counts unchanged, `escalation_events` correctly increased from active job runs); the Postgres-outage test's recovery half confirmed the API's Npgsql connection pool self-heals without an API restart once Postgres comes back, with row counts matching exactly across both outage windows (no duplication or corruption). Updated the tracker: Phase 11 items 2-6 all moved from IN PROGRESS/NOT STARTED to DONE with full evidence recorded inline; Known Gaps Carried Forward got the new XSS-sanitization entry; the top Overall Status/Progress section now reads Phase 11 Substantially Complete and overall progress 92% (11 of 12 phases). Did not start Phase 12 (Deployment) — per the established pattern, its scope should be confirmed with the user first. Did not commit anything (working tree left for review). Finding #1 (committed production-identical secrets) remains open, unchanged, not silently closed. |

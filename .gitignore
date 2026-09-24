@@ -35,3 +35,7 @@ Thumbs.db
 
 # Docker volumes (local)
 docker/pgdata/
+
+# Local-only secret-rotation scratch material (contains real key values, never commit)
+scripts/FINDING-1-REMEDIATION.md
+scripts/node_modules/
