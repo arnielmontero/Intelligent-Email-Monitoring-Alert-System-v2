@@ -16,16 +16,16 @@ import EscalationPoliciesPage from "./pages/escalation-policies/EscalationPolici
 import EscalationGroupsPage from "./pages/escalation-groups/EscalationGroupsPage";
 import EscalationHistoryPage from "./pages/escalation-history/EscalationHistoryPage";
 import AuditLogPage from "./pages/audit-log/AuditLogPage";
+import CaseWorkflowPage from "./pages/case-workflow/CaseWorkflowPage";
+import ReplyVerificationPage from "./pages/reply-verification/ReplyVerificationPage";
+import SystemHealthPage from "./pages/system-health/SystemHealthPage";
 
 const PLACEHOLDER_ROUTES: Array<{ path: string; title: string }> = [
   { path: "/outbound-email", title: "Outbound Email" },
-  { path: "/case-workflow", title: "Case Workflow" },
-  { path: "/reply-verification", title: "Reply Verification" },
   { path: "/notifications", title: "Notifications" },
   { path: "/users", title: "Users & Permissions" },
   { path: "/employee-activity", title: "Employee Activity" },
   { path: "/case-history", title: "Case History & Logs" },
-  { path: "/system-health", title: "System Health" },
   { path: "/system-settings", title: "System Settings" },
   { path: "/maintenance", title: "Maintenance / Emergency Pause" },
 ];
@@ -50,6 +50,9 @@ export default function App() {
           <Route path="/escalation-groups" element={<EscalationGroupsPage />} />
           <Route path="/escalation-history" element={<EscalationHistoryPage />} />
           <Route path="/audit-log" element={<AuditLogPage />} />
+          <Route path="/case-workflow" element={<CaseWorkflowPage />} />
+          <Route path="/reply-verification" element={<ReplyVerificationPage />} />
+          <Route path="/system-health" element={<SystemHealthPage />} />
           {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<PlaceholderPage title={route.title} />} />
           ))}

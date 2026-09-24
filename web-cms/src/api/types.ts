@@ -448,3 +448,40 @@ export interface AuditLogDto {
   ipAddress: string | null;
   occurredAt: string;
 }
+
+// §20/§33 — Case Workflow manual trigger (normal operation is the Hangfire recurring job).
+export interface CaseRunResult {
+  consideredCount: number;
+  createdCount: number;
+  updatedCount: number;
+  reopenedCount: number;
+  durationMs: number;
+}
+
+// §42 — Reply Verification manual trigger.
+export interface ReplyVerificationRunResult {
+  consideredCount: number;
+  verifiedCount: number;
+  noReplyFoundCount: number;
+  pendingCount: number;
+  failedCount: number;
+  durationMs: number;
+}
+
+// §106 — System Health (SYSTEM nav).
+export interface HealthCheckEntryDto {
+  name: string;
+  status: string;
+  description: string | null;
+  durationMs: number;
+  data: Record<string, unknown> | null;
+}
+
+export interface SystemHealthDto {
+  status: string;
+  totalDurationMs: number;
+  checks: HealthCheckEntryDto[];
+  failedJobCount: number | null;
+  scheduledJobCount: number | null;
+  processingJobCount: number | null;
+}
