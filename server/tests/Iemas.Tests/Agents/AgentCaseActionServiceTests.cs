@@ -328,4 +328,50 @@ public class AgentCaseActionServiceTests
         Assert.True(second.Value!.WasIdempotentReplay);
         Assert.Equal(1, await db.Reminders.CountAsync(r => r.CaseId == theCase.Id));
     }
+
+    /// <summary>
+    /// §48/§46 MARK_COMPLETED — this is the Agent-reachable path that CasesController's
+    /// admin-only /complete endpoint cannot serve (an Agent's bearer token can never satisfy
+    /// RequireAdministrator). Confirms it actually completes the Case with the given reason.
+    /// </summary>
+    [Fact]
+    public async Task CompleteCaseAsync_OwnedCase_CompletesWithReasonAndComment()
+    {
+        using var db = TestDbContext.CreateNew();
+        var employee = CreateEmployee();
+        db.Employees.Add(employee);
+        var theCase = CreateCaseForEmployee(employee.Id);
+        db.Cases.Add(theCase);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var result = await service.CompleteCaseAsync(Guid.NewGuid(), employee.Id, theCase.Id, CaseCompletionReason.HandledOutsideEmail, "Called the customer.", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var reloaded = await db.Cases.AsNoTracking().SingleAsync(c => c.Id == theCase.Id);
+        Assert.Equal(CaseWorkStatus.Completed, reloaded.WorkStatus);
+        Assert.Equal(CaseCompletionReason.HandledOutsideEmail, reloaded.CompletionReason);
+        Assert.Equal("Called the customer.", reloaded.CompletionComment);
+        Assert.NotNull(reloaded.CompletedAt);
+    }
+
+    /// <summary>§73 "Server must validate that the Agent is authorized for the Employee and Case" — an Agent cannot complete a Case it does not own, even with a well-formed request.</summary>
+    [Fact]
+    public async Task CompleteCaseAsync_NotOwner_Fails_AndDoesNotCompleteCase()
+    {
+        using var db = TestDbContext.CreateNew();
+        var owner = CreateEmployee();
+        var imposter = new Employee { FullName = "Someone Else", Email = "someone@sawo.com" };
+        db.Employees.AddRange(owner, imposter);
+        var theCase = CreateCaseForEmployee(owner.Id);
+        db.Cases.Add(theCase);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var result = await service.CompleteCaseAsync(Guid.NewGuid(), imposter.Id, theCase.Id, CaseCompletionReason.HandledOutsideEmail, null, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        var reloaded = await db.Cases.AsNoTracking().SingleAsync(c => c.Id == theCase.Id);
+        Assert.NotEqual(CaseWorkStatus.Completed, reloaded.WorkStatus);
+    }
 }

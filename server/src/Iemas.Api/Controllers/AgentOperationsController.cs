@@ -67,4 +67,17 @@ public class AgentOperationsController : ControllerBase
         var result = await _actionService.SubmitCommentAsync(AgentId, EmployeeId, request, cancellationToken);
         return result.Succeeded ? NoContent() : BadRequest(new { message = result.Error });
     }
+
+    /// <summary>§48/§46 MARK_COMPLETED — the Agent-reachable counterpart to CasesController's admin-only /complete; requires a reason, ownership-checked against this Agent's own Employee.</summary>
+    [HttpPost("cases/{id:guid}/complete")]
+    public async Task<IActionResult> CompleteCase(Guid id, [FromBody] CompleteCaseActionRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _actionService.CompleteCaseAsync(AgentId, EmployeeId, id, request.Reason, request.Comment, cancellationToken);
+        if (!result.Succeeded)
+        {
+            return result.Error == "Case not found." ? NotFound(new { message = result.Error }) : BadRequest(new { message = result.Error });
+        }
+
+        return NoContent();
+    }
 }

@@ -1,3 +1,4 @@
+using Iemas.Application.Common.Interfaces;
 using Iemas.Application.Reminders;
 using Iemas.Domain.Cases;
 using Iemas.Domain.Reminders;
@@ -81,6 +82,53 @@ public class ReminderExecutionServiceTests
 
         var reloadedCase = await db.Cases.AsNoTracking().FirstAsync(c => c.Id == targetCase.Id);
         Assert.Equal(CaseNotificationStatus.Sent, reloadedCase.NotificationStatus);
+    }
+
+    /// <summary>§72/§76 — sending a reminder pushes SHOW_REMINDER to the Case owner's connected Agent(s), after the DB state is already committed as Sent.</summary>
+    [Fact]
+    public async Task RunAsync_DueReminder_PushesShowReminderToCaseOwner()
+    {
+        using var db = TestDbContext.CreateNew();
+        var policy = CreatePolicy();
+        db.ReminderPolicies.Add(policy);
+        var ownerEmployeeId = Guid.NewGuid();
+        var targetCase = CreateCase();
+        targetCase.OwnerEmployeeId = ownerEmployeeId;
+        db.Cases.Add(targetCase);
+        var reminder = CreateDueReminder(targetCase.Id, policy.Id);
+        db.Reminders.Add(reminder);
+        await db.SaveChangesAsync();
+
+        var dispatcher = new FakeAgentNotificationDispatcher();
+        var service = new ReminderExecutionService(db, new ReminderSchedulingService(db), dispatcher);
+        var result = await service.RunAsync(10, CancellationToken.None);
+
+        Assert.Equal(1, result.Sent);
+        var push = Assert.Single(dispatcher.Sent);
+        Assert.Equal(ownerEmployeeId, push.EmployeeId);
+        Assert.Equal(AgentPushCommandType.ShowReminder, push.Command.Type);
+        Assert.Equal(targetCase.Id, push.Command.CaseId);
+    }
+
+    /// <summary>A cancelled (no-longer-eligible) reminder must never push a notification — nothing to show if the recheck rejected it.</summary>
+    [Fact]
+    public async Task RunAsync_CancelledReminder_DoesNotPush()
+    {
+        using var db = TestDbContext.CreateNew();
+        var policy = CreatePolicy();
+        db.ReminderPolicies.Add(policy);
+        var targetCase = CreateCase(replyStatus: CaseReplyStatus.Replied);
+        targetCase.OwnerEmployeeId = Guid.NewGuid();
+        db.Cases.Add(targetCase);
+        db.Reminders.Add(CreateDueReminder(targetCase.Id, policy.Id));
+        await db.SaveChangesAsync();
+
+        var dispatcher = new FakeAgentNotificationDispatcher();
+        var service = new ReminderExecutionService(db, new ReminderSchedulingService(db), dispatcher);
+        var result = await service.RunAsync(10, CancellationToken.None);
+
+        Assert.Equal(1, result.Cancelled);
+        Assert.Empty(dispatcher.Sent);
     }
 
     /// <summary>§54 "Repeat" — after a send, a follow-up reminder is scheduled automatically (below the MaxReminders ceiling).</summary>

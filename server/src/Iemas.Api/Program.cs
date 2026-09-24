@@ -6,8 +6,10 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Iemas.Api.Hubs;
 using Iemas.Api.Jobs;
+using Iemas.Api.Realtime;
 using Iemas.Application;
 using Iemas.Application.Cases;
+using Iemas.Application.Common.Interfaces;
 using Iemas.Application.EmailClassification;
 using Iemas.Application.EmailIntake;
 using Iemas.Application.Escalations;
@@ -18,6 +20,7 @@ using Iemas.Infrastructure.Persistence;
 using Iemas.Infrastructure.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
@@ -138,6 +141,11 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(RequireAgentPolicy, p => p.AddAuthenticationSchemes(AgentScheme).RequireAuthenticatedUser());
 
 builder.Services.AddSignalR();
+// §69 — AgentHub connections identify by Agent ID (JWT claim "agent_id"), not the default
+// ClaimTypes.NameIdentifier, so Clients.User(agentId) push targeting works correctly.
+builder.Services.AddSingleton<IUserIdProvider, AgentUserIdProvider>();
+// §72/§76/§13 — the one real-time push path from server business logic to a connected Agent.
+builder.Services.AddScoped<IAgentNotificationDispatcher, AgentNotificationDispatcher>();
 
 const string CmsCorsPolicy = "CmsCorsPolicy";
 builder.Services.AddCors(options =>

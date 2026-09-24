@@ -1,5 +1,6 @@
 using Iemas.Application.Cases;
 using Iemas.Application.Cases.Dtos;
+using Iemas.Application.Common.Interfaces;
 using Iemas.Application.Reminders;
 using Iemas.Domain.Ai;
 using Iemas.Domain.Cases;
@@ -85,6 +86,60 @@ public class CaseWorkflowServiceTests
 
         var reloadedMessage = await db.EmailMessages.SingleAsync();
         Assert.Equal(createdCase.Id, reloadedMessage.CaseId);
+    }
+
+    /// <summary>§72/§109 step 7 — a brand-new Case pushes SHOW_CASE to its owner's connected Agent(s), after the Case/CaseEmail rows are already committed.</summary>
+    [Fact]
+    public async Task ProcessOneAsync_NewCase_PushesShowCaseToOwner()
+    {
+        using var db = TestDbContext.CreateNew();
+        var employee = CreateEmployee();
+        db.Employees.Add(employee);
+        await db.SaveChangesAsync();
+        var account = CreateAccount(employee.Id);
+        db.EmailAccounts.Add(account);
+        var message = CreateMessage(account.Id);
+        db.EmailMessages.Add(message);
+        db.EmailClassifications.Add(CreateClassification(message.Id, ImportanceDecision.Important));
+        await db.SaveChangesAsync();
+
+        var dispatcher = new FakeAgentNotificationDispatcher();
+        var service = new CaseWorkflowService(db, new CaseMatchingService(db), new ReminderSchedulingService(db), dispatcher);
+        var outcome = await service.ProcessOneAsync(message.Id, CancellationToken.None);
+
+        Assert.Equal(CaseWorkflowService.CaseProcessOutcome.Created, outcome);
+        var push = Assert.Single(dispatcher.Sent);
+        Assert.Equal(employee.Id, push.EmployeeId);
+        Assert.Equal(AgentPushCommandType.ShowCase, push.Command.Type);
+
+        var createdCase = await db.Cases.AsNoTracking().SingleAsync();
+        Assert.Equal(createdCase.Id, push.Command.CaseId);
+    }
+
+    /// <summary>A message that does not create/reopen a Case (already-linked, e.g.) must not push anything — there is nothing new for the employee to see.</summary>
+    [Fact]
+    public async Task ProcessOneAsync_AlreadyLinkedMessage_Skips_DoesNotPush()
+    {
+        using var db = TestDbContext.CreateNew();
+        var employee = CreateEmployee();
+        db.Employees.Add(employee);
+        await db.SaveChangesAsync();
+        var account = CreateAccount(employee.Id);
+        db.EmailAccounts.Add(account);
+        var message = CreateMessage(account.Id);
+        db.EmailMessages.Add(message);
+        db.EmailClassifications.Add(CreateClassification(message.Id, ImportanceDecision.Important));
+        await db.SaveChangesAsync();
+
+        var dispatcher = new FakeAgentNotificationDispatcher();
+        var service = new CaseWorkflowService(db, new CaseMatchingService(db), new ReminderSchedulingService(db), dispatcher);
+        await service.ProcessOneAsync(message.Id, CancellationToken.None);
+        dispatcher.Sent.Clear();
+
+        var outcome = await service.ProcessOneAsync(message.Id, CancellationToken.None);
+
+        Assert.Equal(CaseWorkflowService.CaseProcessOutcome.Skipped, outcome);
+        Assert.Empty(dispatcher.Sent);
     }
 
     /// <summary>§66 — Case creation must append history events (Created + StatusChanged), not silently create a Case with no trail.</summary>

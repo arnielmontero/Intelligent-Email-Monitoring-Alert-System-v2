@@ -22,3 +22,6 @@ public record SubmitCaseActionRequest(
 public record SubmitCaseCommentRequest(string RequestId, Guid CaseId, string Comment, DateTimeOffset ClientTimestamp);
 
 public record CaseActionResultDto(Guid CaseId, string WorkStatus, string ReplyStatus, bool WasIdempotentReplay);
+
+/// <summary>§48 — the Agent-facing MARK_COMPLETED request; a reason is mandatory, matching CasesController's admin completion endpoint.</summary>
+public record CompleteCaseActionRequest(Iemas.Domain.Cases.CaseCompletionReason Reason, string? Comment);

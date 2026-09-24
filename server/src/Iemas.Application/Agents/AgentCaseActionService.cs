@@ -127,6 +127,33 @@ public class AgentCaseActionService
             targetCase.Id, targetCase.WorkStatus.ToString(), targetCase.ReplyStatus.ToString(), WasIdempotentReplay: false));
     }
 
+    /// <summary>
+    /// §48 (Completing a Case requires a reason) + §73 (Agent authorized for the Employee/Case) —
+    /// the Agent-facing counterpart to CasesController's admin-only POST /cases/{id}/complete.
+    /// Employees have no CMS role/session at all (§85 RBAC has no "Employee acting via Agent"
+    /// mapping onto RequireAdministrator), so MARK_COMPLETED from the Agent UI (§46, task brief)
+    /// had no reachable server endpoint before this — CaseActionType.MarkCompleted on the generic
+    /// case-actions path is deliberately inert (see ApplyAction's comment) specifically because
+    /// completion needs a reason, which this method requires and forwards to the same
+    /// CaseWorkflowService.CompleteAsync the CMS admin path uses, preserving one authoritative
+    /// completion implementation.
+    /// </summary>
+    public async Task<Result<bool>> CompleteCaseAsync(Guid agentId, Guid employeeId, Guid caseId, Domain.Cases.CaseCompletionReason reason, string? comment, CancellationToken cancellationToken)
+    {
+        var targetCase = await _db.Cases.AsNoTracking().FirstOrDefaultAsync(c => c.Id == caseId, cancellationToken);
+        if (targetCase is null)
+        {
+            return Result<bool>.Failure("Case not found.");
+        }
+
+        if (targetCase.OwnerEmployeeId != employeeId)
+        {
+            return Result<bool>.Failure("This Agent's employee does not own this Case.");
+        }
+
+        return await _caseWorkflowService.CompleteAsync(caseId, new Cases.Dtos.CompleteCaseRequest(reason, comment), cancellationToken);
+    }
+
     /// <summary>§47 — a standalone comment, not tied to a status-changing action.</summary>
     public async Task<Result<bool>> SubmitCommentAsync(Guid agentId, Guid employeeId, SubmitCaseCommentRequest request, CancellationToken cancellationToken)
     {

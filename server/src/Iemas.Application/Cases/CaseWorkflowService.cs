@@ -30,12 +30,18 @@ public class CaseWorkflowService
     private readonly IAppDbContext _db;
     private readonly CaseMatchingService _matchingService;
     private readonly ReminderSchedulingService _reminderSchedulingService;
+    private readonly IAgentNotificationDispatcher? _dispatcher;
 
-    public CaseWorkflowService(IAppDbContext db, CaseMatchingService matchingService, ReminderSchedulingService reminderSchedulingService)
+    public CaseWorkflowService(
+        IAppDbContext db,
+        CaseMatchingService matchingService,
+        ReminderSchedulingService reminderSchedulingService,
+        IAgentNotificationDispatcher? dispatcher = null)
     {
         _db = db;
         _matchingService = matchingService;
         _reminderSchedulingService = reminderSchedulingService;
+        _dispatcher = dispatcher;
     }
 
     public async Task<CaseRunResult> RunAsync(int batchSize, CancellationToken cancellationToken)
@@ -190,6 +196,24 @@ public class CaseWorkflowService
         // through this method — same "let the specialist service decide" separation used
         // throughout (matching, verification, etc. never re-derived by their callers).
         await _reminderSchedulingService.ScheduleInitialReminderAsync(targetCase.Id, cancellationToken);
+
+        // §72/§109 step 7 "Agent receives notification" — a brand-new Case, or one just reopened
+        // by a new related customer email, is exactly the "New Email"/action-required moment §51-52
+        // describes. Fires only after the above SaveChangesAsync already committed (§76 ordering);
+        // best-effort, never blocks/fails this already-successful Case creation/update.
+        if ((outcome == CaseProcessOutcome.Created || outcome == CaseProcessOutcome.Reopened)
+            && _dispatcher is not null && targetCase.OwnerEmployeeId is Guid ownerEmployeeId)
+        {
+            await _dispatcher.NotifyEmployeeAsync(
+                ownerEmployeeId,
+                new AgentPushCommand(
+                    AgentPushCommandType.ShowCase,
+                    targetCase.Id,
+                    targetCase.CaseNumber,
+                    "New Email",
+                    $"You have a new email from {targetCase.CustomerEmailAddress}: \"{targetCase.Subject}\". Please check."),
+                cancellationToken);
+        }
 
         return outcome;
     }

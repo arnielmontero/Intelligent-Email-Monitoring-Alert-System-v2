@@ -15,13 +15,15 @@ namespace Iemas.Application.Reminders;
 /// Case.WorkStatus/ReplyStatus — those remain owned by CaseWorkflowService/ReplyVerificationService/
 /// AgentCaseActionService respectively.
 ///
-/// Actual delivery (push to the Windows Agent, message content/template rendering per §51) is
-/// explicitly out of scope for this phase per the instructions — §51 Notification Templates and
-/// the real delivery channel are later-phase territory. "Sent" here means "the recheck passed and
-/// the reminder was durably marked ready for whatever delivery channel a later phase plugs in" —
-/// recorded via Case.NotificationStatus and the CaseEvent trail, with the Reminder row's own
-/// Status as the authoritative record, exactly the boundary the Phase 8 instructions asked for
-/// ("keep notification delivery separate").
+/// Actual delivery (push to the Windows Agent) is now wired to the real-time channel added for
+/// the Windows Client Agent build (§72 SHOW_REMINDER via <see cref="IAgentNotificationDispatcher"/>
+/// → IHubContext&lt;AgentHub&gt;). §51 Notification Templates (editable message text/variables) are
+/// still not built — this sends a fixed, code-defined message, not a CMS-configurable template — so
+/// message content customization remains later-phase territory. "Sent" still means "the recheck
+/// passed and the reminder was durably marked ready," recorded via Case.NotificationStatus and the
+/// CaseEvent trail (the Reminder row's own Status is the authoritative record) — delivery is a
+/// best-effort push on top of that already-committed state, never a precondition for it (§76: the
+/// DB transaction always commits first; delivery failure never changes Reminder/Case state).
 /// </summary>
 public class ReminderExecutionService
 {
@@ -29,11 +31,13 @@ public class ReminderExecutionService
 
     private readonly IAppDbContext _db;
     private readonly ReminderSchedulingService _schedulingService;
+    private readonly IAgentNotificationDispatcher? _dispatcher;
 
-    public ReminderExecutionService(IAppDbContext db, ReminderSchedulingService schedulingService)
+    public ReminderExecutionService(IAppDbContext db, ReminderSchedulingService schedulingService, IAgentNotificationDispatcher? dispatcher = null)
     {
         _db = db;
         _schedulingService = schedulingService;
+        _dispatcher = dispatcher;
     }
 
     /// <summary>
@@ -128,11 +132,10 @@ public class ReminderExecutionService
             return await ResolveAsync(reminder, ReminderStatus.Cancelled, reason, DescribeCancelReason(reason), cancellationToken);
         }
 
-        // Passed every recheck — hand off for delivery. Delivery itself is a later-phase concern
-        // (see class doc); here "delivered" means the obligation was durably recorded, which is
-        // sufficient for this phase's scope and is what makes retry/failure semantics meaningful
-        // even before a real channel exists.
-        var deliverySucceeded = TryDeliver(reminder, targetCase!);
+        // Passed every recheck — hand off for delivery. TryDeliverAsync's own doc explains the
+        // durability/best-effort split: DB state (below, in ResolveAsync) is authoritative regardless
+        // of whether the live push actually reached a connected Agent.
+        var deliverySucceeded = await TryDeliverAsync(reminder, targetCase!, cancellationToken);
         if (!deliverySucceeded)
         {
             reminder.DeliveryAttempts++;
@@ -152,8 +155,32 @@ public class ReminderExecutionService
         return await ResolveAsync(reminder, ReminderStatus.Sent, null, null, cancellationToken);
     }
 
-    /// <summary>Delivery is a later-phase concern (notification channel/templates, §51); this phase's contract is only that a Sent reminder was durably decided to be sent. Always succeeds today — the retry/failure path above exists and is tested so a later phase can plug a real channel in without changing this method's callers.</summary>
-    private static bool TryDeliver(Reminder reminder, Case targetCase) => true;
+    /// <summary>
+    /// §72 SHOW_REMINDER push via <see cref="IAgentNotificationDispatcher"/> — best-effort only. A
+    /// missing dispatcher (unit tests that don't provide one) or an Agent with no live connection
+    /// both still return true: "delivery succeeded" here means "the durable Sent decision is final,"
+    /// not "a human definitely saw a toast" — an offline Agent gets caught up on its next SYNC
+    /// (§74/§75), which is exactly why this never blocks/fails the Reminder's own terminal state.
+    /// </summary>
+    private async Task<bool> TryDeliverAsync(Reminder reminder, Case targetCase, CancellationToken cancellationToken)
+    {
+        if (_dispatcher is null || targetCase.OwnerEmployeeId is not Guid ownerEmployeeId)
+        {
+            return true;
+        }
+
+        await _dispatcher.NotifyEmployeeAsync(
+            ownerEmployeeId,
+            new AgentPushCommand(
+                AgentPushCommandType.ShowReminder,
+                targetCase.Id,
+                targetCase.CaseNumber,
+                "Reminder",
+                $"You haven't replied to \"{targetCase.Subject}\" from {targetCase.CustomerEmailAddress} yet. Please reply."),
+            cancellationToken);
+
+        return true;
+    }
 
     private async Task<ExecutionOutcome> ResolveAsync(
         Reminder reminder, ReminderStatus status, ReminderCancelReason? cancelReason, string? detail, CancellationToken cancellationToken)
