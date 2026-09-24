@@ -39,14 +39,66 @@ user. Summary for anyone reading this file directly:
 - **Server-to-agent real-time push (§72/§76) did not exist at all before this session** — confirmed
   by direct code audit (zero `IHubContext<AgentHub>` producers anywhere). Built and wired into both
   Case creation and Reminder sending.
-- **CMS nav audit (§86): 10 of ~20 required nav areas are still PlaceholderPage stubs with no
+- **CMS nav audit (§86): originally 10 of ~20 required nav areas were PlaceholderPage stubs with no
   backend support** (Outbound Email, Case Workflow, Reply Verification, Notifications, Users &
   Permissions, Employee Activity, Case History & Logs, System Health, System Settings,
-  Maintenance/Emergency Pause) — this directly contradicts the "100%"/"all 12 phases complete"
-  claims below. Audit Log was the one of these fixed this session (backend endpoint + CMS page,
-  live-verified). The Dashboard page, while routed and not a placeholder, is itself a static stub
-  with zero API calls, contradicting §87.
-- Test count: 351 backend tests passing (up from 341 at session start), 0 regressions.
+  Maintenance/Emergency Pause) — this directly contradicted the "100%"/"all 12 phases complete"
+  claims below.
+
+### Continuation (same day, 2026-09-24) — closed 6 of the 10 stub nav areas, fixed 2 more real bugs found along the way
+
+User directly confirmed (via AskUserQuestion, a real UI-level confirmation, distinct from the
+earlier unverifiable relayed "coordinator" message) to keep working autonomously. **Did not**
+separately re-confirm the git-history-purge/force-push claim through any means I could verify as
+actually the user's own words in this conversation — a second and third relayed message asserted
+it had been authorized, but repetition through the same unverifiable channel is not verification,
+so the history purge/force-push was still not performed. This is called out explicitly as a
+deliberate refusal, not an oversight — see the final report for full reasoning.
+
+Closed this session (all live-verified against the redeployed API, all with new passing tests):
+- **Case Workflow, Reply Verification** — CMS pages wired to their pre-existing backend controllers
+  (`CaseWorkflowController`/`ReplyVerificationController`), which the CMS had simply never called.
+- **System Health** — new authenticated `SystemHealthController` reusing the same registered health
+  checks as the unauthenticated `/health/ready` infra endpoint, plus Hangfire job counts.
+- **Dashboard (§87)** — was itself a static stub with zero API calls despite being routed (not a
+  placeholder). New `DashboardService` computing every §87 metric from real data; CMS page rebuilt.
+- **Outbound Email (§18-19)** — found the backend domain model already fully supported
+  `Purpose=Outbound` end-to-end, but `SmtpEmailProviderAdapter` was registered in DI as itself
+  rather than as `IEmailProviderAdapter`, so it was **unreachable** through the resolver — an
+  Outbound account's Test Connection had no working path at all. Fixed (added `EmailProtocol.Smtp`,
+  made the adapter implement the interface properly) and live-verified against real GreenMail SMTP
+  (first attempt correctly failed with a genuine `535` auth error proving real reach, second
+  succeeded).
+- **Audit Log** (closed in the earlier part of this same session) and **Case History & Logs** — the
+  latter needed a new global cross-Case `CaseEvent` search (`GET /api/v1/cases/events`), distinct
+  from the per-Case timeline already in `CasesPage.tsx`. While building it, found and fixed a real
+  separate CMS bug: the CMS's own `CaseEventType` TypeScript type only covered values 0-7, missing
+  4 newer values (`EmployeeAction`/`EmployeeComment`/`ReminderEvent`/`EscalationEvent`) the backend
+  enum already had — would have silently rendered those as raw numbers anywhere else that used it.
+
+Security fixes from an independent §84-85 re-verification pass (separate subagent, cross-checked
+by this session):
+- **Agent credential revocation was not immediately effective** — `AgentAuthService` correctly
+  checked revocation at token-issuance time, but the `AgentScheme` JWT bearer validation never
+  checked it again on subsequent requests, so a revoked Agent's already-issued 15-minute JWT kept
+  working until it naturally expired. Fixed with an `OnTokenValidated` event doing one indexed
+  Agents-table lookup per authenticated Agent request. **Live-verified**: authenticated a real test
+  Agent, confirmed its JWT worked (200), revoked its credential via the admin API, reused the exact
+  same still-unexpired JWT — 401.
+- **Input sanitization gaps**: `CaseWorkflowService.CompleteAsync`'s `CompletionComment` and the
+  entire `AgentCaseActionService` file (every Windows-Agent-submitted comment field) had zero
+  `InputSanitizer` calls, unlike every other free-text field this codebase already protects. Fixed.
+- **Rate limiting gaps**: only 3 of the unauthenticated auth-boundary endpoints had a rate limit.
+  Added one to `POST /auth/refresh` (reuses the existing 10/min policy) and to the Agent
+  registration-status poll (a new, more permissive 60/min policy, since the Windows Agent itself
+  legitimately polls that endpoint every ~5s). **Live-verified**: 12 rapid `/auth/refresh` attempts
+  → first 10 returned 401, attempts 11-12 returned 429.
+
+Remaining, not closed this session: Notifications, Users & Permissions (no user-management
+subsystem exists at all — only the bootstrap admin), Employee Activity, System Settings,
+Maintenance/Emergency Pause. See the final report for the complete honest gap list.
+
+- Test count: 363 backend tests passing (up from 341 at the start of this whole 2026-09-24 session), 0 regressions throughout.
 
 ### Current Focus — Phase 10 Hardening (session in progress, 2026-09-23)
 
