@@ -4,7 +4,16 @@ namespace Iemas.Domain.Email;
 public enum EmailProtocol
 {
     Imap = 0,
-    MicrosoftGraph = 1
+    MicrosoftGraph = 1,
+
+    /// <summary>
+    /// Requirements §18 — outbound (internal notification/escalation) email only. Send-only: this
+    /// protocol never reads a mailbox, so FetchInboxMessagesAsync/FetchSentMessagesAsync on its
+    /// IEmailProviderAdapter implementation are genuinely not applicable (not "not yet built") and
+    /// throw NotSupportedException — an EmailAccount with this protocol should always also have
+    /// Purpose=Outbound (enforced by EmailAccountService), which never calls those methods.
+    /// </summary>
+    Smtp = 2
 }
 
 /// <summary>Requirements §15 — email authentication data model.</summary>

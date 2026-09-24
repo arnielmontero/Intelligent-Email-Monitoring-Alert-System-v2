@@ -19,9 +19,9 @@ import AuditLogPage from "./pages/audit-log/AuditLogPage";
 import CaseWorkflowPage from "./pages/case-workflow/CaseWorkflowPage";
 import ReplyVerificationPage from "./pages/reply-verification/ReplyVerificationPage";
 import SystemHealthPage from "./pages/system-health/SystemHealthPage";
+import OutboundEmailPage from "./pages/outbound-email/OutboundEmailPage";
 
 const PLACEHOLDER_ROUTES: Array<{ path: string; title: string }> = [
-  { path: "/outbound-email", title: "Outbound Email" },
   { path: "/notifications", title: "Notifications" },
   { path: "/users", title: "Users & Permissions" },
   { path: "/employee-activity", title: "Employee Activity" },
@@ -53,6 +53,7 @@ export default function App() {
           <Route path="/case-workflow" element={<CaseWorkflowPage />} />
           <Route path="/reply-verification" element={<ReplyVerificationPage />} />
           <Route path="/system-health" element={<SystemHealthPage />} />
+          <Route path="/outbound-email" element={<OutboundEmailPage />} />
           {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<PlaceholderPage title={route.title} />} />
           ))}
