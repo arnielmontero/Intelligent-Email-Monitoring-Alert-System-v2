@@ -1,0 +1,39 @@
+<Window x:Class="Iemas.Agent.Views.CaseDetailWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Case" Height="560" Width="440" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <Style x:Key="ActionBtn" TargetType="Button">
+            <Setter Property="Margin" Value="0,0,6,6"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Background" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+        <StackPanel>
+            <TextBlock x:Name="CaseNumberText" FontWeight="Bold" FontSize="12" Foreground="#6B7280"/>
+            <TextBlock x:Name="SubjectText" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" Margin="0,4,0,4"/>
+            <TextBlock x:Name="CustomerText" Foreground="#374151"/>
+            <TextBlock x:Name="StatusText" Foreground="#374151" Margin="0,4,0,12"/>
+
+            <TextBlock Text="Employee Actions" FontWeight="Bold" Margin="0,0,0,6"/>
+            <WrapPanel x:Name="ActionsPanel"/>
+
+            <TextBlock Text="Add a comment or update" FontWeight="Bold" Margin="0,16,0,6"/>
+            <TextBox x:Name="CommentTextBox" AcceptsReturn="True" Height="60" TextWrapping="Wrap" Padding="6"/>
+            <Button Content="Submit Comment" Style="{StaticResource ActionBtn}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="SubmitComment_Click"/>
+
+            <Separator Margin="0,16,0,16"/>
+
+            <TextBlock Text="Mark Completed" FontWeight="Bold" Margin="0,0,0,6"/>
+            <ComboBox x:Name="CompletionReasonCombo" Margin="0,0,0,8"/>
+            <TextBox x:Name="CompletionCommentTextBox" AcceptsReturn="True" Height="40" TextWrapping="Wrap" Padding="6" Margin="0,0,0,8"/>
+            <Button Content="Complete Case" Style="{StaticResource ActionBtn}" Background="#059669" HorizontalAlignment="Left" Click="CompleteCase_Click"/>
+
+            <TextBlock x:Name="ResultText" Foreground="#059669" Margin="0,12,0,0" TextWrapping="Wrap"/>
+        </StackPanel>
+    </ScrollViewer>
+</Window>
