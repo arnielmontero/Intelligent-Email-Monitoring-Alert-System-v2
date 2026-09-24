@@ -188,6 +188,8 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+
     var passwordHasher = scope.ServiceProvider.GetRequiredService<Iemas.Application.Common.Interfaces.IPasswordHasher>();
     await DbSeeder.SeedAsync(db, passwordHasher, app.Configuration);
 }
