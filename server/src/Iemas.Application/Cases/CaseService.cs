@@ -61,6 +61,37 @@ public class CaseService
         return new CaseDetailDto(caseDto, emails, history, verificationAttempts);
     }
 
+    /// <summary>
+    /// Requirements §66/§67/§86/§89 — "Case History & Logs" as a global, cross-Case searchable log
+    /// (distinct from GetDetailAsync's per-Case timeline, and distinct from the System Audit Log,
+    /// which tracks admin/config changes rather than "what happened to a Case"). Read-only —
+    /// CaseEvent is append-only by design (§66); nothing here ever writes a row.
+    /// </summary>
+    public async Task<List<CaseEventSearchResultDto>> SearchEventsAsync(Guid? caseId, CaseEventType? eventType, DateTimeOffset? from, DateTimeOffset? to, int take, CancellationToken cancellationToken)
+    {
+        var query = _db.CaseEvents.AsNoTracking().AsQueryable();
+
+        if (caseId is not null) query = query.Where(e => e.CaseId == caseId);
+        if (eventType is not null) query = query.Where(e => e.EventType == eventType);
+        if (from is not null) query = query.Where(e => e.OccurredAt >= from);
+        if (to is not null) query = query.Where(e => e.OccurredAt <= to);
+
+        var events = await query
+            .OrderByDescending(e => e.OccurredAt)
+            .Take(Math.Clamp(take, 1, 500))
+            .Select(e => new { e.Id, e.CaseId, e.Case.CaseNumber, e.Case.Subject, e.EventType, e.Detail, e.ActorEmployeeId, e.OccurredAt })
+            .ToListAsync(cancellationToken);
+
+        var actorIds = events.Where(e => e.ActorEmployeeId != null).Select(e => e.ActorEmployeeId!.Value).Distinct().ToList();
+        var actorNames = await _db.Employees.Where(emp => actorIds.Contains(emp.Id)).ToDictionaryAsync(emp => emp.Id, emp => emp.FullName, cancellationToken);
+
+        return events
+            .Select(e => new CaseEventSearchResultDto(
+                e.Id, e.CaseId, e.CaseNumber, e.Subject, e.EventType, e.Detail,
+                e.ActorEmployeeId, e.ActorEmployeeId != null ? actorNames.GetValueOrDefault(e.ActorEmployeeId.Value) : null, e.OccurredAt))
+            .ToList();
+    }
+
     private static IQueryable<CaseDto> ProjectAndOrder(IQueryable<Case> source)
     {
         // Order before projecting — see EmailAccountService for why (EF Core can't translate

@@ -106,7 +106,7 @@ export type CaseReplyStatus = 0 | 1 | 2 | 3 | 4 | 5;
 export type CaseNotificationStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type CaseCompletionReason = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type CaseMatchSignal = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
-export type CaseEventType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type CaseEventType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
 
 // §42 Reply Verification
 export type ReplyVerificationOutcome = 0 | 1 | 2 | 3;
@@ -140,6 +140,7 @@ export const CASE_MATCH_SIGNAL_LABELS: Record<CaseMatchSignal, string> = {
 export const CASE_EVENT_TYPE_LABELS: Record<CaseEventType, string> = {
   0: "Email Received", 1: "Created", 2: "Updated", 3: "Status Changed",
   4: "Reopened", 5: "Completed", 6: "Cancelled", 7: "Reply Verification",
+  8: "Employee Action", 9: "Employee Comment", 10: "Reminder", 11: "Escalation",
 };
 
 export interface CaseDto {
@@ -489,6 +490,19 @@ export interface DashboardSummaryDto {
   aiErrors: number;
   emailMonitoringErrors: number;
   backgroundJobFailures: number;
+}
+
+// §66/§86 — Case History & Logs (global, cross-Case search).
+export interface CaseEventSearchResultDto {
+  id: string;
+  caseId: string;
+  caseNumber: string;
+  caseSubject: string;
+  eventType: CaseEventType;
+  detail: string;
+  actorEmployeeId: string | null;
+  actorEmployeeName: string | null;
+  occurredAt: string;
 }
 
 // §106 — System Health (SYSTEM nav).

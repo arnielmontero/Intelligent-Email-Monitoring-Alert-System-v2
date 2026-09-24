@@ -30,6 +30,18 @@ public record CaseEventDto(
     Guid? ActorEmployeeId,
     DateTimeOffset OccurredAt);
 
+/// <summary>§66/§86 — Case History & Logs global search result: a CaseEventDto plus enough Case-identifying info to be useful outside a single Case's own detail view.</summary>
+public record CaseEventSearchResultDto(
+    Guid Id,
+    Guid CaseId,
+    string CaseNumber,
+    string CaseSubject,
+    CaseEventType EventType,
+    string Detail,
+    Guid? ActorEmployeeId,
+    string? ActorEmployeeName,
+    DateTimeOffset OccurredAt);
+
 public record CaseEmailDto(
     Guid EmailMessageId,
     string Subject,

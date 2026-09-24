@@ -41,6 +41,16 @@ public class CasesController : ControllerBase
         return detail is null ? NotFound() : Ok(detail);
     }
 
+    /// <summary>§66/§86 "Case History & Logs" — global, cross-Case search, distinct from GetById's single-Case timeline.</summary>
+    [HttpGet("events")]
+    public async Task<ActionResult<List<CaseEventSearchResultDto>>> SearchEvents(
+        [FromQuery] Guid? caseId, [FromQuery] CaseEventType? eventType,
+        [FromQuery] DateTimeOffset? from, [FromQuery] DateTimeOffset? to,
+        [FromQuery] int? take, CancellationToken cancellationToken)
+    {
+        return Ok(await _caseService.SearchEventsAsync(caseId, eventType, from, to, take ?? 100, cancellationToken));
+    }
+
     [HttpPost("{id:guid}/complete")]
     [Authorize(Policy = "RequireAdministrator")]
     public async Task<IActionResult> Complete(Guid id, [FromBody] CompleteCaseRequest request, CancellationToken cancellationToken)
