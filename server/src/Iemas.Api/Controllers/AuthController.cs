@@ -31,8 +31,14 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Rate-limited (found missing during this session's §84-85 security re-verification pass) —
+    /// this is an unauthenticated, token-guessing-adjacent surface exactly like Login: without a
+    /// limit, an attacker could brute-force-guess a valid refresh token with unlimited attempts.
+    /// </summary>
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
     public async Task<ActionResult<LoginResponse>> Refresh([FromBody] RefreshTokenRequest request, CancellationToken cancellationToken)
     {
         var result = await _authService.RefreshAsync(request, cancellationToken);

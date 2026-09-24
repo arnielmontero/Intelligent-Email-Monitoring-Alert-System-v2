@@ -206,6 +206,12 @@ builder.Services.AddHealthChecks()
 // attacker could vary to bypass a per-account limit) with a fixed window; a limit hit returns 429
 // rather than queuing, since queuing a flood of auth attempts has no benefit here.
 const string AuthRateLimitPolicy = "AuthRateLimit";
+// §68 — the Agent legitimately polls GetStatus every ~5s while PendingApproval (its own poll
+// interval), which is 12 req/min — over AuthRateLimitPolicy's 10/min budget. This is a separate,
+// more permissive limit for that specific legitimate-high-frequency-but-still-unauthenticated
+// polling endpoint, rather than reusing the strict login/register/authenticate limit and breaking
+// normal Agent behavior.
+const string AgentPollRateLimitPolicy = "AgentPollRateLimit";
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -214,6 +220,14 @@ builder.Services.AddRateLimiter(options =>
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+    options.AddPolicy(AgentPollRateLimitPolicy, httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 60,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
         }));

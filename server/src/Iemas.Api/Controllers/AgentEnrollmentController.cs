@@ -32,8 +32,17 @@ public class AgentEnrollmentController : ControllerBase
         return result.Succeeded ? Ok(result.Value) : BadRequest(new { message = result.Error });
     }
 
-    /// <summary>§68 — the Agent polls this with the token it received from Register, never with the Agent ID alone.</summary>
+    /// <summary>
+    /// §68 — the Agent polls this with the token it received from Register, never with the Agent ID
+    /// alone. Rate-limited (found missing during this session's §84-85 security re-verification
+    /// pass — this is an unauthenticated, token-guessing-adjacent surface, same category as
+    /// Register/Authenticate below it): without a limit, an attacker could brute-force-guess a
+    /// valid RegistrationRequestToken with unlimited attempts. Uses the more permissive
+    /// AgentPollRateLimit (60/min), not the strict 10/min AuthRateLimit, since the Windows Agent
+    /// itself legitimately polls this every ~5s (12/min) while PendingApproval.
+    /// </summary>
     [HttpGet("status/{registrationRequestToken}")]
+    [EnableRateLimiting("AgentPollRateLimit")]
     public async Task<ActionResult<AgentRegistrationStatusResponse>> GetStatus(string registrationRequestToken, CancellationToken cancellationToken)
     {
         var result = await _service.GetRegistrationStatusAsync(registrationRequestToken, cancellationToken);
