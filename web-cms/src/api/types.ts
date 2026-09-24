@@ -468,6 +468,29 @@ export interface ReplyVerificationRunResult {
   durationMs: number;
 }
 
+// §87 — Dashboard.
+export interface EmployeeOpenCaseCountDto {
+  employeeId: string;
+  employeeName: string;
+  openCaseCount: number;
+}
+
+export interface DashboardSummaryDto {
+  importantEmailsToday: number;
+  openCases: number;
+  awaitingReply: number;
+  overdue: number;
+  escalated: number;
+  completedToday: number;
+  onlineEmployees: number;
+  offlineEmployees: number;
+  openCasesByEmployee: EmployeeOpenCaseCountDto[];
+  pendingAgentApprovals: number;
+  aiErrors: number;
+  emailMonitoringErrors: number;
+  backgroundJobFailures: number;
+}
+
 // §106 — System Health (SYSTEM nav).
 export interface HealthCheckEntryDto {
   name: string;

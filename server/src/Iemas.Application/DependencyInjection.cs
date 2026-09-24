@@ -2,6 +2,7 @@ using Iemas.Application.Agents;
 using Iemas.Application.AiModels;
 using Iemas.Application.Audit;
 using Iemas.Application.Auth;
+using Iemas.Application.Dashboard;
 using Iemas.Application.Cases;
 using Iemas.Application.ClassificationProfiles;
 using Iemas.Application.Departments;
@@ -45,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<EscalationGroupService>();
         services.AddScoped<EscalationQueryService>();
         services.AddScoped<AuditQueryService>();
+        services.AddScoped<DashboardService>();
         return services;
     }
 }
