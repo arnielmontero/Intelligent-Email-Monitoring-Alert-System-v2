@@ -15,6 +15,7 @@ import ReminderPoliciesPage from "./pages/reminder-policies/ReminderPoliciesPage
 import EscalationPoliciesPage from "./pages/escalation-policies/EscalationPoliciesPage";
 import EscalationGroupsPage from "./pages/escalation-groups/EscalationGroupsPage";
 import EscalationHistoryPage from "./pages/escalation-history/EscalationHistoryPage";
+import AuditLogPage from "./pages/audit-log/AuditLogPage";
 
 const PLACEHOLDER_ROUTES: Array<{ path: string; title: string }> = [
   { path: "/outbound-email", title: "Outbound Email" },
@@ -24,7 +25,6 @@ const PLACEHOLDER_ROUTES: Array<{ path: string; title: string }> = [
   { path: "/users", title: "Users & Permissions" },
   { path: "/employee-activity", title: "Employee Activity" },
   { path: "/case-history", title: "Case History & Logs" },
-  { path: "/audit-log", title: "Audit Log" },
   { path: "/system-health", title: "System Health" },
   { path: "/system-settings", title: "System Settings" },
   { path: "/maintenance", title: "Maintenance / Emergency Pause" },
@@ -49,6 +49,7 @@ export default function App() {
           <Route path="/escalation-policies" element={<EscalationPoliciesPage />} />
           <Route path="/escalation-groups" element={<EscalationGroupsPage />} />
           <Route path="/escalation-history" element={<EscalationHistoryPage />} />
+          <Route path="/audit-log" element={<AuditLogPage />} />
           {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<PlaceholderPage title={route.title} />} />
           ))}

@@ -435,3 +435,16 @@ export interface TestEscalationPolicyResult {
   recipientDisplay: string | null;
   reason: string;
 }
+
+// Requirements §67/§84/§85/§86 — System Audit Log (HISTORY & AUDIT nav). Append-only, read-only in the CMS.
+export interface AuditLogDto {
+  id: string;
+  userId: string | null;
+  userEmail: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  details: string | null;
+  ipAddress: string | null;
+  occurredAt: string;
+}
