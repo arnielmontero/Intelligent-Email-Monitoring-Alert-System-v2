@@ -1,5 +1,6 @@
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Common.Security;
 using Iemas.Application.Escalations.Dtos;
 using Iemas.Domain.Escalations;
 using Microsoft.EntityFrameworkCore;
@@ -186,6 +187,8 @@ public class EscalationPolicyService
     private async Task<string?> ValidateAsync(SaveEscalationPolicyRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Name)) return "Name is required.";
+        if (InputSanitizer.ValidateFreeText("Name", request.Name) is { } nameError) return nameError;
+        if (request.Description is not null && InputSanitizer.ValidateFreeText("Description", request.Description) is { } descriptionError) return descriptionError;
         if (request.MaximumLevel < 1 || request.MaximumLevel > 3) return "Maximum Level must be between 1 and 3 (§58: V1 supports at most three levels).";
         if (request.TriggerReminderCount < 1) return "Trigger reminder count must be at least 1.";
         if (request.GracePeriod < TimeSpan.Zero) return "Grace period cannot be negative.";

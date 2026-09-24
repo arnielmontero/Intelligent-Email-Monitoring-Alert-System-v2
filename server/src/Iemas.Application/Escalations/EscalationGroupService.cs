@@ -1,5 +1,6 @@
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Common.Security;
 using Iemas.Application.Escalations.Dtos;
 using Iemas.Domain.Escalations;
 using Microsoft.EntityFrameworkCore;
@@ -27,12 +28,17 @@ public class EscalationGroupService
     public async Task<Result<EscalationGroupDto>> CreateAsync(SaveEscalationGroupRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Name)) return Result<EscalationGroupDto>.Failure("Name is required.");
-        if (await _db.EscalationGroups.AnyAsync(g => g.Name == request.Name, cancellationToken))
+        var name = request.Name.Trim();
+        if (InputSanitizer.ValidateFreeText("Name", name) is { } nameError)
+        {
+            return Result<EscalationGroupDto>.Failure(nameError);
+        }
+        if (await _db.EscalationGroups.AnyAsync(g => g.Name == name, cancellationToken))
         {
             return Result<EscalationGroupDto>.Failure("A group with this name already exists.");
         }
 
-        var group = new EscalationGroup { Name = request.Name };
+        var group = new EscalationGroup { Name = name };
         foreach (var employeeId in request.EmployeeIds.Distinct())
         {
             if (!await _db.Employees.AnyAsync(e => e.Id == employeeId, cancellationToken))
@@ -56,12 +62,19 @@ public class EscalationGroupService
         var group = await _db.EscalationGroups.Include(g => g.Members).FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
         if (group is null) return Result<EscalationGroupDto>.Failure("Group not found.");
 
-        if (await _db.EscalationGroups.AnyAsync(g => g.Id != id && g.Name == request.Name, cancellationToken))
+        if (string.IsNullOrWhiteSpace(request.Name)) return Result<EscalationGroupDto>.Failure("Name is required.");
+        var name = request.Name.Trim();
+        if (InputSanitizer.ValidateFreeText("Name", name) is { } nameError)
+        {
+            return Result<EscalationGroupDto>.Failure(nameError);
+        }
+
+        if (await _db.EscalationGroups.AnyAsync(g => g.Id != id && g.Name == name, cancellationToken))
         {
             return Result<EscalationGroupDto>.Failure("A group with this name already exists.");
         }
 
-        group.Name = request.Name;
+        group.Name = name;
         group.UpdatedAt = DateTimeOffset.UtcNow;
         group.Members.Clear();
         foreach (var employeeId in request.EmployeeIds.Distinct())

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Iemas.Application.Agents.Dtos;
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Common.Security;
 using Iemas.Domain.Agents;
 using Iemas.Domain.Email;
 using Microsoft.EntityFrameworkCore;
@@ -57,6 +58,12 @@ public class AgentRegistrationService
             return Result<RegisterAgentResponse>.Failure("A client/agent name is required.");
         }
 
+        var clientName = request.ClientName.Trim();
+        if (InputSanitizer.ValidateFreeText("Client name", clientName) is { } clientNameError)
+        {
+            return Result<RegisterAgentResponse>.Failure(clientNameError);
+        }
+
         // §68 "Email must correspond to an enrolled IEMAS email account." Checked against Inbound
         // accounts specifically — an Agent represents an employee monitoring their own mailbox
         // activity, not an arbitrary email address.
@@ -69,7 +76,7 @@ public class AgentRegistrationService
 
         var agent = new Agent
         {
-            ClientName = request.ClientName.Trim(),
+            ClientName = clientName,
             EnrollmentEmailAddress = email,
             ServerAddress = request.ServerAddress,
             AgentVersion = request.AgentVersion,

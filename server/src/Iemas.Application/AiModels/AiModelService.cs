@@ -2,6 +2,7 @@ using Iemas.Application.AiModels.Dtos;
 using Iemas.Application.Common;
 using Iemas.Application.Common.Ai;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Common.Security;
 using Iemas.Domain.Ai;
 using Microsoft.EntityFrameworkCore;
 
@@ -43,6 +44,12 @@ public class AiModelService
             return Result<AiModelDto>.Failure("A model identifier is required.");
         }
 
+        var displayName = string.IsNullOrWhiteSpace(request.DisplayName) ? modelIdentifier : request.DisplayName.Trim();
+        if (InputSanitizer.ValidateFreeText("Display name", displayName) is { } displayNameError)
+        {
+            return Result<AiModelDto>.Failure(displayNameError);
+        }
+
         if (await _db.AiModelConfigs.AnyAsync(m => m.Provider == request.Provider && m.ModelIdentifier == modelIdentifier, cancellationToken))
         {
             return Result<AiModelDto>.Failure("This provider/model combination is already configured.");
@@ -52,7 +59,7 @@ public class AiModelService
         {
             Provider = request.Provider.Trim(),
             ModelIdentifier = modelIdentifier,
-            DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? modelIdentifier : request.DisplayName.Trim(),
+            DisplayName = displayName,
             Enabled = request.Enabled,
             TaskCapability = string.IsNullOrWhiteSpace(request.TaskCapability) ? "EmailClassification" : request.TaskCapability.Trim(),
             TimeoutSeconds = request.TimeoutSeconds > 0 ? request.TimeoutSeconds : 30,
@@ -81,7 +88,13 @@ public class AiModelService
             return Result<AiModelDto>.Failure("AI model configuration not found.");
         }
 
-        model.DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? model.ModelIdentifier : request.DisplayName.Trim();
+        var displayName = string.IsNullOrWhiteSpace(request.DisplayName) ? model.ModelIdentifier : request.DisplayName.Trim();
+        if (InputSanitizer.ValidateFreeText("Display name", displayName) is { } displayNameError)
+        {
+            return Result<AiModelDto>.Failure(displayNameError);
+        }
+
+        model.DisplayName = displayName;
         model.Enabled = request.Enabled;
         model.TaskCapability = string.IsNullOrWhiteSpace(request.TaskCapability) ? model.TaskCapability : request.TaskCapability.Trim();
         model.TimeoutSeconds = request.TimeoutSeconds > 0 ? request.TimeoutSeconds : model.TimeoutSeconds;

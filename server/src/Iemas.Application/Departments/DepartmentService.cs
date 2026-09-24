@@ -1,5 +1,6 @@
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Common.Security;
 using Iemas.Application.Departments.Dtos;
 using Iemas.Domain.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -56,6 +57,17 @@ public class DepartmentService
             return Result<DepartmentDto>.Failure("Department name is required.");
         }
 
+        if (InputSanitizer.ValidateFreeText("Department name", name) is { } nameError)
+        {
+            return Result<DepartmentDto>.Failure(nameError);
+        }
+
+        var description = request.Description?.Trim();
+        if (description is not null && InputSanitizer.ValidateFreeText("Description", description) is { } descriptionError)
+        {
+            return Result<DepartmentDto>.Failure(descriptionError);
+        }
+
         if (await _db.Departments.AnyAsync(d => d.Name == name, cancellationToken))
         {
             return Result<DepartmentDto>.Failure("A department with this name already exists.");
@@ -93,6 +105,17 @@ public class DepartmentService
         if (string.IsNullOrWhiteSpace(name))
         {
             return Result<DepartmentDto>.Failure("Department name is required.");
+        }
+
+        if (InputSanitizer.ValidateFreeText("Department name", name) is { } nameError)
+        {
+            return Result<DepartmentDto>.Failure(nameError);
+        }
+
+        var description = request.Description?.Trim();
+        if (description is not null && InputSanitizer.ValidateFreeText("Description", description) is { } descriptionError)
+        {
+            return Result<DepartmentDto>.Failure(descriptionError);
         }
 
         if (await _db.Departments.AnyAsync(d => d.Name == name && d.Id != id, cancellationToken))

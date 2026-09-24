@@ -1,5 +1,6 @@
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Common.Security;
 using Iemas.Application.Reminders.Dtos;
 using Iemas.Domain.Ai;
 using Iemas.Domain.Reminders;
@@ -181,6 +182,8 @@ public class ReminderPolicyService
     private static string? Validate(SaveReminderPolicyRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name)) return "Name is required.";
+        if (InputSanitizer.ValidateFreeText("Name", request.Name) is { } nameError) return nameError;
+        if (request.Description is not null && InputSanitizer.ValidateFreeText("Description", request.Description) is { } descriptionError) return descriptionError;
         if (request.MaxReminders < 1) return "Maximum reminders must be at least 1 (§54: no infinite reminder loops).";
         if (request.InitialDelay < TimeSpan.Zero) return "Initial delay cannot be negative.";
         if (request.ReminderInterval <= TimeSpan.Zero) return "Reminder interval must be positive.";

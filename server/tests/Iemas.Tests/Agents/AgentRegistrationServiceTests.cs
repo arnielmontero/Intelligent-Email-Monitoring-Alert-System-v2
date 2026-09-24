@@ -47,6 +47,28 @@ public class AgentRegistrationServiceTests
         Assert.Equal(0, await db.Agents.CountAsync());
     }
 
+    /// <summary>
+    /// Regression test for the Phase 11 stored-XSS finding, applied here specifically because
+    /// registration is unauthenticated — a malicious or compromised client could otherwise inject
+    /// markup into ClientName with no bearer token required at all.
+    /// </summary>
+    [Fact]
+    public async Task RegisterAsync_RejectsHtmlMarkupInClientName()
+    {
+        using var db = TestDbContext.CreateNew();
+        db.EmailAccounts.Add(CreateInboundAccount("sales@sawo.com"));
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var result = await service.RegisterAsync(
+            new RegisterAgentRequest("sales@sawo.com", "<script>alert(1)</script>", null, "1.0.0", null),
+            "10.0.0.1",
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(0, await db.Agents.CountAsync());
+    }
+
     [Fact]
     public async Task RegisterAsync_ValidRequest_CreatesPendingAgent_WithOpaqueToken()
     {

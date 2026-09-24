@@ -1,5 +1,6 @@
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Common.Security;
 using Iemas.Application.Employees.Dtos;
 using Iemas.Domain.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -60,6 +61,11 @@ public class EmployeeService
             return Result<EmployeeDto>.Failure("Full name is required.");
         }
 
+        if (InputSanitizer.ValidateFreeText("Full name", fullName) is { } fullNameError)
+        {
+            return Result<EmployeeDto>.Failure(fullNameError);
+        }
+
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
         {
             return Result<EmployeeDto>.Failure("A valid email address is required.");
@@ -111,6 +117,11 @@ public class EmployeeService
         if (string.IsNullOrWhiteSpace(fullName))
         {
             return Result<EmployeeDto>.Failure("Full name is required.");
+        }
+
+        if (InputSanitizer.ValidateFreeText("Full name", fullName) is { } fullNameError)
+        {
+            return Result<EmployeeDto>.Failure(fullNameError);
         }
 
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))

@@ -1,6 +1,7 @@
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
 using Iemas.Application.Common.Providers;
+using Iemas.Application.Common.Security;
 using Iemas.Application.EmailAccounts.Dtos;
 using Iemas.Domain.Email;
 using Microsoft.EntityFrameworkCore;
@@ -123,10 +124,16 @@ public class EmailAccountService
             return Result<EmailAccountDto>.Failure("Monitoring cannot be enabled on an outbound account.");
         }
 
+        var displayName = request.DisplayName?.Trim();
+        if (displayName is not null && InputSanitizer.ValidateFreeText("Display name", displayName) is { } displayNameError)
+        {
+            return Result<EmailAccountDto>.Failure(displayNameError);
+        }
+
         var account = new EmailAccount
         {
             EmailAddress = emailAddress,
-            DisplayName = request.DisplayName?.Trim(),
+            DisplayName = displayName,
             Purpose = request.Purpose,
             Kind = request.Kind,
             Protocol = request.Protocol,
@@ -185,7 +192,13 @@ public class EmailAccountService
             return Result<EmailAccountDto>.Failure("Monitoring cannot be enabled on an outbound account.");
         }
 
-        account.DisplayName = request.DisplayName?.Trim();
+        var displayName = request.DisplayName?.Trim();
+        if (displayName is not null && InputSanitizer.ValidateFreeText("Display name", displayName) is { } displayNameError)
+        {
+            return Result<EmailAccountDto>.Failure(displayNameError);
+        }
+
+        account.DisplayName = displayName;
         account.Kind = request.Kind;
         account.Host = request.Host.Trim();
         account.Port = request.Port;

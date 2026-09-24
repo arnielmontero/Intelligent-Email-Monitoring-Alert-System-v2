@@ -2,6 +2,7 @@ using Iemas.Application.ClassificationProfiles.Dtos;
 using Iemas.Application.Common;
 using Iemas.Application.Common.Ai;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Common.Security;
 using Iemas.Application.EmailClassification;
 using Iemas.Domain.Ai;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,17 @@ public class ClassificationProfileService
             return Result<ClassificationProfileDto>.Failure("A profile name is required.");
         }
 
+        if (InputSanitizer.ValidateFreeText("Profile name", name) is { } nameError)
+        {
+            return Result<ClassificationProfileDto>.Failure(nameError);
+        }
+
+        var description = request.Description?.Trim();
+        if (description is not null && InputSanitizer.ValidateFreeText("Description", description) is { } descriptionError)
+        {
+            return Result<ClassificationProfileDto>.Failure(descriptionError);
+        }
+
         if (await _db.ClassificationProfiles.AnyAsync(p => p.Name == name, cancellationToken))
         {
             return Result<ClassificationProfileDto>.Failure("A classification profile with this name already exists.");
@@ -98,6 +110,17 @@ public class ClassificationProfileService
         if (string.IsNullOrWhiteSpace(name))
         {
             return Result<ClassificationProfileDto>.Failure("A profile name is required.");
+        }
+
+        if (InputSanitizer.ValidateFreeText("Profile name", name) is { } nameError)
+        {
+            return Result<ClassificationProfileDto>.Failure(nameError);
+        }
+
+        var description = request.Description?.Trim();
+        if (description is not null && InputSanitizer.ValidateFreeText("Description", description) is { } descriptionError)
+        {
+            return Result<ClassificationProfileDto>.Failure(descriptionError);
         }
 
         if (await _db.ClassificationProfiles.AnyAsync(p => p.Name == name && p.Id != id, cancellationToken))

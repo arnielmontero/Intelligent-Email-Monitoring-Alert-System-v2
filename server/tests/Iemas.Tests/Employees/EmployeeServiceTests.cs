@@ -2,6 +2,7 @@ using Iemas.Application.Employees;
 using Iemas.Application.Employees.Dtos;
 using Iemas.Domain.Identity;
 using Iemas.Tests.TestSupport;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace Iemas.Tests.Employees;
@@ -87,6 +88,47 @@ public class EmployeeServiceTests
 
         Assert.False(result.Succeeded);
         Assert.Contains("already exists", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Regression test for the Phase 11 stored-XSS finding: FullName previously accepted and
+    /// persisted a script tag verbatim (confirmed live — 201 Created, stored unescaped). The write
+    /// path must now reject markup rather than silently store it.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_RejectsHtmlMarkupInFullName()
+    {
+        using var db = TestDbContext.CreateNew();
+        var audit = new NoOpAuditService();
+        var service = new EmployeeService(db, audit);
+
+        var result = await service.CreateAsync(
+            new CreateEmployeeRequest("<script>alert(1)</script>", "xsstest@sawo.com", null, null),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.DoesNotContain(await db.Employees.ToListAsync(), e => e.Email == "xsstest@sawo.com");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RejectsHtmlMarkupInFullName()
+    {
+        using var db = TestDbContext.CreateNew();
+        var audit = new NoOpAuditService();
+        var service = new EmployeeService(db, audit);
+
+        var employee = new Employee { FullName = "Original Name", Email = "original@sawo.com" };
+        db.Employees.Add(employee);
+        await db.SaveChangesAsync();
+
+        var result = await service.UpdateAsync(
+            employee.Id,
+            new UpdateEmployeeRequest("<img src=x onerror=alert(1)>", "original@sawo.com", true, null, null),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        var reloaded = await db.Employees.FirstAsync(e => e.Id == employee.Id);
+        Assert.Equal("Original Name", reloaded.FullName);
     }
 
     [Fact]
