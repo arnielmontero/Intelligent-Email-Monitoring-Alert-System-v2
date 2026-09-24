@@ -3,6 +3,7 @@ using Iemas.Application.Cases;
 using Iemas.Application.Cases.Dtos;
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Common.Security;
 using Iemas.Application.Reminders;
 using Iemas.Domain.Agents;
 using Iemas.Domain.Cases;
@@ -42,6 +43,14 @@ public class AgentCaseActionService
     public async Task<Result<CaseActionResultDto>> SubmitActionAsync(
         Guid agentId, Guid employeeId, SubmitCaseActionRequest request, CancellationToken cancellationToken)
     {
+        // §84 write-boundary input validation — found missing during this session's security
+        // re-verification pass (this whole file had zero InputSanitizer calls despite being one of
+        // the highest-value external input surfaces: every field here is Windows-Agent-submitted).
+        if (!string.IsNullOrEmpty(request.Comment) && InputSanitizer.ValidateFreeText("Comment", request.Comment) is { } sanitizeError)
+        {
+            return Result<CaseActionResultDto>.Failure(sanitizeError);
+        }
+
         // §78/§73 idempotency — a retried request with the same (Agent, RequestId) pair must
         // return the same outcome, never create a second CaseEvent or apply the action twice.
         var existing = await _db.AgentCaseActions
@@ -157,6 +166,11 @@ public class AgentCaseActionService
     /// <summary>§47 — a standalone comment, not tied to a status-changing action.</summary>
     public async Task<Result<bool>> SubmitCommentAsync(Guid agentId, Guid employeeId, SubmitCaseCommentRequest request, CancellationToken cancellationToken)
     {
+        if (!string.IsNullOrWhiteSpace(request.Comment) && InputSanitizer.ValidateFreeText("Comment", request.Comment) is { } sanitizeError)
+        {
+            return Result<bool>.Failure(sanitizeError);
+        }
+
         var existing = await _db.AgentCaseActions
             .AnyAsync(a => a.AgentId == agentId && a.RequestId == request.RequestId, cancellationToken);
         if (existing)

@@ -374,4 +374,59 @@ public class AgentCaseActionServiceTests
         var reloaded = await db.Cases.AsNoTracking().SingleAsync(c => c.Id == theCase.Id);
         Assert.NotEqual(CaseWorkStatus.Completed, reloaded.WorkStatus);
     }
+
+    /// <summary>§84 write-boundary input validation — a comment containing HTML markup characters must be rejected, never persisted, matching the InputSanitizer policy every other free-text field in this codebase already follows.</summary>
+    [Fact]
+    public async Task SubmitActionAsync_CommentWithMarkup_Fails_DoesNotPersistAction()
+    {
+        using var db = TestDbContext.CreateNew();
+        var employee = CreateEmployee();
+        db.Employees.Add(employee);
+        var theCase = CreateCaseForEmployee(employee.Id);
+        db.Cases.Add(theCase);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var result = await service.SubmitActionAsync(Guid.NewGuid(), employee.Id,
+            new SubmitCaseActionRequest("req-xss", theCase.Id, CaseActionType.Acknowledged, "<script>alert(1)</script>", DateTimeOffset.UtcNow), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(await db.AgentCaseActions.ToListAsync());
+        Assert.Empty(await db.CaseEvents.Where(e => e.CaseId == theCase.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task SubmitCommentAsync_CommentWithMarkup_Fails()
+    {
+        using var db = TestDbContext.CreateNew();
+        var employee = CreateEmployee();
+        db.Employees.Add(employee);
+        var theCase = CreateCaseForEmployee(employee.Id);
+        db.Cases.Add(theCase);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var result = await service.SubmitCommentAsync(Guid.NewGuid(), employee.Id,
+            new SubmitCaseCommentRequest("req-xss-2", theCase.Id, "<img src=x onerror=alert(1)>", DateTimeOffset.UtcNow), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task CompleteCaseAsync_CommentWithMarkup_Fails_DoesNotCompleteCase()
+    {
+        using var db = TestDbContext.CreateNew();
+        var employee = CreateEmployee();
+        db.Employees.Add(employee);
+        var theCase = CreateCaseForEmployee(employee.Id);
+        db.Cases.Add(theCase);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var result = await service.CompleteCaseAsync(Guid.NewGuid(), employee.Id, theCase.Id, CaseCompletionReason.HandledOutsideEmail, "<b>done</b>", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        var reloaded = await db.Cases.AsNoTracking().SingleAsync(c => c.Id == theCase.Id);
+        Assert.NotEqual(CaseWorkStatus.Completed, reloaded.WorkStatus);
+    }
 }

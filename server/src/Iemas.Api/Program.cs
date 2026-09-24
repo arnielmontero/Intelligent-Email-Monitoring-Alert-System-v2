@@ -129,6 +129,34 @@ builder.Services.AddAuthentication(options =>
                 context.Token = accessToken;
             }
             return Task.CompletedTask;
+        },
+        // §70 "Invalid after revocation," §84 "credential revocation" — found during this session's
+        // security re-verification pass that revoking an Agent's credential only blocked *future*
+        // re-authentication; an already-issued 15-minute JWT kept working for the rest of its
+        // lifetime with no revocation check anywhere in the request pipeline. This makes revocation
+        // effective on the Agent's very next request/hub call rather than up to 15 minutes later.
+        // One indexed Agents-table lookup per authenticated Agent request — bounded by Agent traffic
+        // volume (heartbeats/actions), not a per-CMS-user-request cost.
+        OnTokenValidated = async context =>
+        {
+            var agentIdClaim = context.Principal?.FindFirst("agent_id")?.Value;
+            if (!Guid.TryParse(agentIdClaim, out var agentId))
+            {
+                context.Fail("Missing or invalid agent_id claim.");
+                return;
+            }
+
+            var db = context.HttpContext.RequestServices.GetRequiredService<IAppDbContext>();
+            var isActive = await db.Agents
+                .Where(a => a.Id == agentId)
+                .Select(a => a.RegistrationStatus == Iemas.Domain.Agents.AgentRegistrationStatus.Approved
+                             && a.Credential != null && a.Credential.RevokedAt == null)
+                .FirstOrDefaultAsync(context.HttpContext.RequestAborted);
+
+            if (!isActive)
+            {
+                context.Fail("Agent credential has been revoked or is no longer approved.");
+            }
         }
     };
 });

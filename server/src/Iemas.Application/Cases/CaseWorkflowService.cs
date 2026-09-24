@@ -277,6 +277,14 @@ public class CaseWorkflowService
     /// <summary>Requirements §48 — completing a Case requires a reason; recorded as a history event, not a destructive edit.</summary>
     public async Task<Result<bool>> CompleteAsync(Guid caseId, CompleteCaseRequest request, CancellationToken cancellationToken)
     {
+        // §84 write-boundary input validation — found missing during this session's security
+        // re-verification pass (CompletionComment was the one free-text Case field with no
+        // InputSanitizer call, unlike every other free-text field this session/edb11cc covered).
+        if (!string.IsNullOrEmpty(request.Comment) && Iemas.Application.Common.Security.InputSanitizer.ValidateFreeText("Completion comment", request.Comment) is { } sanitizeError)
+        {
+            return Result<bool>.Failure(sanitizeError);
+        }
+
         var targetCase = await _db.Cases.FirstOrDefaultAsync(c => c.Id == caseId, cancellationToken);
         if (targetCase is null)
         {
