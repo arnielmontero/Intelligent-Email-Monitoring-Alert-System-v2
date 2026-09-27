@@ -5,6 +5,8 @@ using Iemas.Domain.Cases;
 using Iemas.Domain.Email;
 using Iemas.Domain.Escalations;
 using Iemas.Domain.Identity;
+using Iemas.Domain.Notifications;
+using Iemas.Domain.Operations;
 using Iemas.Domain.Reminders;
 using Microsoft.EntityFrameworkCore;
 
@@ -49,6 +51,10 @@ public interface IAppDbContext
     DbSet<EscalationGroup> EscalationGroups { get; }
     DbSet<EscalationGroupMember> EscalationGroupMembers { get; }
     DbSet<EscalationEvent> EscalationEvents { get; }
+    DbSet<NotificationTemplate> NotificationTemplates { get; }
+    DbSet<Notification> Notifications { get; }
+    DbSet<EmergencyPauseControl> EmergencyPauseControls { get; }
+    DbSet<SystemSetting> SystemSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

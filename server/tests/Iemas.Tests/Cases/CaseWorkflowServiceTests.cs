@@ -1,3 +1,4 @@
+using Iemas.Application.Notifications;
 using Iemas.Application.Cases;
 using Iemas.Application.Cases.Dtos;
 using Iemas.Application.Common.Interfaces;
@@ -104,7 +105,7 @@ public class CaseWorkflowServiceTests
         await db.SaveChangesAsync();
 
         var dispatcher = new FakeAgentNotificationDispatcher();
-        var service = new CaseWorkflowService(db, new CaseMatchingService(db), new ReminderSchedulingService(db), dispatcher);
+        var service = new CaseWorkflowService(db, new CaseMatchingService(db), new ReminderSchedulingService(db), new NotificationService(db, dispatcher));
         var outcome = await service.ProcessOneAsync(message.Id, CancellationToken.None);
 
         Assert.Equal(CaseWorkflowService.CaseProcessOutcome.Created, outcome);
@@ -132,7 +133,7 @@ public class CaseWorkflowServiceTests
         await db.SaveChangesAsync();
 
         var dispatcher = new FakeAgentNotificationDispatcher();
-        var service = new CaseWorkflowService(db, new CaseMatchingService(db), new ReminderSchedulingService(db), dispatcher);
+        var service = new CaseWorkflowService(db, new CaseMatchingService(db), new ReminderSchedulingService(db), new NotificationService(db, dispatcher));
         await service.ProcessOneAsync(message.Id, CancellationToken.None);
         dispatcher.Sent.Clear();
 

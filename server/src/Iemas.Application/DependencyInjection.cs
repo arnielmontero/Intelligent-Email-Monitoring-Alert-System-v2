@@ -9,9 +9,13 @@ using Iemas.Application.Departments;
 using Iemas.Application.EmailAccounts;
 using Iemas.Application.EmailClassification;
 using Iemas.Application.EmailIntake;
+using Iemas.Application.EmployeeActivity;
 using Iemas.Application.Employees;
 using Iemas.Application.Escalations;
+using Iemas.Application.Notifications;
+using Iemas.Application.Operations;
 using Iemas.Application.Reminders;
+using Iemas.Application.Users;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Iemas.Application;
@@ -47,6 +51,12 @@ public static class DependencyInjection
         services.AddScoped<EscalationQueryService>();
         services.AddScoped<AuditQueryService>();
         services.AddScoped<DashboardService>();
+        services.AddScoped<NotificationService>();
+        services.AddScoped<NotificationAdminService>();
+        services.AddScoped<EmergencyPauseService>();
+        services.AddScoped<SystemSettingsService>();
+        services.AddScoped<UserManagementService>();
+        services.AddScoped<EmployeeActivityQueryService>();
         return services;
     }
 }

@@ -6,6 +6,8 @@ using Iemas.Domain.Cases;
 using Iemas.Domain.Email;
 using Iemas.Domain.Escalations;
 using Iemas.Domain.Identity;
+using Iemas.Domain.Notifications;
+using Iemas.Domain.Operations;
 using Iemas.Domain.Reminders;
 using Microsoft.EntityFrameworkCore;
 
@@ -57,6 +59,10 @@ public class TestDbContext : DbContext, IAppDbContext
     public DbSet<EscalationGroup> EscalationGroups => Set<EscalationGroup>();
     public DbSet<EscalationGroupMember> EscalationGroupMembers => Set<EscalationGroupMember>();
     public DbSet<EscalationEvent> EscalationEvents => Set<EscalationEvent>();
+    public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<EmergencyPauseControl> EmergencyPauseControls => Set<EmergencyPauseControl>();
+    public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

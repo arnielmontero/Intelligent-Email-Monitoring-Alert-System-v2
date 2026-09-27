@@ -2,7 +2,9 @@ using System.Diagnostics;
 using Iemas.Application.Common.Interfaces;
 using Iemas.Application.Common.Providers;
 using Iemas.Application.EmailIntake.Dtos;
+using Iemas.Application.Operations;
 using Iemas.Domain.Email;
+using Iemas.Domain.Operations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -43,6 +45,13 @@ public class EmailIntakeService
     /// </summary>
     public async Task<List<IntakeRunResult>> RunAllAsync(CancellationToken cancellationToken)
     {
+        // §91 Pause Email Processing — mail stays on the server and is fetched after resume.
+        if (await _db.IsPausedAsync(PauseControl.EmailProcessing, cancellationToken))
+        {
+            _logger.LogInformation("Email intake skipped: Email Processing is paused (Emergency Pause)");
+            return new List<IntakeRunResult>();
+        }
+
         var accountIds = await _db.EmailAccounts
             .Where(a => a.Purpose == EmailAccountPurpose.Inbound && a.IsActive && a.MonitoringEnabled)
             .Select(a => a.Id)
@@ -63,6 +72,11 @@ public class EmailIntakeService
     public async Task<IntakeRunResult> RunForAccountAsync(Guid emailAccountId, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
+
+        if (await _db.IsPausedAsync(PauseControl.EmailProcessing, cancellationToken))
+        {
+            return new IntakeRunResult(emailAccountId, false, 0, 0, 0, 0, "Email Processing is paused (Emergency Pause).", stopwatch.ElapsedMilliseconds);
+        }
 
         var account = await _db.EmailAccounts
             .Include(a => a.Credential)

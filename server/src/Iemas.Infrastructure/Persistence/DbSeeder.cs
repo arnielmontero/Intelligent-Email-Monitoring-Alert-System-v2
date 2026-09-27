@@ -1,6 +1,8 @@
 using Iemas.Application.Common.Interfaces;
 using Iemas.Domain.Ai;
+using Iemas.Application.Notifications;
 using Iemas.Domain.Identity;
+using Iemas.Domain.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -49,6 +51,18 @@ public static class DbSeeder
         }
 
         await SeedAiDefaultsAsync(db, configuration);
+        await SeedNotificationTemplatesAsync(db);
+    }
+
+    /// <summary>§51/§52 — the six predefined notification messages, editable afterwards in the CMS. Existing rows are never overwritten.</summary>
+    private static async Task SeedNotificationTemplatesAsync(AppDbContext db)
+    {
+        var existing = await db.NotificationTemplates.Select(t => t.Type).ToListAsync();
+        foreach (var type in Enum.GetValues<NotificationType>().Where(t => !existing.Contains(t)))
+        {
+            db.NotificationTemplates.Add(NotificationTemplateDefaults.For(type));
+        }
+        await db.SaveChangesAsync();
     }
 
     /// <summary>

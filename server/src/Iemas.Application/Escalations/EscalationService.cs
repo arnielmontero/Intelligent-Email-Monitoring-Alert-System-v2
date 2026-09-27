@@ -1,9 +1,13 @@
 using System.Diagnostics;
 using Iemas.Application.Common.Interfaces;
 using Iemas.Application.Escalations.Dtos;
+using Iemas.Application.Notifications;
+using Iemas.Application.Operations;
 using Iemas.Domain.Cases;
 using Iemas.Domain.Escalations;
 using Iemas.Domain.Identity;
+using Iemas.Domain.Notifications;
+using Iemas.Domain.Operations;
 using Iemas.Domain.Reminders;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,10 +30,12 @@ namespace Iemas.Application.Escalations;
 public class EscalationService
 {
     private readonly IAppDbContext _db;
+    private readonly NotificationService? _notificationService;
 
-    public EscalationService(IAppDbContext db)
+    public EscalationService(IAppDbContext db, NotificationService? notificationService = null)
     {
         _db = db;
+        _notificationService = notificationService;
     }
 
     /// <summary>
@@ -41,6 +47,11 @@ public class EscalationService
     public async Task<EscalationRunResult> RunAsync(int batchSize, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
+
+        if (await _db.IsPausedAsync(PauseControl.Escalations, cancellationToken))
+        {
+            return new EscalationRunResult(0, 0, 0, 0, 0, stopwatch.ElapsedMilliseconds);
+        }
 
         // Candidates: Cases with at least one Sent reminder (the Reminder→Escalation trigger
         // requires a reminder count) that are not yet resolved. The recheck inside EvaluateCaseAsync
@@ -104,7 +115,7 @@ public class EscalationService
                 "A verified reply has resolved the reply requirement.", cancellationToken);
         }
 
-        var policy = await ResolvePolicyAsync(targetCase, cancellationToken);
+        var policy = await ResolvePolicyAsync(_db, targetCase, cancellationToken);
         if (policy is null)
         {
             return await RecordSkipAsync(caseId, null, null, EscalationSkipReason.NoApplicablePolicy, "No enabled Escalation Policy applies to this Case.", cancellationToken);
@@ -194,7 +205,15 @@ public class EscalationService
         }
 
         var triggerDetail = $"Reminder threshold {policy.TriggerReminderCount} reached ({sentReminderCount} sent); grace period and level delay elapsed.";
-        return await RecordEventAsync(targetCase, policy, level, EscalationOutcome.Executed, recipient, triggerDetail, cancellationToken, trigger: triggerDetail);
+        var outcome = await RecordEventAsync(targetCase, policy, level, EscalationOutcome.Executed, recipient, triggerDetail, cancellationToken, trigger: triggerDetail);
+
+        // §52 — the owning employee is told the Case escalated; ownership itself is unchanged (§64).
+        if (outcome == EscalationOutcome.Executed && _notificationService is not null)
+        {
+            await _notificationService.SendForCaseAsync(
+                NotificationType.Escalation, targetCase, AgentPushCommandType.ShowNotification, sentReminderCount, cancellationToken);
+        }
+        return outcome;
     }
 
     /// <summary>
@@ -302,17 +321,17 @@ public class EscalationService
     }
 
     /// <summary>§57 policy resolution — profile-scoped policy takes precedence over the default, same precedent as Phase 8's ReminderPolicy resolution. Category/Priority further narrow a profile-scoped match when the policy specifies them.</summary>
-    private async Task<EscalationPolicy?> ResolvePolicyAsync(Case targetCase, CancellationToken cancellationToken)
+    internal static async Task<EscalationPolicy?> ResolvePolicyAsync(IAppDbContext db, Case targetCase, CancellationToken cancellationToken)
     {
-        var caseEmailMessageIds = _db.CaseEmails.Where(ce => ce.CaseId == targetCase.Id).Select(ce => ce.EmailMessageId);
-        var classification = await _db.EmailClassifications.AsNoTracking()
+        var caseEmailMessageIds = db.CaseEmails.Where(ce => ce.CaseId == targetCase.Id).Select(ce => ce.EmailMessageId);
+        var classification = await db.EmailClassifications.AsNoTracking()
             .Where(c => caseEmailMessageIds.Contains(c.EmailMessageId))
             .Select(c => new { c.ClassificationProfileId, c.Category, c.Priority })
             .FirstOrDefaultAsync(cancellationToken);
 
         if (classification?.ClassificationProfileId is Guid profileId)
         {
-            var scopedCandidates = await _db.EscalationPolicies.Include(p => p.Levels)
+            var scopedCandidates = await db.EscalationPolicies.Include(p => p.Levels)
                 .Where(p => p.Enabled && p.ClassificationProfileId == profileId)
                 .ToListAsync(cancellationToken);
 
@@ -322,7 +341,7 @@ public class EscalationService
             if (match is not null) return match;
         }
 
-        return await _db.EscalationPolicies.Include(p => p.Levels).FirstOrDefaultAsync(p => p.Enabled && p.IsDefault, cancellationToken);
+        return await db.EscalationPolicies.Include(p => p.Levels).FirstOrDefaultAsync(p => p.Enabled && p.IsDefault, cancellationToken);
     }
 
     private static bool MatchesCategory(string categoriesCsv, string? category)

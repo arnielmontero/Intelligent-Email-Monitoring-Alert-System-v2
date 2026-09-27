@@ -102,6 +102,32 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
         ClockSkew = TimeSpan.FromSeconds(30)
     };
+    // §84 credential revocation — a deactivated CMS user is rejected on their next request rather
+    // than keeping access until their already-issued access token expires.
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var userIdClaim = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                              ?? context.Principal?.FindFirst("sub")?.Value;
+            if (!Guid.TryParse(userIdClaim, out var userId))
+            {
+                context.Fail("Missing or invalid user id claim.");
+                return;
+            }
+
+            var db = context.HttpContext.RequestServices.GetRequiredService<IAppDbContext>();
+            var isActive = await db.Users
+                .Where(u => u.Id == userId)
+                .Select(u => u.IsActive)
+                .FirstOrDefaultAsync(context.HttpContext.RequestAborted);
+
+            if (!isActive)
+            {
+                context.Fail("User account is inactive.");
+            }
+        }
+    };
 })
 .AddJwtBearer(AgentScheme, options =>
 {
@@ -295,10 +321,8 @@ app.MapHub<AgentHub>("/hubs/agent").RequireAuthorization(RequireAgentPolicy);
 // every startup. All state the job depends on (EmailSyncState watermark, EmailAccount config)
 // lives in PostgreSQL, not in the job/server process, so a server restart loses no progress.
 //
-// Emergency Pause (§91 "Pause Email Processing") is not yet built as a CMS-driven control
-// (deferred to Phase 10); EmailIntake__Enabled is a config-level equivalent for now so intake
-// can still be stopped without a code change, and is called out in the tracker as a forward
-// reference to the real Phase 10 control.
+// Emergency Pause (§91) is a runtime CMS control checked by each engine at the start of every run;
+// EmailIntake__Enabled remains as a deploy-time switch that stops the job from being registered.
 //
 // Phase 10 hardening: routed through RecurringJobGuards, same [DisableConcurrentExecution] reason
 // as the Reminder/Escalation jobs below — this is the tightest interval of any job (2 minutes), so

@@ -26,7 +26,7 @@ public class AgentNotificationDispatcher : IAgentNotificationDispatcher
         _logger = logger;
     }
 
-    public async Task NotifyEmployeeAsync(Guid employeeId, AgentPushCommand command, CancellationToken cancellationToken)
+    public async Task<int> NotifyEmployeeAsync(Guid employeeId, AgentPushCommand command, CancellationToken cancellationToken)
     {
         // §13 Option A (All Active Agents) — every Agent belonging to this Employee that is
         // currently marked Connected receives the push. A Disconnected Agent is skipped here, not
@@ -41,7 +41,7 @@ public class AgentNotificationDispatcher : IAgentNotificationDispatcher
 
         if (agentIds.Count == 0)
         {
-            return;
+            return 0;
         }
 
         var payload = new
@@ -63,6 +63,7 @@ public class AgentNotificationDispatcher : IAgentNotificationDispatcher
             serverTimeUtc = DateTimeOffset.UtcNow,
         };
 
+        var delivered = 0;
         foreach (var agentId in agentIds)
         {
             try
@@ -71,6 +72,7 @@ public class AgentNotificationDispatcher : IAgentNotificationDispatcher
                 // by employee/email/IP. §8.2/§72 — "AgentCommand" is the one and only client method
                 // name; the payload is always this closed, typed shape, never an arbitrary command.
                 await _hubContext.Clients.User(agentId.ToString()).SendAsync("AgentCommand", payload, cancellationToken);
+                delivered++;
             }
             catch (Exception ex)
             {
@@ -79,5 +81,7 @@ public class AgentNotificationDispatcher : IAgentNotificationDispatcher
                 _logger.LogWarning(ex, "Failed to push {CommandType} to Agent {AgentId}", command.Type, agentId);
             }
         }
+
+        return delivered;
     }
 }

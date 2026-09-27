@@ -522,3 +522,113 @@ export interface SystemHealthDto {
   scheduledJobCount: number | null;
   processingJobCount: number | null;
 }
+
+// §51/§104 — Notifications (CASE MANAGEMENT nav).
+export interface NotificationTemplateDto {
+  type: string;
+  enabled: boolean;
+  title: string;
+  messageText: string;
+  isCustomized: boolean;
+  updatedByEmail: string | null;
+  updatedAt: string | null;
+}
+
+export interface NotificationTemplatesResponse {
+  templates: NotificationTemplateDto[];
+  supportedVariables: string[];
+}
+
+export interface NotificationDto {
+  id: string;
+  createdAt: string;
+  employeeId: string;
+  employeeName: string;
+  caseId: string | null;
+  caseNumber: string | null;
+  type: string;
+  status: string;
+  title: string;
+  message: string;
+  deliveredAgentCount: number;
+  sentAt: string | null;
+  acknowledgedAt: string | null;
+  failureReason: string | null;
+}
+
+// §85 — Users & Permissions (PEOPLE & DEVICES nav).
+export interface UserDto {
+  id: string;
+  email: string;
+  displayName: string;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  employeeId: string | null;
+  employeeName: string | null;
+  roles: string[];
+}
+
+export interface RoleDto {
+  name: string;
+  label: string;
+  description: string;
+  permissions: string[];
+}
+
+// §67 — Employee Activity (PEOPLE & DEVICES nav).
+export interface EmployeeActivityDto {
+  id: string;
+  occurredAt: string;
+  clientTimestamp: string;
+  employeeId: string;
+  employeeName: string;
+  caseId: string;
+  caseNumber: string;
+  caseSubject: string;
+  activity: string;
+  comment: string | null;
+  agentId: string;
+  agentName: string;
+}
+
+export interface EmployeeActivitySummaryDto {
+  employeeId: string;
+  employeeName: string;
+  isActive: boolean;
+  actionCount: number;
+  acknowledgedCount: number;
+  completedCount: number;
+  commentCount: number;
+  notificationCount: number;
+  notificationsAcknowledgedCount: number;
+  openCaseCount: number;
+  lastActivityAt: string | null;
+  connectedAgentCount: number;
+}
+
+// SYSTEM nav — System Settings and §91 Emergency Pause.
+export interface SystemSettingDto {
+  key: string;
+  group: string;
+  label: string;
+  description: string;
+  type: "Text" | "Integer" | "TimeZone";
+  value: string;
+  defaultValue: string;
+  isOverridden: boolean;
+  min: number | null;
+  max: number | null;
+  updatedByEmail: string | null;
+  updatedAt: string | null;
+}
+
+export interface PauseControlDto {
+  control: string;
+  label: string;
+  description: string;
+  isPaused: boolean;
+  reason: string | null;
+  changedByEmail: string | null;
+  changedAt: string | null;
+}

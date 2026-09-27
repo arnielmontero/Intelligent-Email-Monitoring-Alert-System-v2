@@ -2,10 +2,14 @@ using System.Diagnostics;
 using Iemas.Application.Cases.Dtos;
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Notifications;
+using Iemas.Application.Operations;
 using Iemas.Application.Reminders;
 using Iemas.Domain.Ai;
 using Iemas.Domain.Cases;
 using Iemas.Domain.Email;
+using Iemas.Domain.Notifications;
+using Iemas.Domain.Operations;
 using Microsoft.EntityFrameworkCore;
 
 namespace Iemas.Application.Cases;
@@ -30,23 +34,29 @@ public class CaseWorkflowService
     private readonly IAppDbContext _db;
     private readonly CaseMatchingService _matchingService;
     private readonly ReminderSchedulingService _reminderSchedulingService;
-    private readonly IAgentNotificationDispatcher? _dispatcher;
+    private readonly NotificationService? _notificationService;
 
     public CaseWorkflowService(
         IAppDbContext db,
         CaseMatchingService matchingService,
         ReminderSchedulingService reminderSchedulingService,
-        IAgentNotificationDispatcher? dispatcher = null)
+        NotificationService? notificationService = null)
     {
         _db = db;
         _matchingService = matchingService;
         _reminderSchedulingService = reminderSchedulingService;
-        _dispatcher = dispatcher;
+        _notificationService = notificationService;
     }
 
     public async Task<CaseRunResult> RunAsync(int batchSize, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
+
+        // §91 Pause Email Processing — classified messages simply wait; nothing is lost or deleted.
+        if (await _db.IsPausedAsync(PauseControl.EmailProcessing, cancellationToken))
+        {
+            return new CaseRunResult(0, 0, 0, 0, stopwatch.ElapsedMilliseconds);
+        }
 
         // §20 "Scheduled jobs must re-check current state" — the candidate set is read fresh
         // each run; a message picked up by RunAsync always re-validates its own state inside
@@ -201,18 +211,10 @@ public class CaseWorkflowService
         // by a new related customer email, is exactly the "New Email"/action-required moment §51-52
         // describes. Fires only after the above SaveChangesAsync already committed (§76 ordering);
         // best-effort, never blocks/fails this already-successful Case creation/update.
-        if ((outcome == CaseProcessOutcome.Created || outcome == CaseProcessOutcome.Reopened)
-            && _dispatcher is not null && targetCase.OwnerEmployeeId is Guid ownerEmployeeId)
+        if ((outcome == CaseProcessOutcome.Created || outcome == CaseProcessOutcome.Reopened) && _notificationService is not null)
         {
-            await _dispatcher.NotifyEmployeeAsync(
-                ownerEmployeeId,
-                new AgentPushCommand(
-                    AgentPushCommandType.ShowCase,
-                    targetCase.Id,
-                    targetCase.CaseNumber,
-                    "New Email",
-                    $"You have a new email from {targetCase.CustomerEmailAddress}: \"{targetCase.Subject}\". Please check."),
-                cancellationToken);
+            await _notificationService.SendForCaseAsync(
+                NotificationType.NewEmail, targetCase, AgentPushCommandType.ShowCase, null, cancellationToken);
         }
 
         return outcome;

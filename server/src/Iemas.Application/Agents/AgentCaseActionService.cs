@@ -3,6 +3,7 @@ using Iemas.Application.Cases;
 using Iemas.Application.Cases.Dtos;
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Notifications;
 using Iemas.Application.Common.Security;
 using Iemas.Application.Reminders;
 using Iemas.Domain.Agents;
@@ -132,6 +133,14 @@ public class AgentCaseActionService
                 targetCase.Id, actionRecord.Id, request.RequestedForUtc, cancellationToken);
         }
 
+        // §104 ACKNOWLEDGED — the notifications that prompted this acknowledgement are closed out.
+        if (request.ActionType == CaseActionType.Acknowledged
+            && await NotificationService.AcknowledgeForCaseAsync(_db, targetCase.Id, employeeId, cancellationToken) > 0)
+        {
+            targetCase.NotificationStatus = CaseNotificationStatus.Acknowledged;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         return Result<CaseActionResultDto>.Success(new CaseActionResultDto(
             targetCase.Id, targetCase.WorkStatus.ToString(), targetCase.ReplyStatus.ToString(), WasIdempotentReplay: false));
     }
@@ -160,7 +169,27 @@ public class AgentCaseActionService
             return Result<bool>.Failure("This Agent's employee does not own this Case.");
         }
 
-        return await _caseWorkflowService.CompleteAsync(caseId, new Cases.Dtos.CompleteCaseRequest(reason, comment), cancellationToken);
+        var result = await _caseWorkflowService.CompleteAsync(caseId, new Cases.Dtos.CompleteCaseRequest(reason, comment), cancellationToken);
+        if (!result.Succeeded)
+        {
+            return result;
+        }
+
+        // §67 Employee Activity — the completion endpoint carries no client request ID, so a
+        // server-generated one keeps the (AgentId, RequestId) unique index satisfied.
+        _db.AgentCaseActions.Add(new AgentCaseAction
+        {
+            RequestId = $"complete-{Guid.NewGuid():N}",
+            AgentId = agentId,
+            EmployeeId = employeeId,
+            CaseId = caseId,
+            ActionType = CaseActionType.MarkCompleted,
+            Comment = string.IsNullOrWhiteSpace(comment) ? $"Reason: {reason}" : $"Reason: {reason}. {comment}",
+            ClientTimestamp = DateTimeOffset.UtcNow,
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return result;
     }
 
     /// <summary>§47 — a standalone comment, not tied to a status-changing action.</summary>
@@ -212,6 +241,7 @@ public class AgentCaseActionService
             ActionType = CaseActionType.Acknowledged, // comments carry no ActionType of their own; recorded distinctly via CaseEventType.EmployeeComment above
             Comment = request.Comment,
             ClientTimestamp = request.ClientTimestamp,
+            CaseEventId = caseEvent.Id,
         });
 
         try

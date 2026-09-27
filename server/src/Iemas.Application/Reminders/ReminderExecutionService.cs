@@ -1,7 +1,12 @@
 using System.Diagnostics;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Escalations;
+using Iemas.Application.Notifications;
+using Iemas.Application.Operations;
 using Iemas.Application.Reminders.Dtos;
 using Iemas.Domain.Cases;
+using Iemas.Domain.Notifications;
+using Iemas.Domain.Operations;
 using Iemas.Domain.Reminders;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,11 +20,8 @@ namespace Iemas.Application.Reminders;
 /// Case.WorkStatus/ReplyStatus — those remain owned by CaseWorkflowService/ReplyVerificationService/
 /// AgentCaseActionService respectively.
 ///
-/// Actual delivery (push to the Windows Agent) is now wired to the real-time channel added for
-/// the Windows Client Agent build (§72 SHOW_REMINDER via <see cref="IAgentNotificationDispatcher"/>
-/// → IHubContext&lt;AgentHub&gt;). §51 Notification Templates (editable message text/variables) are
-/// still not built — this sends a fixed, code-defined message, not a CMS-configurable template — so
-/// message content customization remains later-phase territory. "Sent" still means "the recheck
+/// Delivery goes through <see cref="NotificationService"/>: the §51 CMS-editable template is
+/// rendered, recorded as a Notification (§104), then pushed as §72 SHOW_REMINDER. "Sent" still means "the recheck
 /// passed and the reminder was durably marked ready," recorded via Case.NotificationStatus and the
 /// CaseEvent trail (the Reminder row's own Status is the authoritative record) — delivery is a
 /// best-effort push on top of that already-committed state, never a precondition for it (§76: the
@@ -31,13 +33,13 @@ public class ReminderExecutionService
 
     private readonly IAppDbContext _db;
     private readonly ReminderSchedulingService _schedulingService;
-    private readonly IAgentNotificationDispatcher? _dispatcher;
+    private readonly NotificationService? _notificationService;
 
-    public ReminderExecutionService(IAppDbContext db, ReminderSchedulingService schedulingService, IAgentNotificationDispatcher? dispatcher = null)
+    public ReminderExecutionService(IAppDbContext db, ReminderSchedulingService schedulingService, NotificationService? notificationService = null)
     {
         _db = db;
         _schedulingService = schedulingService;
-        _dispatcher = dispatcher;
+        _notificationService = notificationService;
     }
 
     /// <summary>
@@ -51,6 +53,14 @@ public class ReminderExecutionService
     {
         var stopwatch = Stopwatch.StartNew();
         var now = DateTimeOffset.UtcNow;
+
+        // §91 — reminders also hold while Agent Notifications are paused, so a reminder the
+        // employee could never see is not counted as sent toward an escalation threshold.
+        if (await _db.IsPausedAsync(PauseControl.Reminders, cancellationToken)
+            || await _db.IsPausedAsync(PauseControl.AgentNotifications, cancellationToken))
+        {
+            return new ReminderRunResult(0, 0, 0, 0, 0, 0, stopwatch.ElapsedMilliseconds);
+        }
 
         var candidateIds = await _db.Reminders
             .Where(r => r.Status == ReminderStatus.Scheduled && r.ScheduledForUtc <= now)
@@ -156,30 +166,40 @@ public class ReminderExecutionService
     }
 
     /// <summary>
-    /// §72 SHOW_REMINDER push via <see cref="IAgentNotificationDispatcher"/> — best-effort only. A
-    /// missing dispatcher (unit tests that don't provide one) or an Agent with no live connection
-    /// both still return true: "delivery succeeded" here means "the durable Sent decision is final,"
-    /// not "a human definitely saw a toast" — an offline Agent gets caught up on its next SYNC
-    /// (§74/§75), which is exactly why this never blocks/fails the Reminder's own terminal state.
+    /// §72 SHOW_REMINDER push via the §51 notification templates — best-effort only. "Delivery
+    /// succeeded" means the durable Sent decision is final, not that a human saw a toast: an
+    /// offline Agent catches up on its next SYNC (§74/§75), so this never blocks the Reminder's
+    /// own terminal state.
     /// </summary>
     private async Task<bool> TryDeliverAsync(Reminder reminder, Case targetCase, CancellationToken cancellationToken)
     {
-        if (_dispatcher is null || targetCase.OwnerEmployeeId is not Guid ownerEmployeeId)
+        if (_notificationService is null)
         {
             return true;
         }
 
-        await _dispatcher.NotifyEmployeeAsync(
-            ownerEmployeeId,
-            new AgentPushCommand(
-                AgentPushCommandType.ShowReminder,
-                targetCase.Id,
-                targetCase.CaseNumber,
-                "Reminder",
-                $"You haven't replied to \"{targetCase.Subject}\" from {targetCase.CustomerEmailAddress} yet. Please reply."),
-            cancellationToken);
+        var sentSoFar = await _db.Reminders.CountAsync(r => r.CaseId == targetCase.Id && r.Status == ReminderStatus.Sent, cancellationToken);
+        var thisReminderCount = sentSoFar + 1;
+        var type = await ChooseNotificationTypeAsync(reminder, targetCase, sentSoFar, thisReminderCount, cancellationToken);
 
+        await _notificationService.SendForCaseAsync(type, targetCase, AgentPushCommandType.ShowReminder, thisReminderCount, cancellationToken);
         return true;
+    }
+
+    /// <summary>§52 — the reminder that reaches the escalation policy's trigger count carries the Escalation Warning instead of a plain reminder.</summary>
+    private async Task<NotificationType> ChooseNotificationTypeAsync(
+        Reminder reminder, Case targetCase, int sentSoFar, int thisReminderCount, CancellationToken cancellationToken)
+    {
+        if (reminder.Trigger != ReminderTrigger.EmployeeRequested)
+        {
+            var escalationPolicy = await EscalationService.ResolvePolicyAsync(_db, targetCase, cancellationToken);
+            if (escalationPolicy is not null && thisReminderCount == escalationPolicy.TriggerReminderCount)
+            {
+                return NotificationType.EscalationWarning;
+            }
+        }
+
+        return sentSoFar == 0 ? NotificationType.FirstReminder : NotificationType.Reminder;
     }
 
     private async Task<ExecutionOutcome> ResolveAsync(

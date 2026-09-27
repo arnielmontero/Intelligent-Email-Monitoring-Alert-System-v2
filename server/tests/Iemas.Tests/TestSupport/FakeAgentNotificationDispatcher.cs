@@ -7,9 +7,12 @@ public class FakeAgentNotificationDispatcher : IAgentNotificationDispatcher
 {
     public List<(Guid EmployeeId, AgentPushCommand Command)> Sent { get; } = new();
 
-    public Task NotifyEmployeeAsync(Guid employeeId, AgentPushCommand command, CancellationToken cancellationToken)
+    /// <summary>How many connected Agents each push reports reaching; 0 simulates an employee with no Agent online.</summary>
+    public int ConnectedAgentCount { get; set; } = 1;
+
+    public Task<int> NotifyEmployeeAsync(Guid employeeId, AgentPushCommand command, CancellationToken cancellationToken)
     {
         Sent.Add((employeeId, command));
-        return Task.CompletedTask;
+        return Task.FromResult(ConnectedAgentCount);
     }
 }

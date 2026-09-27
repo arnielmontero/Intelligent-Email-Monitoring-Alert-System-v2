@@ -3,7 +3,6 @@ import AppShell from "./components/layout/AppShell";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
-import PlaceholderPage from "./pages/PlaceholderPage";
 import EmployeesPage from "./pages/employees/EmployeesPage";
 import EmailAccountsPage from "./pages/email-accounts/EmailAccountsPage";
 import EmailMonitoringPage from "./pages/email-monitoring/EmailMonitoringPage";
@@ -21,14 +20,11 @@ import ReplyVerificationPage from "./pages/reply-verification/ReplyVerificationP
 import SystemHealthPage from "./pages/system-health/SystemHealthPage";
 import OutboundEmailPage from "./pages/outbound-email/OutboundEmailPage";
 import CaseHistoryPage from "./pages/case-history/CaseHistoryPage";
-
-const PLACEHOLDER_ROUTES: Array<{ path: string; title: string }> = [
-  { path: "/notifications", title: "Notifications" },
-  { path: "/users", title: "Users & Permissions" },
-  { path: "/employee-activity", title: "Employee Activity" },
-  { path: "/system-settings", title: "System Settings" },
-  { path: "/maintenance", title: "Maintenance / Emergency Pause" },
-];
+import NotificationsPage from "./pages/notifications/NotificationsPage";
+import UsersPage from "./pages/users/UsersPage";
+import EmployeeActivityPage from "./pages/employee-activity/EmployeeActivityPage";
+import SystemSettingsPage from "./pages/system-settings/SystemSettingsPage";
+import MaintenancePage from "./pages/maintenance/MaintenancePage";
 
 export default function App() {
   return (
@@ -55,9 +51,11 @@ export default function App() {
           <Route path="/system-health" element={<SystemHealthPage />} />
           <Route path="/outbound-email" element={<OutboundEmailPage />} />
           <Route path="/case-history" element={<CaseHistoryPage />} />
-          {PLACEHOLDER_ROUTES.map((route) => (
-            <Route key={route.path} path={route.path} element={<PlaceholderPage title={route.title} />} />
-          ))}
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/users" element={<UsersPage />} />
+          <Route path="/employee-activity" element={<EmployeeActivityPage />} />
+          <Route path="/system-settings" element={<SystemSettingsPage />} />
+          <Route path="/maintenance" element={<MaintenancePage />} />
         </Route>
       </Route>
 

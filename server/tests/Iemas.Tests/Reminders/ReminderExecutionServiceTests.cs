@@ -1,3 +1,4 @@
+using Iemas.Application.Notifications;
 using Iemas.Application.Common.Interfaces;
 using Iemas.Application.Reminders;
 using Iemas.Domain.Cases;
@@ -100,7 +101,7 @@ public class ReminderExecutionServiceTests
         await db.SaveChangesAsync();
 
         var dispatcher = new FakeAgentNotificationDispatcher();
-        var service = new ReminderExecutionService(db, new ReminderSchedulingService(db), dispatcher);
+        var service = new ReminderExecutionService(db, new ReminderSchedulingService(db), new NotificationService(db, dispatcher));
         var result = await service.RunAsync(10, CancellationToken.None);
 
         Assert.Equal(1, result.Sent);
@@ -124,7 +125,7 @@ public class ReminderExecutionServiceTests
         await db.SaveChangesAsync();
 
         var dispatcher = new FakeAgentNotificationDispatcher();
-        var service = new ReminderExecutionService(db, new ReminderSchedulingService(db), dispatcher);
+        var service = new ReminderExecutionService(db, new ReminderSchedulingService(db), new NotificationService(db, dispatcher));
         var result = await service.RunAsync(10, CancellationToken.None);
 
         Assert.Equal(1, result.Cancelled);

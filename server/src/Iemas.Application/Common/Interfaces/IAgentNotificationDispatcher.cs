@@ -15,8 +15,8 @@ namespace Iemas.Application.Common.Interfaces;
 /// </summary>
 public interface IAgentNotificationDispatcher
 {
-    /// <summary>Pushes a §72 command to every currently-connected Agent for the given Employee. Best-effort; does not throw on delivery failure.</summary>
-    Task NotifyEmployeeAsync(Guid employeeId, AgentPushCommand command, CancellationToken cancellationToken);
+    /// <summary>Pushes a §72 command to every currently-connected Agent for the given Employee. Best-effort; does not throw on delivery failure. Returns how many Agents the push was handed to.</summary>
+    Task<int> NotifyEmployeeAsync(Guid employeeId, AgentPushCommand command, CancellationToken cancellationToken);
 }
 
 /// <summary>§72 command payload — deliberately just the closed set of fields the Agent needs to render a toast/update its Action Required list. Never a free-form/arbitrary payload (§8.2 "no arbitrary remote command execution").</summary>

@@ -98,6 +98,36 @@ Remaining, not closed this session: Notifications, Users & Permissions (no user-
 subsystem exists at all — only the bootstrap admin), Employee Activity, System Settings,
 Maintenance/Emergency Pause. See the final report for the complete honest gap list.
 
+### 2026-09-25 — closed the last 5 stub nav areas (§86 nav now has no PlaceholderPage)
+
+Migration `20260925071555_AddNotificationsUsersOperations` (4 new tables). 412/412 unit tests pass
+(~45 new); 33/33 live API checks passed against the redeployed Docker stack through Caddy.
+
+- **Emergency Pause (§91)** — 5 controls, checked by each engine at the start of every run
+  (intake, case workflow, classification, reminders, escalations). Reason required to pause;
+  every change audited and attributed. Reminders also hold while Agent Notifications are paused,
+  so an unseen reminder never counts toward an escalation threshold. Live-verified: intake tick
+  went from ~37s to a 2ms skip while paused. CMS shows a banner on every page while anything is paused.
+- **Notifications (§51-53, §104)** — the 6 predefined templates with the 9 §51 variables are now
+  CMS-editable and drive the real pushes: New Email (case created/reopened), First Reminder,
+  Reminder, Escalation Warning (the reminder that reaches the escalation policy's trigger count),
+  Escalation (level executed). Each send is recorded (Sent / Queued when no Agent is online /
+  Cancelled when paused); an employee's Acknowledged action acknowledges that Case's notifications.
+  **Not done:** the Overdue template is editable but never fires — no engine moves Cases to Overdue.
+- **Users & Permissions (§85)** — create/edit/activate/deactivate users, assign roles, reset
+  password, change own password (rate-limited). Guards: only a Super Administrator can grant that
+  role or modify such an account; no self-deactivation; the last active Super Administrator cannot
+  be removed. Deactivation and password resets revoke refresh tokens, and a deactivated user's
+  still-valid access token is now rejected on its next request (live-verified 401).
+- **Employee Activity (§67)** — per-employee summary and action feed. Two fixes found while building
+  it: Agent comments were saved without a link to their Case History event (backfilled in the
+  migration), and Agent-side Case completion left no employee-activity record at all.
+- **System Settings** — organization name, default time zone (used for `{{received_at}}`),
+  minimum password length (enforced), and §90 retention periods. **Retention values are recorded
+  policy only — no purge job acts on them yet.**
+- CMS pages not exercised in a browser this session (no browser automation available); verified by
+  type-check/build, API checks, and confirming the deployed bundle contains the new pages.
+
 - Test count: 363 backend tests passing (up from 341 at the start of this whole 2026-09-24 session), 0 regressions throughout.
 
 ### Current Focus — Phase 10 Hardening (session in progress, 2026-09-23)

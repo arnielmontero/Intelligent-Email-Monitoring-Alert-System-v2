@@ -2,8 +2,10 @@ using System.Diagnostics;
 using Iemas.Application.Common.Ai;
 using Iemas.Application.Common.Interfaces;
 using Iemas.Application.EmailClassification.Dtos;
+using Iemas.Application.Operations;
 using Iemas.Domain.Ai;
 using Iemas.Domain.Email;
+using Iemas.Domain.Operations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -46,6 +48,13 @@ public class EmailClassificationService
     public async Task<ClassificationRunResult> RunAsync(int batchSize, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
+
+        // §91 Pause AI Classification — messages stay PendingClassification until resume.
+        if (await _db.IsPausedAsync(PauseControl.AiClassification, cancellationToken))
+        {
+            _logger.LogInformation("Email classification skipped: AI Classification is paused (Emergency Pause)");
+            return new ClassificationRunResult(0, 0, 0, 0, 0, stopwatch.ElapsedMilliseconds);
+        }
 
         var messageIds = await _db.EmailMessages
             .Where(m => m.ProcessingStatus == EmailProcessingStatus.PendingClassification)
