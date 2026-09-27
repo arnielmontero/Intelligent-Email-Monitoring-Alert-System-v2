@@ -12,6 +12,7 @@ web-cms/.vite/
 # Windows Client (.NET)
 windows-client/**/bin/
 windows-client/**/obj/
+windows-client/dist/
 
 # Logs
 server/**/logs/

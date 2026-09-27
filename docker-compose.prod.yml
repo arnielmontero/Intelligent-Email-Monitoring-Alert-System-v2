@@ -5,11 +5,13 @@
 #
 # What this changes versus the base (dev) file:
 #   - Removes direct host port exposure for postgres/api — Caddy is the only
-#     public entry point now, terminating TLS and reverse-proxying to both.
-#   - Adds the `web` service (CMS, built and served via nginx) and the `proxy`
-#     service (Caddy — automatic HTTPS via Let's Encrypt when DOMAIN is a
-#     real, publicly resolvable DNS name; see deploy/Caddyfile for the
-#     domain-less HTTP fallback).
+#     public entry point for the API now, terminating TLS and reverse-proxying
+#     to it.
+#   - Adds the `web` service (CMS, built and served via nginx, also reachable
+#     directly on host port ${WEB_PORT:-8091} in addition to via Caddy) and
+#     the `proxy` service (Caddy — automatic HTTPS via Let's Encrypt when
+#     DOMAIN is a real, publicly resolvable DNS name; see deploy/Caddyfile for
+#     the domain-less HTTP fallback).
 #   - CORS origin defaults to the same DOMAIN so the CMS's own served origin
 #     is what's allowed to call the API, instead of localhost:5173.
 
@@ -32,6 +34,8 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    ports:
+      - "${WEB_PORT:-8091}:80"
 
   proxy:
     image: caddy:2-alpine
