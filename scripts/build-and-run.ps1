@@ -40,14 +40,38 @@ function Invoke-Docker([string[]]$arguments, [switch]$Quiet) {
     return $code
 }
 
+# HTTP status of a local address, retried for a few seconds while a container is still starting (0 = no answer).
+# Uses Windows' curl.exe and ignores any proxy configured in Windows, which would otherwise receive the requests
+# for localhost on office PCs. HTTPS certificates aren't validated (-k): locally the proxy has its own certificate.
 function Get-HttpStatus([string]$url) {
-    try {
-        $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0
-        return [int]$response.StatusCode
-    } catch {
-        if ($_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
-        return 0
+    $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+    $code = 0
+    $failure = ''
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        if (Test-Path $curl) {
+            $previous = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            $output = & $curl -sk --noproxy '*' -o NUL -w '%{http_code}' --max-time 10 $url 2>&1
+            $ErrorActionPreference = $previous
+            # curl prints the three-digit status, or 000 when nothing answered.
+            $text = "$output".Trim()
+            $code = if ($text -match '^\d{3}$') { [int]$text } else { 0 }
+            if ($code -eq 0) { $failure = "curl exit code $LASTEXITCODE $text" }
+        } else {
+            try {
+                $request = [System.Net.WebRequest]::Create($url)
+                $request.Proxy = New-Object System.Net.WebProxy   # no proxy
+                $request.Timeout = 10000
+                $request.AllowAutoRedirect = $false
+                $response = $request.GetResponse(); $code = [int]$response.StatusCode; $response.Close()
+            } catch [System.Net.WebException] {
+                if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode } else { $code = 0; $failure = $_.Exception.Message }
+            }
+        }
+        if ($code -ne 0) { break }
+        Start-Sleep -Seconds 2
     }
+    if ($code -eq 0) { Add-Content -Path $log -Value "No answer from ${url}: $failure" }
+    return $code
 }
 
 Write-Host "IEMAS - build and start" -ForegroundColor White
@@ -218,15 +242,9 @@ if ($code -eq 200) { Ok "CMS opens at $cmsUrl" } else { Fail "CMS at $cmsUrl ans
 $code = Get-HttpStatus "$cmsUrl/api/v1/dashboard/summary"
 if ($code -eq 401) { Ok "CMS reaches the API" } else { Fail "CMS -> API answered $code (expected 401 before sign-in)" }
 
-# The proxy serves HTTPS (plain HTTP is redirected) with a local certificate on this PC, so the certificate isn't
-# validated (-k). Windows' own curl.exe is used; Windows PowerShell can't skip the check reliably.
-$curl = Join-Path $env:SystemRoot 'System32\curl.exe'
-if (Test-Path $curl) {
-    $code = (& $curl -sk -o NUL -w '%{http_code}' --max-time 10 "https://localhost:$proxyPort/" 2>$null)
-    if ($code -eq '200') { Ok "Proxy answers at https://localhost:$proxyPort" } else { Warn "Proxy at https://localhost:$proxyPort answered $code" }
-} else {
-    Warn "curl.exe not found, so the proxy at https://localhost:$proxyPort was not checked"
-}
+# The proxy serves HTTPS (plain HTTP is redirected).
+$code = Get-HttpStatus "https://localhost:$proxyPort/"
+if ($code -eq 200) { Ok "Proxy answers at https://localhost:$proxyPort" } else { Warn "Proxy at https://localhost:$proxyPort answered $code" }
 
 # Errors the API logged since this start (a failed database update would show here).
 $since = $started.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
