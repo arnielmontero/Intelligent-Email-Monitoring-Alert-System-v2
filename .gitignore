@@ -43,3 +43,6 @@ scripts/node_modules/
 
 # Database backups (contain real data, never commit)
 backups/
+
+# Build-IEMAS.bat run logs
+logs/
