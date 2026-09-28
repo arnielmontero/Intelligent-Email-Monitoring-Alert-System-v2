@@ -132,8 +132,8 @@ export default function UsersPage() {
     <div>
       <h1>Users &amp; Permissions</h1>
       <p style={mutedStyle}>
-        CMS sign-in accounts and their roles (§85). Separate from Employees (who own Cases) and Windows Agents (devices);
-        link a user to an employee record where they are the same person.
+        The people who can sign in to this CMS and what each role may do. Employees (who own Cases) and Windows Agents
+        (PCs) are managed separately; link a user to their employee record when they are the same person.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -264,5 +264,5 @@ export default function UsersPage() {
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const noticeStyle: React.CSSProperties = { background: "#166534", color: "#fff", padding: "8px 12px", borderRadius: 6, marginBottom: 16 };
 const panelStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, marginBottom: 24, background: "var(--color-surface)" };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px", verticalAlign: "top" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };

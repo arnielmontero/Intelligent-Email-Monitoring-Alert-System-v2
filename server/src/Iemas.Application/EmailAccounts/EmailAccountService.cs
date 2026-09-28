@@ -84,7 +84,8 @@ public class EmailAccountService
                 a.Credential != null,
                 a.LastTestedAt,
                 a.LastTestSucceeded,
-                a.LastTestError));
+                a.LastTestError,
+                a.ProcessEmailsReceivedAfter));
     }
 
     public async Task<Result<EmailAccountDto>> CreateAsync(CreateEmailAccountRequest request, CancellationToken cancellationToken)
@@ -144,7 +145,10 @@ public class EmailAccountService
             AuthMethod = request.AuthMethod,
             OwnerEmployeeId = request.OwnerEmployeeId,
             ClassificationProfileName = request.Purpose == EmailAccountPurpose.Inbound ? request.ClassificationProfileName?.Trim() : null,
-            MonitoringEnabled = request.MonitoringEnabled
+            MonitoringEnabled = request.MonitoringEnabled,
+            ProcessEmailsReceivedAfter = request.Purpose == EmailAccountPurpose.Inbound
+                ? request.ProcessEmailsReceivedAfter ?? DateTimeOffset.UtcNow
+                : null,
         };
 
         var encrypted = _encryptionService.Encrypt(request.Secret);
@@ -211,6 +215,11 @@ public class EmailAccountService
         account.IsActive = request.IsActive;
         account.UpdatedAt = DateTimeOffset.UtcNow;
 
+        if (account.Purpose == EmailAccountPurpose.Inbound && account.ProcessEmailsReceivedAfter != request.ProcessEmailsReceivedAfter)
+        {
+            await ApplyCutoffAsync(account, request.ProcessEmailsReceivedAfter, cancellationToken);
+        }
+
         // Requirements §16 — credential is write-only after saving. Only touched if a new
         // secret was explicitly supplied; otherwise the stored ciphertext is left untouched.
         if (!string.IsNullOrEmpty(request.Secret))
@@ -258,6 +267,72 @@ public class EmailAccountService
         await _db.SaveChangesAsync(cancellationToken);
         await _auditService.LogAsync(isActive ? "EMAIL_ACCOUNT_ACTIVATED" : "EMAIL_ACCOUNT_DEACTIVATED", "EmailAccount", id.ToString(), account.EmailAddress, cancellationToken);
 
+        return Result<bool>.Success(true);
+    }
+
+    /// <summary>
+    /// Moves stored email across the new cut-off: waiting email now before it becomes Historical,
+    /// and Historical email now after it goes back into classification. Already-processed email
+    /// and existing Cases are never touched.
+    /// </summary>
+    private async Task ApplyCutoffAsync(EmailAccount account, DateTimeOffset? cutoff, CancellationToken cancellationToken)
+    {
+        var previous = account.ProcessEmailsReceivedAfter;
+        account.ProcessEmailsReceivedAfter = cutoff;
+
+        var toHistorical = cutoff is DateTimeOffset newCutoff
+            ? await _db.EmailMessages
+                .Where(m => m.EmailAccountId == account.Id && m.ProcessingStatus == EmailProcessingStatus.PendingClassification && m.ReceivedAt < newCutoff)
+                .ToListAsync(cancellationToken)
+            : new List<EmailMessage>();
+        foreach (var message in toHistorical) message.ProcessingStatus = EmailProcessingStatus.Historical;
+
+        var backToPending = await _db.EmailMessages
+            .Where(m => m.EmailAccountId == account.Id && m.ProcessingStatus == EmailProcessingStatus.Historical
+                        && (cutoff == null || m.ReceivedAt >= cutoff))
+            .ToListAsync(cancellationToken);
+        foreach (var message in backToPending) message.ProcessingStatus = EmailProcessingStatus.PendingClassification;
+
+        await _auditService.LogAsync("EMAIL_ACCOUNT_CUTOFF_CHANGED", "EmailAccount", account.Id.ToString(),
+            $"{account.EmailAddress}: process email received after {(previous?.ToString("u") ?? "(everything)")} -> {(cutoff?.ToString("u") ?? "(everything)")}; "
+            + $"{toHistorical.Count} waiting email(s) set Historical, {backToPending.Count} Historical email(s) queued for classification",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Permanently removes a deactivated account with its encrypted credential, sync position and
+    /// intake log. An account with stored email or Cases is kept: that email is the evidence
+    /// behind Case history (§66, §90).
+    /// </summary>
+    public async Task<Result<bool>> DeleteAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var account = await _db.EmailAccounts.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (account is null)
+        {
+            return Result<bool>.Failure("Email account not found.");
+        }
+        if (account.IsActive)
+        {
+            return Result<bool>.Failure("Deactivate this account before deleting it.");
+        }
+
+        var messageCount = await _db.EmailMessages.CountAsync(m => m.EmailAccountId == id, cancellationToken);
+        var caseCount = await _db.Cases.CountAsync(c => c.EmailAccountId == id, cancellationToken);
+        if (messageCount > 0 || caseCount > 0)
+        {
+            return Result<bool>.Failure(
+                $"This account is kept because it has {messageCount} stored email(s) and {caseCount} Case(s) that depend on it. It stays deactivated and is not polled.");
+        }
+
+        var intakeLogs = await _db.EmailIntakeLogs.Where(l => l.EmailAccountId == id).ToListAsync(cancellationToken);
+        _db.EmailIntakeLogs.RemoveRange(intakeLogs);
+        _db.EmailSyncStates.RemoveRange(await _db.EmailSyncStates.Where(s => s.EmailAccountId == id).ToListAsync(cancellationToken));
+        _db.EmailCredentials.RemoveRange(await _db.EmailCredentials.Where(c => c.EmailAccountId == id).ToListAsync(cancellationToken));
+        _db.EmailAccounts.Remove(account);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await _auditService.LogAsync("EMAIL_ACCOUNT_DELETED", "EmailAccount", id.ToString(),
+            $"{account.EmailAddress} ({account.Purpose}); credential and {intakeLogs.Count} intake log line(s) removed", cancellationToken);
         return Result<bool>.Success(true);
     }
 

@@ -40,7 +40,20 @@ public record CaseEventSearchResultDto(
     string Detail,
     Guid? ActorEmployeeId,
     string? ActorEmployeeName,
-    DateTimeOffset OccurredAt);
+    DateTimeOffset OccurredAt,
+    string CustomerEmailAddress,
+    string? CustomerDisplayName,
+    string MailboxAddress,
+    string? OwnerEmployeeName);
+
+public record CaseEventSearchFilter(
+    Guid? CaseId = null,
+    CaseEventType? EventType = null,
+    string? Search = null,
+    Guid? EmailAccountId = null,
+    Guid? OwnerEmployeeId = null,
+    DateTimeOffset? From = null,
+    DateTimeOffset? To = null);
 
 public record CaseEmailDto(
     Guid EmailMessageId,
@@ -48,9 +61,45 @@ public record CaseEmailDto(
     string FromAddress,
     DateTimeOffset ReceivedAt,
     CaseMatchSignal MatchSignal,
-    string? MatchDetail);
+    string? MatchDetail,
+    string? FromDisplayName = null,
+    string? ToAddresses = null,
+    string? CcAddresses = null,
+    string? Body = null,
+    bool BodyFromHtml = false,
+    int AttachmentCount = 0,
+    CaseEmailClassificationDto? Classification = null);
 
-public record CaseDetailDto(CaseDto Case, List<CaseEmailDto> Emails, List<CaseEventDto> History, List<ReplyVerificationAttemptDto> VerificationAttempts);
+/// <summary>What the AI (and the deterministic filter) concluded about one email — §25/§89 "why was this a Case?".</summary>
+public record CaseEmailClassificationDto(
+    string Decision,
+    string? Category,
+    string? Priority,
+    double? Confidence,
+    string? Summary,
+    bool? ActionRequired,
+    string? AiModel,
+    bool? Legitimate = null,
+    bool? ResponseExpected = null,
+    string? DecisionReason = null);
+
+public record CaseNotificationDto(
+    Guid Id,
+    DateTimeOffset CreatedAt,
+    string Type,
+    string Status,
+    string Title,
+    string Message,
+    string EmployeeName,
+    int DeliveredAgentCount,
+    DateTimeOffset? AcknowledgedAt);
+
+public record CaseDetailDto(
+    CaseDto Case,
+    List<CaseEmailDto> Emails,
+    List<CaseEventDto> History,
+    List<ReplyVerificationAttemptDto> VerificationAttempts,
+    List<CaseNotificationDto>? Notifications = null);
 
 public record CompleteCaseRequest(CaseCompletionReason Reason, string? Comment);
 

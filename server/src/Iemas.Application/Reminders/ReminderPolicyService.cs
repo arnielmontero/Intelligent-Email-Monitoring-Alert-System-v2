@@ -184,7 +184,7 @@ public class ReminderPolicyService
         if (string.IsNullOrWhiteSpace(request.Name)) return "Name is required.";
         if (InputSanitizer.ValidateFreeText("Name", request.Name) is { } nameError) return nameError;
         if (request.Description is not null && InputSanitizer.ValidateFreeText("Description", request.Description) is { } descriptionError) return descriptionError;
-        if (request.MaxReminders < 1) return "Maximum reminders must be at least 1 (§54: no infinite reminder loops).";
+        if (request.MaxReminders < 1) return "Maximum reminders must be at least 1 (reminders must stop at some point).";
         if (request.InitialDelay < TimeSpan.Zero) return "Initial delay cannot be negative.";
         if (request.ReminderInterval <= TimeSpan.Zero) return "Reminder interval must be positive.";
         if (request.MinimumInterval < TimeSpan.Zero) return "Minimum interval cannot be negative.";

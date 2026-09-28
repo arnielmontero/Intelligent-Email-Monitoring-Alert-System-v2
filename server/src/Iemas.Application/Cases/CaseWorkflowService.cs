@@ -14,7 +14,34 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Iemas.Application.Cases;
 
-public record CaseRunResult(int ConsideredCount, int CreatedCount, int UpdatedCount, int ReopenedCount, long DurationMs);
+public record CaseRunResult(int ConsideredCount, int CreatedCount, int UpdatedCount, int ReopenedCount, long DurationMs, List<CaseWorkflowItemDto>? Items = null);
+
+/// <summary>Current number of emails/Cases at each stage of the workflow.</summary>
+public record CaseWorkflowOverviewDto(
+    int ReceivedLast24Hours,
+    int AwaitingAiCheck,
+    int NeedsReview,
+    int NotWorkLast24Hours,
+    int WaitingForCase,
+    int ActionRequired,
+    int InProgress,
+    int WaitingOnCustomer,
+    int WaitingInternally,
+    int Overdue,
+    int Escalated,
+    int CompletedLast7Days);
+
+/// <summary>One email and what the Case step did with it (or will do, for "Waiting").</summary>
+public record CaseWorkflowItemDto(
+    Guid EmailMessageId,
+    DateTimeOffset ReceivedAt,
+    string FromAddress,
+    string Subject,
+    string Mailbox,
+    string Outcome,
+    Guid? CaseId,
+    string? CaseNumber,
+    string? Detail);
 
 /// <summary>
 /// Requirements §20 (pipeline: Case Matching/Creation stage, following Phase 4's Classification
@@ -61,20 +88,18 @@ public class CaseWorkflowService
         // §20 "Scheduled jobs must re-check current state" — the candidate set is read fresh
         // each run; a message picked up by RunAsync always re-validates its own state inside
         // ProcessOneAsync before acting, exactly like EmailIntakeService/EmailClassificationService.
-        var candidateIds = await _db.EmailClassifications
-            .Where(c => c.Decision == ImportanceDecision.Important)
-            .Join(_db.EmailMessages.Where(m => m.ProcessingStatus == EmailProcessingStatus.Processed),
-                c => c.EmailMessageId, m => m.Id, (c, m) => m.Id)
-            .Where(messageId => !_db.CaseEmails.Any(ce => ce.EmailMessageId == messageId))
+        var candidateIds = await CandidateMessageIds()
             .OrderBy(id => id)
             .Take(batchSize)
             .ToListAsync(cancellationToken);
 
         int created = 0, updated = 0, reopened = 0;
+        var outcomes = new Dictionary<Guid, CaseProcessOutcome>();
 
         foreach (var messageId in candidateIds)
         {
             var outcome = await ProcessOneAsync(messageId, cancellationToken);
+            outcomes[messageId] = outcome;
             switch (outcome)
             {
                 case CaseProcessOutcome.Created: created++; break;
@@ -83,9 +108,123 @@ public class CaseWorkflowService
             }
         }
 
+        var items = (await DescribeAsync(candidateIds, cancellationToken))
+            .Select(i => i with
+            {
+                Outcome = outcomes[i.EmailMessageId] switch
+                {
+                    CaseProcessOutcome.Created => "New Case",
+                    CaseProcessOutcome.Updated => "Added to existing Case",
+                    CaseProcessOutcome.Reopened => "Reopened Case",
+                    _ => "Skipped",
+                },
+                Detail = outcomes[i.EmailMessageId] == CaseProcessOutcome.Skipped
+                    ? "Not turned into a Case (already handled, older than the mailbox cut-off, or sender is ignored)."
+                    : i.Detail,
+            })
+            .ToList();
+
         stopwatch.Stop();
-        return new CaseRunResult(candidateIds.Count, created, updated, reopened, stopwatch.ElapsedMilliseconds);
+        return new CaseRunResult(candidateIds.Count, created, updated, reopened, stopwatch.ElapsedMilliseconds, items);
     }
+
+    public async Task<CaseWorkflowOverviewDto> GetOverviewAsync(CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var dayAgo = now.AddDays(-1);
+        var weekAgo = now.AddDays(-7);
+
+        // By the email's own arrival time, so a mailbox catching up on old mail doesn't inflate "received".
+        var received = await _db.EmailMessages.CountAsync(m => m.ReceivedAt >= dayAgo
+            && m.ProcessingStatus != EmailProcessingStatus.Historical && m.ProcessingStatus != EmailProcessingStatus.Ignored, cancellationToken);
+        var awaitingAi = await _db.EmailMessages.CountAsync(m => m.ProcessingStatus == EmailProcessingStatus.PendingClassification, cancellationToken);
+        var needsReview = await _db.EmailMessages.CountAsync(m => m.ProcessingStatus == EmailProcessingStatus.ReviewRequired
+            && (m.EmailAccount.ProcessEmailsReceivedAfter == null || m.ReceivedAt >= m.EmailAccount.ProcessEmailsReceivedAfter), cancellationToken);
+        var notWork = await _db.EmailClassifications.CountAsync(c => c.Decision == ImportanceDecision.NotImportant && c.ClassifiedAt >= dayAgo, cancellationToken);
+        var waitingForCase = await CandidateMessageIds().CountAsync(cancellationToken);
+
+        var byStatus = await _db.Cases.AsNoTracking()
+            .GroupBy(c => c.WorkStatus)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+        int Count(params CaseWorkStatus[] statuses) => byStatus.Where(s => statuses.Contains(s.Status)).Sum(s => s.Count);
+        var completed = await _db.Cases.CountAsync(c => c.WorkStatus == CaseWorkStatus.Completed && c.CompletedAt >= weekAgo, cancellationToken);
+
+        return new CaseWorkflowOverviewDto(
+            received, awaitingAi, needsReview + Count(CaseWorkStatus.ReviewRequired), notWork, waitingForCase,
+            Count(CaseWorkStatus.New, CaseWorkStatus.ActionRequired), Count(CaseWorkStatus.InProgress),
+            Count(CaseWorkStatus.WaitingForCustomer), Count(CaseWorkStatus.WaitingForInternal, CaseWorkStatus.WaitingForApproval),
+            Count(CaseWorkStatus.Overdue), Count(CaseWorkStatus.Escalated), completed);
+    }
+
+    /// <summary>Important email waiting to be placed into a Case — what the next run will process.</summary>
+    public async Task<List<CaseWorkflowItemDto>> GetWaitingAsync(int take, CancellationToken cancellationToken)
+    {
+        var ids = await CandidateMessageIds().Take(Math.Clamp(take, 1, 200)).ToListAsync(cancellationToken);
+        var ignored = await IgnoredSenderList.LoadAsync(_db, cancellationToken);
+        return (await DescribeAsync(ids, cancellationToken))
+            .Where(i => !ignored.Matches(i.FromAddress))
+            .Select(i => i with { Outcome = "Waiting", CaseId = null, CaseNumber = null })
+            .OrderBy(i => i.ReceivedAt)
+            .ToList();
+    }
+
+    /// <summary>The most recent emails placed into Cases (by the automatic runs or Run Now), newest first.</summary>
+    public async Task<List<CaseWorkflowItemDto>> GetRecentAsync(int take, CancellationToken cancellationToken)
+    {
+        var rows = await _db.CaseEmails.AsNoTracking()
+            .OrderByDescending(ce => ce.CreatedAt)
+            .Take(Math.Clamp(take, 1, 200))
+            .Select(ce => new
+            {
+                ce.EmailMessageId, ce.EmailMessage.ReceivedAt, ce.EmailMessage.FromAddress, ce.EmailMessage.Subject,
+                Mailbox = ce.EmailMessage.EmailAccount.EmailAddress, ce.CaseId, ce.Case.CaseNumber, ce.MatchSignal, ce.MatchDetail, ce.CreatedAt,
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(r => new CaseWorkflowItemDto(
+            r.EmailMessageId, r.ReceivedAt, r.FromAddress, r.Subject, r.Mailbox,
+            r.MatchSignal == CaseMatchSignal.NewCase ? "New Case" : "Added to existing Case",
+            r.CaseId, r.CaseNumber,
+            r.MatchSignal == CaseMatchSignal.NewCase ? $"Processed {r.CreatedAt:u}" : $"Matched by {DescribeSignal(r.MatchSignal)} · processed {r.CreatedAt:u}")).ToList();
+    }
+
+    private IQueryable<Guid> CandidateMessageIds() =>
+        _db.EmailClassifications
+            .Where(c => c.Decision == ImportanceDecision.Important)
+            .Join(_db.EmailMessages.Where(m => m.ProcessingStatus == EmailProcessingStatus.Processed
+                        && (m.EmailAccount.ProcessEmailsReceivedAfter == null || m.ReceivedAt >= m.EmailAccount.ProcessEmailsReceivedAfter)),
+                c => c.EmailMessageId, m => m.Id, (c, m) => m.Id)
+            .Where(messageId => !_db.CaseEmails.Any(ce => ce.EmailMessageId == messageId));
+
+    private async Task<List<CaseWorkflowItemDto>> DescribeAsync(List<Guid> messageIds, CancellationToken cancellationToken)
+    {
+        var messages = await _db.EmailMessages.AsNoTracking()
+            .Where(m => messageIds.Contains(m.Id))
+            .Select(m => new { m.Id, m.ReceivedAt, m.FromAddress, m.Subject, Mailbox = m.EmailAccount.EmailAddress })
+            .ToListAsync(cancellationToken);
+        var links = await _db.CaseEmails.AsNoTracking()
+            .Where(ce => messageIds.Contains(ce.EmailMessageId))
+            .Select(ce => new { ce.EmailMessageId, ce.CaseId, ce.Case.CaseNumber, ce.MatchSignal })
+            .ToListAsync(cancellationToken);
+
+        return messages.Select(m =>
+        {
+            var link = links.FirstOrDefault(l => l.EmailMessageId == m.Id);
+            return new CaseWorkflowItemDto(m.Id, m.ReceivedAt, m.FromAddress, m.Subject, m.Mailbox, string.Empty,
+                link?.CaseId, link?.CaseNumber,
+                link is null || link.MatchSignal == CaseMatchSignal.NewCase ? null : $"Matched by {DescribeSignal(link.MatchSignal)}");
+        }).ToList();
+    }
+
+    private static string DescribeSignal(CaseMatchSignal signal) => signal switch
+    {
+        CaseMatchSignal.ThreadId => "the same email thread",
+        CaseMatchSignal.InReplyTo or CaseMatchSignal.References or CaseMatchSignal.MessageIdRelationship => "a reply to an earlier email",
+        CaseMatchSignal.ParticipantAndAccountRelationship or CaseMatchSignal.RecentConversationContext => "the same customer and recent conversation",
+        CaseMatchSignal.NormalizedSubjectWeakSignal => "a matching subject",
+        _ => signal.ToString(),
+    };
 
     public enum CaseProcessOutcome { Created, Updated, Reopened, Skipped }
 
@@ -104,6 +243,18 @@ public class CaseWorkflowService
 
         var message = await _db.EmailMessages.FirstOrDefaultAsync(m => m.Id == emailMessageId, cancellationToken);
         if (message is null || message.ProcessingStatus != EmailProcessingStatus.Processed)
+        {
+            return CaseProcessOutcome.Skipped;
+        }
+
+        // Email from before the mailbox's cut-off is history, even if it was classified before the cut-off was set.
+        var cutoff = await _db.EmailAccounts.Where(a => a.Id == message.EmailAccountId).Select(a => a.ProcessEmailsReceivedAfter).FirstOrDefaultAsync(cancellationToken);
+        if (cutoff is DateTimeOffset processAfter && message.ReceivedAt < processAfter)
+        {
+            return CaseProcessOutcome.Skipped;
+        }
+
+        if ((await IgnoredSenderList.LoadAsync(_db, cancellationToken)).Matches(message.FromAddress))
         {
             return CaseProcessOutcome.Skipped;
         }
@@ -163,13 +314,6 @@ public class CaseWorkflowService
                 }
                 targetCase.ReplyStatus = CaseReplyStatus.AwaitingReply;
                 targetCase.UpdatedAt = DateTimeOffset.UtcNow;
-
-                _db.CaseEvents.Add(new CaseEvent
-                {
-                    CaseId = targetCase.Id,
-                    EventType = CaseEventType.Updated,
-                    Detail = $"New related email added (matched via {matchResult.Signal}: {matchResult.Detail}).",
-                });
             }
 
             targetCase.LastActivityAt = message.ReceivedAt > targetCase.LastActivityAt ? message.ReceivedAt : targetCase.LastActivityAt;
@@ -184,6 +328,17 @@ public class CaseWorkflowService
         });
 
         message.CaseId = targetCase.Id;
+
+        // §66 — every email is its own "Email Received" step in the Case timeline, at the time it arrived.
+        _db.CaseEvents.Add(new CaseEvent
+        {
+            CaseId = targetCase.Id,
+            EventType = CaseEventType.EmailReceived,
+            Detail = outcome == CaseProcessOutcome.Created
+                ? $"Email received from {message.FromAddress}: \"{message.Subject}\"."
+                : $"Email received from {message.FromAddress}: \"{message.Subject}\" (matched to this Case via {matchResult.Signal}: {matchResult.Detail}).",
+            OccurredAt = message.ReceivedAt,
+        });
 
         try
         {

@@ -181,7 +181,15 @@ public class AgentRegistrationService
             a => a.EmailAddress == agent.EnrollmentEmailAddress && a.OwnerEmployeeId == employee.Id, cancellationToken);
         if (!employeeOwnsAccount)
         {
-            return Result<bool>.Failure("The selected employee is not the owner of the enrolled email account.");
+            var account = await _db.EmailAccounts.AsNoTracking()
+                .Where(a => a.EmailAddress == agent.EnrollmentEmailAddress)
+                .Select(a => new { OwnerName = a.OwnerEmployee != null ? a.OwnerEmployee.FullName : null })
+                .FirstOrDefaultAsync(cancellationToken);
+            return Result<bool>.Failure(account is null
+                ? $"No email account {agent.EnrollmentEmailAddress} exists in IEMAS. Add it on the Email Accounts page with {employee.FullName} as owner, then approve."
+                : account.OwnerName is null
+                    ? $"The email account {agent.EnrollmentEmailAddress} has no owner. On the Email Accounts page, Edit it and set the owner to {employee.FullName}, then approve."
+                    : $"The email account {agent.EnrollmentEmailAddress} is owned by {account.OwnerName}, not {employee.FullName}. Approve it for {account.OwnerName}, or change the account's owner on the Email Accounts page.");
         }
 
         agent.EmployeeId = employee.Id;

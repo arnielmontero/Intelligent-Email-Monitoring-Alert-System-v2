@@ -55,4 +55,7 @@ public record TestClassificationResult(
     string Summary,
     string DeterministicFilterOutcome,
     string FinalDecision,
-    string? Error);
+    string? Error,
+    bool? Legitimate = null,
+    bool? ResponseExpected = null,
+    string? DecisionReason = null);

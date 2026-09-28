@@ -45,7 +45,7 @@ export default function EmailMonitoringPage() {
       res.data.forEach((r) => (map[r.emailAccountId] = r));
       setLastResults((prev) => ({ ...prev, ...map }));
     } catch (err: any) {
-      setError(err.response?.data?.message ?? "Failed to run intake.");
+      setError(err.response?.data?.message ?? (err.response?.status === 504 ? "The mailbox took too long to answer; the background job keeps going — refresh in a minute." : "Failed to run intake."));
     } finally {
       setRunningId(null);
     }
@@ -58,7 +58,7 @@ export default function EmailMonitoringPage() {
       const res = await apiClient.post<IntakeRunResult>(`/email-intake/accounts/${accountId}/run`);
       setLastResults((prev) => ({ ...prev, [accountId]: res.data }));
     } catch (err: any) {
-      setError(err.response?.data?.message ?? "Failed to run intake.");
+      setError(err.response?.data?.message ?? (err.response?.status === 504 ? "The mailbox took too long to answer; the background job keeps going — refresh in a minute." : "Failed to run intake."));
     } finally {
       setRunningId(null);
     }
@@ -70,8 +70,8 @@ export default function EmailMonitoringPage() {
     <div>
       <h1>Email Monitoring &amp; Intake</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        Runs automatically via a scheduled background job (§79). Use "Run Now" to trigger an
-        on-demand sync for verification or after reconfiguring an account.
+        IEMAS checks each active mailbox for new email every 2 minutes. Use Run Now to check immediately, for example
+        after adding or fixing an account.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -99,8 +99,11 @@ export default function EmailMonitoringPage() {
                 <td style={tdStyle}>
                   {result
                     ? result.succeeded
-                      ? `Fetched ${result.fetchedCount}, persisted ${result.persistedCount}, duplicates ${result.duplicateCount}, malformed ${result.malformedCount} (${result.durationMs}ms)`
-                      : `✗ ${result.error}`
+                      ? <>
+                          Fetched {result.fetchedCount}, new {result.persistedCount}, already had {result.duplicateCount}, unreadable {result.malformedCount} ({(result.durationMs / 1000).toFixed(1)}s)
+                          {result.error && <div style={{ color: "var(--color-warning)", fontSize: 12 }}>{result.error}</div>}
+                        </>
+                      : <span style={{ color: "var(--color-danger)" }}>✗ {result.error}</span>
                     : "Not run this session"}
                 </td>
                 <td style={tdStyle}>
@@ -117,5 +120,5 @@ export default function EmailMonitoringPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

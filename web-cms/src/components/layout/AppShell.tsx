@@ -3,64 +3,31 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { apiClient } from "../../api/client";
 import type { PauseControlDto } from "../../api/types";
 import { useAuthStore } from "../../store/authStore";
+import { getThemePreference, setThemePreference, type ThemePreference } from "../../theme";
+import { NAV_SECTIONS, helpAnchor } from "./navigation";
+import NavIcon from "./NavIcon";
 
-/** Navigation structure per requirements §86 CMS Navigation. */
-const NAV_SECTIONS = [
-  {
-    label: "Dashboard",
-    items: [{ label: "Dashboard", path: "/" }],
-  },
-  {
-    label: "Email Management",
-    items: [
-      { label: "Email Accounts", path: "/email-accounts" },
-      { label: "Outbound Email", path: "/outbound-email" },
-      { label: "Email Monitoring & Intake", path: "/email-monitoring" },
-      { label: "Email Classification", path: "/email-classification" },
-    ],
-  },
-  {
-    label: "Case Management",
-    items: [
-      { label: "Cases / Work Topics", path: "/cases" },
-      { label: "Case Workflow", path: "/case-workflow" },
-      { label: "Reply Verification", path: "/reply-verification" },
-      { label: "Notifications", path: "/notifications" },
-      { label: "Reminder Policies", path: "/reminder-policies" },
-      { label: "Escalation Policies", path: "/escalation-policies" },
-      { label: "Escalation Groups", path: "/escalation-groups" },
-      { label: "Escalation History", path: "/escalation-history" },
-    ],
-  },
-  {
-    label: "People & Devices",
-    items: [
-      { label: "Employees & Ownership", path: "/employees" },
-      { label: "Windows Agents", path: "/agents" },
-      { label: "Users & Permissions", path: "/users" },
-      { label: "Employee Activity", path: "/employee-activity" },
-    ],
-  },
-  {
-    label: "AI Configuration",
-    items: [{ label: "AI Models", path: "/ai-models" }],
-  },
-  {
-    label: "History & Audit",
-    items: [
-      { label: "Case History & Logs", path: "/case-history" },
-      { label: "Audit Log", path: "/audit-log" },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { label: "System Health", path: "/system-health" },
-      { label: "System Settings", path: "/system-settings" },
-      { label: "Maintenance / Emergency Pause", path: "/maintenance" },
-    ],
-  },
-];
+const OPEN_SECTIONS_KEY = "iemas-nav-open";
+
+function loadOpenSections(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(OPEN_SECTIONS_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveOpenSections(ids: string[]) {
+  try {
+    localStorage.setItem(OPEN_SECTIONS_KEY, JSON.stringify(ids));
+  } catch {
+    // Storage unavailable: the menu still works, it just won't remember.
+  }
+}
+
+function isActivePath(itemPath: string, pathname: string) {
+  return itemPath === "/" ? pathname === "/" : pathname === itemPath || pathname.startsWith(itemPath + "/");
+}
 
 export default function AppShell() {
   const user = useAuthStore((s) => s.user);
@@ -68,6 +35,24 @@ export default function AppShell() {
   const location = useLocation();
   const [organizationName, setOrganizationName] = useState("IEMAS");
   const [pausedLabels, setPausedLabels] = useState<string[]>([]);
+  const [theme, setTheme] = useState<ThemePreference>(getThemePreference());
+  const [openSections, setOpenSections] = useState<string[]>(loadOpenSections);
+
+  const activeSection = NAV_SECTIONS.find((section) => section.items.some((item) => isActivePath(item.path, location.pathname)));
+  const activeItem = activeSection?.items.find((item) => isActivePath(item.path, location.pathname));
+
+  function toggleSection(id: string) {
+    setOpenSections((current) => {
+      const next = current.includes(id) ? current.filter((s) => s !== id) : [...current, id];
+      saveOpenSections(next);
+      return next;
+    });
+  }
+
+  function chooseTheme(next: ThemePreference) {
+    setTheme(next);
+    setThemePreference(next);
+  }
 
   useEffect(() => {
     apiClient
@@ -87,28 +72,60 @@ export default function AppShell() {
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
-        <div className="app-brand">{organizationName}</div>
+        <div className="app-brand" title="IEMAS — Intelligent Email Monitoring & Alert System">{organizationName}</div>
         <nav>
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.label} className="nav-section">
-              <div className="nav-section-label">{section.label}</div>
-              {section.items.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) => "nav-item" + (isActive ? " active" : "")}
-                  end={item.path === "/"}
-                >
-                  {item.label}
+          {NAV_SECTIONS.map((section) => {
+            // A group with a single page (Dashboard, Help) is a plain link.
+            if (section.items.length === 1) {
+              const item = section.items[0];
+              return (
+                <NavLink key={section.id} to={item.path} end={item.path === "/"}
+                  className={({ isActive }) => "nav-top" + (isActive ? " active" : "")}>
+                  <NavIcon name={section.icon} />
+                  <span>{item.label}</span>
                 </NavLink>
-              ))}
-            </div>
-          ))}
+              );
+            }
+            const open = openSections.includes(section.id) || activeSection?.id === section.id;
+            return (
+              <div key={section.id} className="nav-group">
+                <button className={"nav-group-toggle" + (activeSection?.id === section.id ? " has-active" : "")}
+                  aria-expanded={open} onClick={() => toggleSection(section.id)}>
+                  <NavIcon name={section.icon} />
+                  <span>{section.label}</span>
+                  <span className="nav-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
+                </button>
+                {open && (
+                  <div className="nav-group-items">
+                    {section.items.map((item) => (
+                      <NavLink key={item.path} to={item.path}
+                        className={({ isActive }) => "nav-item" + (isActive ? " active" : "")}>
+                        {item.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
       </aside>
 
       <div className="app-main">
         <header className="app-header">
+          {activeItem && activeItem.path !== "/help" && (
+            <NavLink to={`/help#${helpAnchor(activeItem.path)}`} className="app-header-help" title={`What is ${activeItem.label}?`}>
+              <NavIcon name="help" size={16} /> Help for this page
+            </NavLink>
+          )}
+          <div className="theme-switch" role="group" aria-label="Colour theme">
+            {(["system", "light", "dark"] as ThemePreference[]).map((option) => (
+              <button key={option} aria-pressed={theme === option} onClick={() => chooseTheme(option)}
+                title={option === "system" ? "Follow the Windows / browser setting" : `${option[0].toUpperCase()}${option.slice(1)} theme`}>
+                {option === "system" ? "System" : option === "light" ? "☀ Light" : "☾ Dark"}
+              </button>
+            ))}
+          </div>
           <div className="app-header-user">{user?.displayName}</div>
           <button className="app-header-logout" onClick={() => logout()}>
             Sign out

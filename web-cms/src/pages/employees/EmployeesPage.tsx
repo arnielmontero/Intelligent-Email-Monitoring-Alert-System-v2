@@ -53,12 +53,24 @@ export default function EmployeesPage() {
     }
   }
 
-  async function handleDeactivate(id: string) {
+  async function handleToggleActive(emp: EmployeeDto) {
+    setError(null);
     try {
-      await apiClient.post(`/employees/${id}/deactivate`);
+      await apiClient.post(`/employees/${emp.id}/${emp.isActive ? "deactivate" : "activate"}`);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.message ?? "Failed to deactivate employee.");
+      setError(err.response?.data?.message ?? "Failed to update employee status.");
+    }
+  }
+
+  async function handleDelete(emp: EmployeeDto) {
+    if (!window.confirm(`Permanently delete ${emp.fullName} (${emp.email})? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await apiClient.delete(`/employees/${emp.id}`);
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.message ?? "Failed to delete employee.");
     }
   }
 
@@ -122,9 +134,19 @@ export default function EmployeesPage() {
               <td style={tdStyle}>{emp.managerEmployeeName ?? "—"}</td>
               <td style={tdStyle}>{emp.isActive ? "Yes" : "No"}</td>
               <td style={tdStyle}>
-                {emp.isActive && (
-                  <button onClick={() => handleDeactivate(emp.id)}>Deactivate</button>
-                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => handleToggleActive(emp)} style={{ minWidth: 80 }}>
+                    {emp.isActive ? "Deactivate" : "Activate"}
+                  </button>
+                  <button
+                    className="btn-danger"
+                    disabled={emp.isActive}
+                    title={emp.isActive ? "Deactivate this employee before deleting" : "Permanently delete this employee"}
+                    onClick={() => handleDelete(emp)}
+                  >
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -134,5 +156,5 @@ export default function EmployeesPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

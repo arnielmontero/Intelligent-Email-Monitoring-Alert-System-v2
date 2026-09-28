@@ -200,6 +200,7 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<IUserIdProvider, AgentUserIdProvider>();
 // §72/§76/§13 — the one real-time push path from server business logic to a connected Agent.
 builder.Services.AddScoped<IAgentNotificationDispatcher, AgentNotificationDispatcher>();
+builder.Services.AddSingleton<AgentConnectionTracker>();
 
 const string CmsCorsPolicy = "CmsCorsPolicy";
 builder.Services.AddCors(options =>
@@ -374,7 +375,7 @@ if (builder.Configuration.GetValue("ReplyVerification:Enabled", true))
 {
     RecurringJob.AddOrUpdate<ReplyVerificationService>(
         "reply-verification-poll-awaiting-reply-cases",
-        service => service.RunAsync(builder.Configuration.GetValue("ReplyVerification:BatchSize", 25), CancellationToken.None),
+        service => service.RunAsync(builder.Configuration.GetValue("ReplyVerification:BatchSize", 100), CancellationToken.None),
         builder.Configuration["ReplyVerification:CronSchedule"] ?? "*/5 * * * *");
 }
 

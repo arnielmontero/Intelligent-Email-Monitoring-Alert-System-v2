@@ -20,7 +20,7 @@ public class SmtpEmailProviderAdapter : IEmailProviderAdapter
 {
     public EmailProtocol Protocol => EmailProtocol.Smtp;
 
-    public Task<FetchInboxResult> FetchInboxMessagesAsync(EmailProviderConnectionSettings settings, uint? knownUidValidity, uint? afterUid, int maxMessages, CancellationToken cancellationToken)
+    public Task<FetchInboxResult> FetchInboxMessagesAsync(EmailProviderConnectionSettings settings, uint? knownUidValidity, uint? afterUid, int maxMessages, CancellationToken cancellationToken, DateTimeOffset? deliveredAfter = null)
         => throw new NotSupportedException("SMTP is a send-only protocol; it has no inbox to fetch. Outbound accounts are never used for email intake.");
 
     public Task<FetchSentResult> FetchSentMessagesAsync(EmailProviderConnectionSettings settings, DateTimeOffset since, int maxMessages, CancellationToken cancellationToken)

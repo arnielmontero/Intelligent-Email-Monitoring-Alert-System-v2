@@ -8,8 +8,10 @@ namespace Iemas.Tests.HealthChecks;
 
 public class OpenRouterHealthCheckTests
 {
-    private static OpenRouterHealthCheck CreateCheck(AiClassificationOptions options, AiCircuitBreakerStore? store = null) =>
-        new(Options.Create(options), store ?? new AiCircuitBreakerStore(TimeProvider.System));
+    private static OpenRouterHealthCheck CreateCheck(AiClassificationOptions options, AiCircuitBreakerStore? store = null, string? cmsKey = null) =>
+        new(Options.Create(options),
+            new TestSupport.StaticAiProviderConnectionResolver(cmsKey ?? options.OpenRouter.ApiKey),
+            store ?? new AiCircuitBreakerStore(TimeProvider.System));
 
     [Fact]
     public async Task CheckHealthAsync_ClassificationDisabled_ReturnsHealthy_WithoutInspectingApiKey()
@@ -35,13 +37,13 @@ public class OpenRouterHealthCheckTests
     }
 
     [Fact]
-    public async Task CheckHealthAsync_MissingBaseUrl_ReturnsUnhealthy()
+    public async Task CheckHealthAsync_KeySavedInCmsOnly_IsNotDegraded()
     {
-        var check = CreateCheck(new AiClassificationOptions { Enabled = true, OpenRouter = new OpenRouterOptions { ApiKey = "sk-real-key", BaseUrl = "" } });
+        var check = CreateCheck(new AiClassificationOptions { Enabled = true, OpenRouter = new OpenRouterOptions { ApiKey = "" } }, cmsKey: "sk-or-cms-key");
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
-        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        Assert.Equal(HealthStatus.Healthy, result.Status);
     }
 
     [Fact]

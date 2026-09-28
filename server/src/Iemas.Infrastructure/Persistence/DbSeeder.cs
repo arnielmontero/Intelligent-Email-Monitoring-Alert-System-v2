@@ -80,7 +80,7 @@ public static class DbSeeder
             db.ClassificationProfiles.Add(new ClassificationProfile
             {
                 Name = "Sales",
-                Description = "Default profile seeded per requirements §28 example.",
+                Description = "Default sales profile.",
                 Enabled = true,
                 Categories = string.Join('\n', new[]
                 {

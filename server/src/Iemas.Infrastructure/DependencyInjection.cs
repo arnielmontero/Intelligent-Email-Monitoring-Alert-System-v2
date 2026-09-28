@@ -49,12 +49,17 @@ public static class DependencyInjection
         // §82 — OpenRouter is the V1 AI provider; isolated behind IAiClassificationProvider so
         // the classification workflow never depends on HTTP/OpenRouter specifics directly (same
         // separation as the email provider adapters above).
-        services.AddHttpClient<IAiClassificationProvider, OpenRouterClassificationProvider>((provider, client) =>
-        {
-            var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AiClassificationOptions>>().Value;
-            var baseUrl = string.IsNullOrWhiteSpace(options.OpenRouter.BaseUrl) ? "https://openrouter.ai/api/v1" : options.OpenRouter.BaseUrl;
-            client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
-        });
+        // The base URL and key are resolved per request (CMS settings first, then configuration).
+        services.AddScoped<Iemas.Application.AiModels.IAiProviderConnectionResolver, AiProviderConnectionResolver>();
+        services.AddHttpClient<OpenRouterClassificationProvider>();
+        services.AddSingleton<Iemas.Application.AiUsage.IAiUsageRecorder, AiUsageRecorder>();
+        // Every AI call goes through the usage-recording wrapper (cost monitoring).
+        services.AddScoped<IAiClassificationProvider>(sp => new Iemas.Application.AiUsage.UsageRecordingAiClassificationProvider(
+            sp.GetRequiredService<OpenRouterClassificationProvider>(),
+            sp.GetRequiredService<Iemas.Application.AiUsage.IAiUsageRecorder>()));
+        services.AddMemoryCache();
+        services.AddHttpClient<Iemas.Application.AiModels.IAiProviderAdminClient, OpenRouterAdminClient>(client =>
+            client.Timeout = TimeSpan.FromSeconds(20));
 
         services.AddHangfire(config => config
             .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)

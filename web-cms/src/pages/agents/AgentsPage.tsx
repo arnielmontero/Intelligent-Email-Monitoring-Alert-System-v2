@@ -38,8 +38,15 @@ export default function AgentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
+  /** The employee whose email matches the Agent's enrollment email is the usual choice. */
+  function selectedEmployeeId(agent: AgentDto) {
+    return approveEmployeeId[agent.id]
+      ?? employees.find((emp) => emp.isActive && emp.email.toLowerCase() === agent.enrollmentEmailAddress.toLowerCase())?.id
+      ?? "";
+  }
+
   async function handleApprove(agent: AgentDto) {
-    const employeeId = approveEmployeeId[agent.id];
+    const employeeId = selectedEmployeeId(agent);
     if (!employeeId) {
       setError("Select an employee before approving.");
       return;
@@ -77,6 +84,21 @@ export default function AgentsPage() {
     }
   }
 
+  async function handleDelete(agent: AgentDto) {
+    if (!window.confirm(`Permanently delete "${agent.clientName}" (${agent.enrollmentEmailAddress}) and its technical log? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await apiClient.delete(`/agents/${agent.id}`);
+      if (selectedId === agent.id) {
+        setSelectedId(null);
+        setLogs(null);
+      }
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.message ?? "Failed to delete Agent.");
+    }
+  }
+
   async function openLogs(agentId: string) {
     setSelectedId(agentId);
     setLogs(null);
@@ -95,9 +117,8 @@ export default function AgentsPage() {
       <div style={{ flex: 1, minWidth: 0 }}>
         <h1>Windows Agents</h1>
         <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-          Requirements §68-§71 — Agent registration is server-approved: only the server ever
-          generates a Registration Key, only after an Administrator approves the request, and it
-          is collected automatically by the Agent, never entered manually.
+          Each employee's PC runs the IEMAS Agent, which shows pop-up alerts. A new PC appears here as Pending;
+          approve it for the employee who owns its email account. The Agent then connects by itself — no keys to copy.
         </p>
 
         {error && <div className="form-error">{error}</div>}
@@ -124,7 +145,7 @@ export default function AgentsPage() {
           </thead>
           <tbody>
             {agents.map((a) => (
-              <tr key={a.id} style={{ background: selectedId === a.id ? "#1e293b" : undefined }}>
+              <tr key={a.id} style={{ background: selectedId === a.id ? "var(--color-row-border)" : undefined }}>
                 <td style={tdStyle}>{a.clientName}</td>
                 <td style={tdStyle}>{a.enrollmentEmailAddress}</td>
                 <td style={tdStyle}>{a.employeeName ?? "(unassigned)"}</td>
@@ -136,7 +157,7 @@ export default function AgentsPage() {
                   {a.registrationStatus === 0 && (
                     <>
                       <select
-                        value={approveEmployeeId[a.id] ?? ""}
+                        value={selectedEmployeeId(a)}
                         onChange={(e) => setApproveEmployeeId((prev) => ({ ...prev, [a.id]: e.target.value }))}
                         style={{ marginRight: 8 }}
                       >
@@ -153,6 +174,15 @@ export default function AgentsPage() {
                     <button onClick={() => handleRevoke(a)} style={{ marginRight: 8 }}>Revoke</button>
                   )}
                   <button onClick={() => openLogs(a.id)}>Logs</button>
+                  <button
+                    className="btn-danger"
+                    disabled={a.registrationStatus !== 2 && a.registrationStatus !== 3}
+                    title={a.registrationStatus === 2 || a.registrationStatus === 3 ? "Permanently delete this Agent" : "Only Rejected or Revoked Agents can be deleted"}
+                    onClick={() => handleDelete(a)}
+                    style={{ marginLeft: 8 }}
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))}
@@ -164,8 +194,8 @@ export default function AgentsPage() {
       </div>
 
       {selectedId && (
-        <div style={{ width: 380, flexShrink: 0, borderLeft: "1px solid #334155", paddingLeft: 24 }}>
-          <h2 style={{ fontSize: 16 }}>Technical Agent Log (§67)</h2>
+        <div style={{ width: 380, flexShrink: 0, borderLeft: "1px solid var(--color-border)", paddingLeft: 24 }}>
+          <h2 style={{ fontSize: 16 }}>Technical log</h2>
           {logs === null && <p>Loading...</p>}
           {logs && (
             <ul style={{ paddingLeft: 16, fontSize: 13 }}>
@@ -187,5 +217,5 @@ export default function AgentsPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

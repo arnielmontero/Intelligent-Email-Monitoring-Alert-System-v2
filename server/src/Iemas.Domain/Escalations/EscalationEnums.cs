@@ -54,4 +54,7 @@ public enum EscalationSkipReason
 
     /// <summary>No enabled Escalation Policy applies to this Case at all (no matching Classification Profile/Category/Priority, and no default).</summary>
     NoApplicablePolicy = 8,
+
+    /// <summary>The Case's customer is on the "Ignored senders" system setting.</summary>
+    SenderIgnored = 9,
 }

@@ -80,4 +80,16 @@ public class EmailAccountsController : ControllerBase
 
         return Ok(result.Value);
     }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _emailAccountService.DeleteAsync(id, cancellationToken);
+        if (!result.Succeeded)
+        {
+            return result.Error == "Email account not found." ? NotFound(new { message = result.Error }) : BadRequest(new { message = result.Error });
+        }
+
+        return NoContent();
+    }
 }

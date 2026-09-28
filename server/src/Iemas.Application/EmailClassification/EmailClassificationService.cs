@@ -133,6 +133,7 @@ public class EmailClassificationService
             return await PersistFailureAsync(message, profile, filterResult, "No enabled AI model is configured for EmailClassification.", stopwatch, cancellationToken);
         }
 
+        var rules = await EmailRules.LoadForPromptAsync(_db, cancellationToken);
         var request = new ClassificationRequest(
             message.Subject,
             message.BodyText,
@@ -142,7 +143,11 @@ public class EmailClassificationService
             profile?.Name ?? "(none)",
             profile?.Categories ?? string.Empty,
             profile?.IncludeDefinitions ?? string.Empty,
-            profile?.ExcludeDefinitions ?? string.Empty);
+            profile?.ExcludeDefinitions ?? string.Empty,
+            message.Id,
+            AiUsagePurpose.EmailClassification,
+            rules.Legitimacy,
+            rules.Response);
 
         ClassificationAttemptResult? lastAttempt = null;
 
@@ -280,7 +285,9 @@ public class EmailClassificationService
         var response = attempt.Response!;
         var policyResult = ClassificationDecisionPolicy.Decide(
             response.Relevant, response.Confidence,
-            profile?.HighConfidenceThreshold, profile?.MediumConfidenceThreshold, profile?.TreatMediumConfidenceAsReviewRequired);
+            profile?.HighConfidenceThreshold, profile?.MediumConfidenceThreshold, profile?.TreatMediumConfidenceAsReviewRequired,
+            response.Legitimate, response.ResponseExpected,
+            await SystemSettingsService.GetBoolAsync(_db, SystemSettingKeys.RequireResponseForCase, cancellationToken));
 
         var classification = await GetOrCreateClassificationAsync(message.Id, cancellationToken);
         classification.ClassificationProfileId = profile?.Id;
@@ -290,6 +297,7 @@ public class EmailClassificationService
         classification.Category = response.Category;
         classification.ActionRequired = response.ActionRequired;
         classification.ResponseExpected = response.ResponseExpected;
+        classification.Legitimate = response.Legitimate;
         classification.Priority = Enum.TryParse<ClassificationPriority>(response.Priority, true, out var priority) ? priority : ClassificationPriority.Medium;
         classification.AiConfidence = response.Confidence;
         classification.Summary = response.Summary;

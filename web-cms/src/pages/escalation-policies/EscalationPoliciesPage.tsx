@@ -266,9 +266,8 @@ export default function EscalationPoliciesPage() {
     <div>
       <h1>Escalation Policies</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        Requirements §57-§58 — governs when and to whom a Case escalates once its Reminder threshold
-        is reached: grace period, cooldown, maximum level (V1 supports at most 3 levels), and the
-        per-level recipient chain. Exactly one policy may be the default.
+        When a Case still has no reply after its reminders, who should be told and when: grace period, time between
+        levels, and up to 3 levels of recipients. One policy is the default.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -478,5 +477,5 @@ export default function EscalationPoliciesPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

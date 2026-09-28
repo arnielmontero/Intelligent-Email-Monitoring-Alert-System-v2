@@ -50,7 +50,8 @@ public record FetchInboxResult(
     uint UidValidity,
     uint? HighestUidSeen,
     IReadOnlyCollection<ProviderMessage> Messages,
-    IReadOnlyCollection<(uint Uid, string Error)> MalformedMessages);
+    IReadOnlyCollection<(uint Uid, string Error)> MalformedMessages,
+    string? StoppedEarlyReason = null);
 
 /// <summary>
 /// Requirements §42 — Reply Verification reads the account's own Sent folder (the employee
@@ -84,13 +85,16 @@ public interface IEmailProviderAdapter
     /// start of the mailbox). Read-only — never marks messages as read, moves, or deletes
     /// anything (Absolute system boundary, §2). A malformed individual message must not abort
     /// the whole fetch; it is reported in <see cref="FetchInboxResult.MalformedMessages"/> instead.
+    /// <paramref name="deliveredAfter"/> (the account's cut-off) lets the provider skip mailbox
+    /// history entirely, so years of old mail never queue ahead of new mail.
     /// </summary>
     Task<FetchInboxResult> FetchInboxMessagesAsync(
         EmailProviderConnectionSettings settings,
         uint? knownUidValidity,
         uint? afterUid,
         int maxMessages,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        DateTimeOffset? deliveredAfter = null);
 
     /// <summary>
     /// Requirements §42/§44 — reads the account's Sent folder within a bounded recent window

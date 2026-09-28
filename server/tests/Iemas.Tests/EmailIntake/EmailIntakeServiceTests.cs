@@ -186,9 +186,9 @@ public class EmailIntakeServiceTests
         Assert.Equal(5u, capturedAfterUid);
     }
 
-    /// <summary>Completion gate — deactivated/monitoring-disabled accounts must not be polled.</summary>
+    /// <summary>Completion gate — deactivated/monitoring-disabled accounts must not be polled, and a manual run says why instead of looking like an empty inbox.</summary>
     [Fact]
-    public async Task RunForAccountAsync_SkipsQuietly_WhenAccountIsNotActivelyMonitored()
+    public async Task RunForAccountAsync_DoesNotPoll_AndExplains_WhenAccountIsNotActivelyMonitored()
     {
         using var db = TestDbContext.CreateNew();
         var account = CreateAccount();
@@ -204,8 +204,37 @@ public class EmailIntakeServiceTests
 
         var result = await service.RunForAccountAsync(account.Id, CancellationToken.None);
 
-        Assert.True(result.Succeeded);
+        Assert.False(result.Succeeded);
         Assert.Equal(0, result.FetchedCount);
+        Assert.Contains("Monitoring is off", result.Error);
+        Assert.False(await db.EmailIntakeLogs.AnyAsync());
+    }
+
+    /// <summary>§81 — a run that stops early (connection drop / time budget) keeps the adapter's watermark, so the remaining messages are fetched next run.</summary>
+    [Fact]
+    public async Task RunForAccountAsync_StoppedEarly_KeepsWatermarkAndReportsWhy()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        db.EmailAccounts.Add(account);
+        await db.SaveChangesAsync();
+
+        var adapter = new FakeEmailProviderAdapter
+        {
+            FetchBehavior = (_, _, _, _, _) => Task.FromResult(new FetchInboxResult(
+                7, 101, new[] { Message("100"), Message("101") }, Array.Empty<(uint, string)>(),
+                "Stopped at message 102 (The ImapClient is not connected.); it and the rest continue on the next run.")),
+        };
+        var service = new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter), Microsoft.Extensions.Logging.Abstractions.NullLogger<EmailIntakeService>.Instance);
+
+        var result = await service.RunForAccountAsync(account.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, result.PersistedCount);
+        Assert.Contains("Stopped at message 102", result.Error);
+        var state = await db.EmailSyncStates.SingleAsync();
+        Assert.Equal(101u, state.LastSeenUid);
+        Assert.Equal(0, await db.EmailIntakeLogs.CountAsync(l => l.Outcome == EmailIntakeOutcome.Skipped_Malformed));
     }
 
     /// <summary>Completion gate Q1/Q2 boundary — RunAllAsync only targets active Inbound monitored accounts.</summary>

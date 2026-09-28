@@ -3,12 +3,37 @@
   --color-surface: #1e293b;
   --color-surface-alt: #16213a;
   --color-border: #334155;
+  --color-row-border: #1e293b;
   --color-text: #e2e8f0;
   --color-text-muted: #94a3b8;
   --color-accent: #3b82f6;
   --color-danger: #ef4444;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-pill-neutral: #334155;
+  --color-link: #60a5fa;
+  --color-link-hover: #93c5fd;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: dark;
+}
+
+/* Light theme — chosen in the header (System / Light / Dark); "System" follows the OS setting. */
+:root[data-theme="light"] {
+  --color-bg: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f8fafc;
+  --color-border: #cbd5e1;
+  --color-row-border: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-accent: #2563eb;
+  --color-danger: #dc2626;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-pill-neutral: #64748b;
+  --color-link: #1d4ed8;
+  --color-link-hover: #1e40af;
+  color-scheme: light;
 }
 
 * {
@@ -109,33 +134,81 @@ body {
   padding: 0 16px 16px;
 }
 
-.nav-section {
-  margin-bottom: 12px;
+/* Sidebar menu: single-page links, and collapsible groups with indented items. */
+.nav-top,
+.nav-top:visited,
+.nav-group-toggle,
+.nav-item,
+.nav-item:visited {
+  color: var(--color-text);
+  text-decoration: none;
 }
 
-.nav-section-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.nav-top,
+.nav-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-top:hover,
+.nav-group-toggle:hover,
+.nav-item:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.nav-group-toggle.has-active {
+  color: var(--color-accent);
+}
+
+.nav-chevron {
+  margin-left: auto;
+  font-size: 12px;
   color: var(--color-text-muted);
-  padding: 8px 16px 4px;
+}
+
+.nav-group-items {
+  margin: 2px 0 6px 25px;
+  border-left: 1px solid var(--color-border);
 }
 
 .nav-item {
   display: block;
-  padding: 6px 16px;
-  color: var(--color-text);
-  text-decoration: none;
-  font-size: 14px;
+  padding: 6px 12px 6px 16px;
+  font-size: 13.5px;
 }
 
-.nav-item:hover {
-  background: var(--color-surface-alt);
-}
-
-.nav-item.active {
+.nav-top.active,
+.nav-top.active:visited,
+.nav-item.active,
+.nav-item.active:visited {
   background: var(--color-accent);
-  color: white;
+  color: #fff;
+}
+
+.app-header-help,
+.app-header-help:visited {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.app-header-help:hover {
+  color: var(--color-link-hover);
 }
 
 .app-main {
@@ -170,4 +243,117 @@ body {
 
 .app-content {
   padding: 24px;
+}
+
+/* Links — readable on the dark theme; visited links keep the same colour. */
+a,
+a:visited {
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+a.case-link {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Form controls — readable defaults for every page (browser defaults are tiny on this dark theme). */
+input,
+select,
+textarea {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 10px;
+  min-height: 34px;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  min-height: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  accent-color: var(--color-accent);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+label {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+button.btn-danger {
+  background: var(--color-danger);
+  border: 1px solid var(--color-danger);
+  color: #fff;
+  cursor: pointer;
+}
+
+button.btn-danger:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.theme-switch {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.theme-switch button {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 5px 10px;
+}
+
+.theme-switch button + button {
+  border-left: 1px solid var(--color-border);
+}
+
+.theme-switch button[aria-pressed="true"] {
+  background: var(--color-accent);
+  color: #fff;
 }

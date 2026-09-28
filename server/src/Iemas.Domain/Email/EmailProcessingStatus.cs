@@ -23,4 +23,13 @@ public enum EmailProcessingStatus
     /// Non-fatal to intake — the message is never lost or reprocessed as a duplicate (§78).
     /// </summary>
     ReviewRequired = 3,
+
+    /// <summary>
+    /// Received before the account's ProcessEmailsReceivedAfter cut-off (e.g. mailbox history from
+    /// before monitoring started). Stored, never classified, never turned into a Case.
+    /// </summary>
+    Historical = 4,
+
+    /// <summary>Sender is on the "Ignored senders" system setting: stored, never classified, never a Case or notification.</summary>
+    Ignored = 5,
 }

@@ -84,9 +84,13 @@ public class EmailIntakeService
 
         if (account is null || !account.IsActive || !account.MonitoringEnabled || account.Purpose != EmailAccountPurpose.Inbound)
         {
-            // Not an error — the account may have been deactivated/reconfigured since this run
-            // was scheduled. Cancel quietly rather than treating it as a failure (§55 pattern).
-            return new IntakeRunResult(emailAccountId, true, 0, 0, 0, 0, null, stopwatch.ElapsedMilliseconds);
+            // Not recorded as a sync failure (the account may have been reconfigured since this run
+            // was scheduled), but reported honestly so a manual Run Now doesn't look like an empty inbox.
+            var reason = account is null ? "Email account not found."
+                : account.Purpose != EmailAccountPurpose.Inbound ? "This is not an inbound (monitored) account."
+                : !account.IsActive ? "This account is deactivated."
+                : "Monitoring is off for this account. Enable it on the Email Accounts page (Edit → Monitoring enabled).";
+            return new IntakeRunResult(emailAccountId, false, 0, 0, 0, 0, reason, stopwatch.ElapsedMilliseconds);
         }
 
         if (account.Credential is null)
@@ -127,7 +131,7 @@ public class EmailIntakeService
         {
             var adapter = _adapterResolver.Resolve(account.Protocol);
             fetchResult = await adapter.FetchInboxMessagesAsync(
-                settings, syncState.LastUidValidity, syncState.LastSeenUid, MaxMessagesPerRun, cancellationToken);
+                settings, syncState.LastUidValidity, syncState.LastSeenUid, MaxMessagesPerRun, cancellationToken, account.ProcessEmailsReceivedAfter);
         }
         catch (OperationCanceledException)
         {
@@ -144,11 +148,12 @@ public class EmailIntakeService
         }
 
         int persisted = 0, duplicates = 0;
+        var ignoredSenders = await IgnoredSenderList.LoadAsync(_db, cancellationToken);
 
         foreach (var message in fetchResult.Messages)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var outcome = await PersistOneMessageAsync(account.Id, account.Protocol, message, cancellationToken);
+            var outcome = await PersistOneMessageAsync(account.Id, account.Protocol, account.ProcessEmailsReceivedAfter, ignoredSenders, message, cancellationToken);
             if (outcome == PersistOutcome.Persisted) persisted++;
             else if (outcome == PersistOutcome.Duplicate) duplicates++;
         }
@@ -176,13 +181,20 @@ public class EmailIntakeService
         _logger.LogInformation(
             "IMAP sync for account {EmailAccountId} completed in {ElapsedMilliseconds}ms: {FetchedCount} fetched, {PersistedCount} persisted, {DuplicateCount} duplicates, {MalformedCount} malformed",
             account.Id, stopwatch.ElapsedMilliseconds, fetchResult.Messages.Count, persisted, duplicates, fetchResult.MalformedMessages.Count);
+        if (fetchResult.StoppedEarlyReason is not null)
+        {
+            _logger.LogWarning("IMAP sync for account {EmailAccountId} stopped early: {Reason}", account.Id, fetchResult.StoppedEarlyReason);
+        }
         return new IntakeRunResult(
-            account.Id, true, fetchResult.Messages.Count, persisted, duplicates, fetchResult.MalformedMessages.Count, null, stopwatch.ElapsedMilliseconds);
+            account.Id, true, fetchResult.Messages.Count, persisted, duplicates, fetchResult.MalformedMessages.Count,
+            fetchResult.StoppedEarlyReason, stopwatch.ElapsedMilliseconds);
     }
 
     private enum PersistOutcome { Persisted, Duplicate, Failed }
 
-    private async Task<PersistOutcome> PersistOneMessageAsync(Guid emailAccountId, Iemas.Domain.Email.EmailProtocol protocol, ProviderMessage message, CancellationToken cancellationToken)
+    private async Task<PersistOutcome> PersistOneMessageAsync(
+        Guid emailAccountId, Iemas.Domain.Email.EmailProtocol protocol, DateTimeOffset? processEmailsReceivedAfter, IgnoredSenderList ignoredSenders,
+        ProviderMessage message, CancellationToken cancellationToken)
     {
         // In-memory duplicate check first (cheap, avoids most round-trips), but the *authoritative*
         // guard is the unique DB index on (EmailAccountId, ProviderMessageId) — §22 requires
@@ -220,7 +232,11 @@ public class EmailIntakeService
             BodyHtml = message.BodyHtml,
             ReceivedAt = message.ReceivedAt,
             AttachmentCount = message.Attachments.Count,
-            ProcessingStatus = EmailProcessingStatus.PendingClassification,
+            ProcessingStatus = ignoredSenders.Matches(message.FromAddress)
+                ? EmailProcessingStatus.Ignored
+                : processEmailsReceivedAfter is DateTimeOffset cutoff && message.ReceivedAt < cutoff
+                    ? EmailProcessingStatus.Historical
+                    : EmailProcessingStatus.PendingClassification,
         };
 
         foreach (var attachment in message.Attachments)

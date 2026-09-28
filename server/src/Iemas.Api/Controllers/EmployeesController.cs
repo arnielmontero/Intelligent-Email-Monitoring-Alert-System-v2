@@ -62,10 +62,36 @@ public class EmployeesController : ControllerBase
     [Authorize(Policy = "RequireAdministrator")]
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken cancellationToken)
     {
-        var result = await _employeeService.DeactivateAsync(id, cancellationToken);
+        var result = await _employeeService.SetActiveAsync(id, false, cancellationToken);
         if (!result.Succeeded)
         {
             return NotFound(new { message = result.Error });
+        }
+
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/activate")]
+    [Authorize(Policy = "RequireAdministrator")]
+    public async Task<IActionResult> Activate(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _employeeService.SetActiveAsync(id, true, cancellationToken);
+        if (!result.Succeeded)
+        {
+            return NotFound(new { message = result.Error });
+        }
+
+        return NoContent();
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "RequireAdministrator")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _employeeService.DeleteAsync(id, cancellationToken);
+        if (!result.Succeeded)
+        {
+            return result.Error == "Employee not found." ? NotFound(new { message = result.Error }) : BadRequest(new { message = result.Error });
         }
 
         return NoContent();

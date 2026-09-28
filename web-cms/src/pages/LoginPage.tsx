@@ -17,8 +17,11 @@ export default function LoginPage() {
     try {
       await login(email, password);
       navigate("/", { replace: true });
-    } catch {
-      setError("Invalid email or password.");
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 401) setError("Invalid email or password.");
+      else if (status === 429) setError("Too many sign-in attempts. Wait a minute and try again.");
+      else setError(`Cannot reach the IEMAS server${status ? ` (HTTP ${status})` : ""}. Check the address and try again.`);
     } finally {
       setSubmitting(false);
     }

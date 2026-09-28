@@ -25,7 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
   Sent: "#2563eb",
   Queued: "#a16207",
   Acknowledged: "#166534",
-  Cancelled: "#475569",
+  Cancelled: "var(--color-pill-neutral)",
   Failed: "#b91c1c",
 };
 
@@ -37,8 +37,8 @@ export default function NotificationsPage() {
     <div>
       <h1>Notifications</h1>
       <p style={mutedStyle}>
-        §51-§53 — predefined notification messages sent to employees' Windows Agents. A notification records that
-        something happened; it is not itself the employee's outstanding work. Timing lives in Reminder and Escalation Policies.
+        The pop-up messages sent to employees' Windows Agents. When they are sent is set in Reminder and Escalation Policies;
+        here you edit the wording and see what was delivered.
       </p>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {isAdmin && <button style={tab === "templates" ? activeTabStyle : undefined} onClick={() => setTab("templates")}>Templates</button>}
@@ -294,7 +294,7 @@ function LogTab() {
                 <td style={tdStyle}>{n.caseNumber ?? "—"}</td>
                 <td style={tdStyle}>{TYPE_LABELS[n.type] ?? n.type}</td>
                 <td style={tdStyle}>
-                  <span style={{ ...pillStyle, background: STATUS_COLORS[n.status] ?? "#475569" }}>{n.status}</span>
+                  <span style={{ ...pillStyle, background: STATUS_COLORS[n.status] ?? "var(--color-pill-neutral)" }}>{n.status}</span>
                   <div style={mutedStyle}>
                     {n.status === "Sent" && `to ${n.deliveredAgentCount} agent${n.deliveredAgentCount === 1 ? "" : "s"}`}
                     {n.status === "Queued" && "no agent online — picked up on next sync"}
@@ -317,5 +317,5 @@ const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", font
 const panelStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, marginBottom: 16, background: "var(--color-surface)" };
 const activeTabStyle: React.CSSProperties = { background: "var(--color-accent)", color: "#fff" };
 const pillStyle: React.CSSProperties = { color: "#fff", fontSize: 11, padding: "2px 8px", borderRadius: 999 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px", verticalAlign: "top" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };

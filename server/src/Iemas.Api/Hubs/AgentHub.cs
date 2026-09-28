@@ -20,10 +20,12 @@ namespace Iemas.Api.Hubs;
 public class AgentHub : Hub
 {
     private readonly AgentSyncService _syncService;
+    private readonly Realtime.AgentConnectionTracker _connections;
 
-    public AgentHub(AgentSyncService syncService)
+    public AgentHub(AgentSyncService syncService, Realtime.AgentConnectionTracker connections)
     {
         _syncService = syncService;
+        _connections = connections;
     }
 
     private Guid AgentId => Guid.Parse(Context.User!.FindFirst("agent_id")!.Value);
@@ -33,13 +35,16 @@ public class AgentHub : Hub
     {
         // §75 — SYNC on every connect/reconnect; the server remains authoritative and the Agent
         // rebuilds its UI entirely from what this call returns, never from anything cached client-side.
+        _connections.Add(AgentId, Context.ConnectionId);
+        await _syncService.RecordConnectedAsync(AgentId, Context.ConnectionAborted);
         await _syncService.SyncAsync(AgentId, EmployeeId, Context.ConnectionAborted);
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        await _syncService.RecordDisconnectAsync(AgentId, exception?.Message, CancellationToken.None);
+        var stillOpen = _connections.Remove(AgentId, Context.ConnectionId);
+        await _syncService.RecordDisconnectAsync(AgentId, exception?.Message, CancellationToken.None, otherConnectionsOpen: stillOpen > 0);
         await base.OnDisconnectedAsync(exception);
     }
 

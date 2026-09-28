@@ -19,7 +19,7 @@ public class MicrosoftGraphEmailProviderAdapter : IEmailProviderAdapter
     {
         return Task.FromResult(new ProviderConnectionTestResult(
             false,
-            "Microsoft Graph provider is not yet implemented. Requires Azure AD app registration (§112 item 1/2, not yet frozen).",
+            "Microsoft Graph provider is not yet implemented. It needs an Azure AD app registration first; use IMAP for now.",
             TimeSpan.Zero));
     }
 
@@ -28,9 +28,10 @@ public class MicrosoftGraphEmailProviderAdapter : IEmailProviderAdapter
         uint? knownUidValidity,
         uint? afterUid,
         int maxMessages,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? deliveredAfter = null)
     {
-        throw new NotSupportedException("Microsoft Graph provider is not yet implemented (§112 item 1/2, not yet frozen).");
+        throw new NotSupportedException("Microsoft Graph provider is not yet implemented; use IMAP for now.");
     }
 
     public Task<FetchSentResult> FetchSentMessagesAsync(
@@ -44,7 +45,7 @@ public class MicrosoftGraphEmailProviderAdapter : IEmailProviderAdapter
         // the caller exactly like a real auth/connection failure would.
         return Task.FromResult(new FetchSentResult(
             false,
-            "Microsoft Graph provider is not yet implemented (§112 item 1/2, not yet frozen).",
+            "Microsoft Graph provider is not yet implemented; use IMAP for now.",
             Array.Empty<ProviderMessage>(),
             Array.Empty<(string, string)>()));
     }

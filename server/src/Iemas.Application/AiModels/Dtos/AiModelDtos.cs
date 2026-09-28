@@ -30,6 +30,7 @@ public record UpdateAiModelRequest(
     string TaskCapability,
     int TimeoutSeconds,
     int MaxRetries,
-    int FallbackOrder);
+    int FallbackOrder,
+    string? ModelIdentifier = null);
 
 public record TestAiModelResult(bool Succeeded, string? ErrorMessage, long DurationMs);

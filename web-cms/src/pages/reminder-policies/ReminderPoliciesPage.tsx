@@ -173,9 +173,8 @@ export default function ReminderPoliciesPage() {
     <div>
       <h1>Reminder Policies</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        Requirements §54 — governs the Reminder Engine's timing for Cases: initial delay, interval,
-        maximum reminders (no infinite reminder loops), business hours, weekends, and expiration.
-        Exactly one policy may be the default; a Case with no more specific applicable policy uses it.
+        How often employees are reminded about a Case that still needs a reply: first reminder, time between reminders,
+        maximum number, business hours, weekends and holidays. One policy is the default.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -302,5 +301,5 @@ export default function ReminderPoliciesPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

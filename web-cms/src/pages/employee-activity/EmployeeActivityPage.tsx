@@ -121,7 +121,7 @@ export default function EmployeeActivityPage() {
                 <tr key={s.employeeId} style={{ cursor: "pointer" }} onClick={() => focusEmployee(s.employeeId)}>
                   <td style={tdStyle}>{s.employeeName}{!s.isActive && <span style={mutedStyle}> (inactive)</span>}</td>
                   <td style={tdStyle}>
-                    <span style={{ color: s.connectedAgentCount > 0 ? "#22c55e" : "var(--color-text-muted)" }}>
+                    <span style={{ color: s.connectedAgentCount > 0 ? "var(--color-success)" : "var(--color-text-muted)" }}>
                       {s.connectedAgentCount > 0 ? `Online (${s.connectedAgentCount})` : "Offline"}
                     </span>
                   </td>
@@ -171,5 +171,5 @@ export default function EmployeeActivityPage() {
 }
 
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px", verticalAlign: "top" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };

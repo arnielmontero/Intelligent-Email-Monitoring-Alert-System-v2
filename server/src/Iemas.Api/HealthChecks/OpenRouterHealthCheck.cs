@@ -1,3 +1,4 @@
+using Iemas.Application.AiModels;
 using Iemas.Application.Common.Ai;
 using Iemas.Infrastructure.Ai;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -18,35 +19,31 @@ namespace Iemas.Api.HealthChecks;
 public sealed class OpenRouterHealthCheck : IHealthCheck
 {
     private readonly IOptions<AiClassificationOptions> _options;
+    private readonly IAiProviderConnectionResolver _connectionResolver;
     private readonly AiCircuitBreakerStore _circuitBreakerStore;
 
-    public OpenRouterHealthCheck(IOptions<AiClassificationOptions> options, AiCircuitBreakerStore circuitBreakerStore)
+    public OpenRouterHealthCheck(IOptions<AiClassificationOptions> options, IAiProviderConnectionResolver connectionResolver, AiCircuitBreakerStore circuitBreakerStore)
     {
         _options = options;
+        _connectionResolver = connectionResolver;
         _circuitBreakerStore = circuitBreakerStore;
     }
 
-    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        var options = _options.Value;
-
-        if (!options.Enabled)
+        if (!_options.Value.Enabled)
         {
-            return Task.FromResult(HealthCheckResult.Healthy("AI classification is disabled by configuration; nothing to check."));
+            return HealthCheckResult.Healthy("AI classification is disabled by configuration; nothing to check.");
         }
 
-        if (string.IsNullOrWhiteSpace(options.OpenRouter.ApiKey))
+        var connection = await _connectionResolver.ResolveAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(connection.ApiKey))
         {
             // Not Unhealthy: this is a known, already-tracked configuration gap in this
             // environment (see the tracker's "Irreducibly Not Verified" section), not a runtime
             // failure — classification cleanly reports ReviewRequired for every message rather than
             // losing anything, so the system is degraded, not down.
-            return Task.FromResult(HealthCheckResult.Degraded("OpenRouter API key is not configured; classification will report every message as requiring manual review."));
-        }
-
-        if (string.IsNullOrWhiteSpace(options.OpenRouter.BaseUrl))
-        {
-            return Task.FromResult(HealthCheckResult.Unhealthy("OpenRouter BaseUrl is not configured."));
+            return HealthCheckResult.Degraded("OpenRouter API key is not configured (set it on the AI Models page); classification will report every message as requiring manual review.");
         }
 
         var snapshot = _circuitBreakerStore.GetSnapshot();
@@ -59,24 +56,24 @@ public sealed class OpenRouterHealthCheck : IHealthCheck
 
         if (snapshot.Count == 0)
         {
-            return Task.FromResult(HealthCheckResult.Healthy("Configuration valid; no classification attempts observed yet this process.", data));
+            return HealthCheckResult.Healthy("Configuration valid; no classification attempts observed yet this process.", data);
         }
 
         var openModels = snapshot.Where(s => s.State == CircuitState.Open).ToList();
         if (openModels.Count == snapshot.Count)
         {
-            return Task.FromResult(HealthCheckResult.Unhealthy(
+            return HealthCheckResult.Unhealthy(
                 $"All {snapshot.Count} tracked model(s) currently have an OPEN circuit: {string.Join(", ", openModels.Select(m => m.ModelIdentifier))}.",
-                data: data));
+                data: data);
         }
 
         if (openModels.Count > 0)
         {
-            return Task.FromResult(HealthCheckResult.Degraded(
+            return HealthCheckResult.Degraded(
                 $"{openModels.Count} of {snapshot.Count} tracked model(s) have an OPEN circuit, but at least one model remains available for fallback: {string.Join(", ", openModels.Select(m => m.ModelIdentifier))}.",
-                data: data));
+                data: data);
         }
 
-        return Task.FromResult(HealthCheckResult.Healthy($"Configuration valid; all {snapshot.Count} tracked model(s) have a closed circuit.", data));
+        return HealthCheckResult.Healthy($"Configuration valid; all {snapshot.Count} tracked model(s) have a closed circuit.", data);
     }
 }

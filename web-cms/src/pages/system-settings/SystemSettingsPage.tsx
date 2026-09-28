@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { SystemSettingDto } from "../../api/types";
+import IgnoredSendersEditor from "./IgnoredSendersEditor";
+import { CONFIGURATION_GROUPS, HIDDEN_GROUPS } from "../system-configuration/groups";
 
 export default function SystemSettingsPage() {
   const [settings, setSettings] = useState<SystemSettingDto[]>([]);
@@ -11,8 +13,9 @@ export default function SystemSettingsPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   function apply(data: SystemSettingDto[]) {
-    setSettings(data);
-    setDraft(Object.fromEntries(data.map((s) => [s.key, s.value])));
+    const mine = data.filter((s) => !CONFIGURATION_GROUPS.includes(s.group) && !HIDDEN_GROUPS.includes(s.group));
+    setSettings(mine);
+    setDraft(Object.fromEntries(mine.map((s) => [s.key, s.value])));
   }
 
   async function load() {
@@ -33,7 +36,7 @@ export default function SystemSettingsPage() {
   }, []);
 
   const changed = useMemo(
-    () => settings.filter((s) => (draft[s.key] ?? s.value).trim() !== s.value),
+    () => settings.filter((s) => s.type !== "SenderList" && (draft[s.key] ?? s.value).trim() !== s.value),
     [settings, draft],
   );
 
@@ -76,7 +79,10 @@ export default function SystemSettingsPage() {
   return (
     <div>
       <h1>System Settings</h1>
-      <p style={mutedStyle}>Every change is recorded in the Audit Log with the old and new value.</p>
+      <p style={mutedStyle}>
+        Every change is recorded in the Audit Log with the old and new value. Email rules and ignored senders are on the{" "}
+        <a href="/system-configuration">System Configuration</a> page.
+      </p>
 
       {error && <div className="form-error">{error}</div>}
       {notice && <div style={noticeStyle}>{notice}</div>}
@@ -84,13 +90,15 @@ export default function SystemSettingsPage() {
       {groups.map(([group, items]) => (
         <section key={group} style={{ marginBottom: 28 }}>
           <h2 style={{ fontSize: 18 }}>{group}</h2>
+          {items.every((s) => s.type === "SenderList") && items.map((s) => (
+            <IgnoredSendersEditor key={s.key} setting={s} onSaved={apply} />
+          ))}
           {group === "Retention" && (
             <p style={mutedStyle}>
-              Retention periods are recorded policy (§90). No automatic purge job acts on them yet — they document the
-              agreed retention, they do not delete data.
+              Retention periods are recorded policy only. No automatic clean-up acts on them yet — they don't delete data.
             </p>
           )}
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          {!items.every((s) => s.type === "SenderList") && <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
               {items.map((s) => {
                 const dirty = (draft[s.key] ?? s.value).trim() !== s.value;
@@ -113,7 +121,7 @@ export default function SystemSettingsPage() {
                       {s.type === "Integer" && group === "Retention" && <span style={mutedStyle}> days</span>}
                     </td>
                     <td style={{ ...tdStyle, ...mutedStyle, width: "25%" }}>
-                      Default: {s.defaultValue}
+                      Default: {s.defaultValue || "(empty)"}
                       {s.isOverridden && s.updatedByEmail && (
                         <div>Set by {s.updatedByEmail}{s.updatedAt ? ` on ${new Date(s.updatedAt).toLocaleString()}` : ""}</div>
                       )}
@@ -125,7 +133,7 @@ export default function SystemSettingsPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table>}
         </section>
       ))}
 
@@ -152,4 +160,4 @@ function supportedTimeZones(): string[] {
 
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const noticeStyle: React.CSSProperties = { background: "#166534", color: "#fff", padding: "8px 12px", borderRadius: 6, marginBottom: 16 };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px", verticalAlign: "top" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };

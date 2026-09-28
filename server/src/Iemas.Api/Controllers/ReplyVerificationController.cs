@@ -26,4 +26,12 @@ public class ReplyVerificationController : ControllerBase
     {
         return Ok(await _service.RunAsync(batchSize ?? 25, cancellationToken));
     }
+
+    [HttpGet("overview")]
+    public async Task<ActionResult<ReplyCheckOverviewDto>> Overview(CancellationToken cancellationToken) =>
+        Ok(await _service.GetOverviewAsync(cancellationToken));
+
+    [HttpGet("cases")]
+    public async Task<ActionResult<List<ReplyCheckCaseDto>>> Cases([FromQuery] Iemas.Domain.Cases.CaseReplyStatus? status, [FromQuery] int? take, CancellationToken cancellationToken) =>
+        Ok(await _service.GetCasesAsync(status, take ?? 200, cancellationToken));
 }

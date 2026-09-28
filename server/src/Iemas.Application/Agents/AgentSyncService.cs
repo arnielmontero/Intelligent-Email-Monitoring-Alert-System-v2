@@ -71,15 +71,34 @@ public class AgentSyncService
     }
 
     /// <summary>Called on SignalR disconnect (see AgentHub) — §71 Connection status transitions to Disconnected without touching RegistrationStatus.</summary>
-    public async Task RecordDisconnectAsync(Guid agentId, string? reason, CancellationToken cancellationToken)
+    public async Task RecordDisconnectAsync(Guid agentId, string? reason, CancellationToken cancellationToken, bool otherConnectionsOpen = false)
     {
         var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId, cancellationToken);
         if (agent is null) return;
 
-        agent.ConnectionStatus = AgentConnectionStatus.Disconnected;
-        await _db.SaveChangesAsync(cancellationToken);
+        // A reconnect closes the old connection after the new one opened — the Agent is still online.
+        if (!otherConnectionsOpen)
+        {
+            agent.ConnectionStatus = AgentConnectionStatus.Disconnected;
+        }
 
-        _db.AgentLogs.Add(new AgentLog { AgentId = agentId, EventType = AgentLogEventType.Disconnected, Detail = reason });
+        _db.AgentLogs.Add(new AgentLog
+        {
+            AgentId = agentId,
+            EventType = AgentLogEventType.Disconnected,
+            Detail = otherConnectionsOpen ? $"Previous connection closed; another connection is still open.{(reason is null ? "" : $" {reason}")}" : reason,
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>§71 — a live SignalR connection means Connected, regardless of the order older connections close in.</summary>
+    public async Task RecordConnectedAsync(Guid agentId, CancellationToken cancellationToken)
+    {
+        var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId, cancellationToken);
+        if (agent is null) return;
+
+        agent.ConnectionStatus = AgentConnectionStatus.Connected;
+        agent.LastConnectedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
     }
 

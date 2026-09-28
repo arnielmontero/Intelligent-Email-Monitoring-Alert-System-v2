@@ -94,6 +94,24 @@ public class AiModelService
             return Result<AiModelDto>.Failure(displayNameError);
         }
 
+        var newIdentifier = request.ModelIdentifier?.Trim();
+        if (!string.IsNullOrEmpty(newIdentifier) && newIdentifier != model.ModelIdentifier)
+        {
+            if (newIdentifier.Any(char.IsWhiteSpace) || InputSanitizer.ValidateFreeText("Model identifier", newIdentifier) is not null)
+            {
+                return Result<AiModelDto>.Failure("Model identifier cannot contain spaces or '<' '>' characters.");
+            }
+            if (await _db.AiModelConfigs.AnyAsync(m => m.Id != id && m.Provider == model.Provider && m.ModelIdentifier == newIdentifier, cancellationToken))
+            {
+                return Result<AiModelDto>.Failure("This provider/model combination is already configured.");
+            }
+            if (model.DisplayName == model.ModelIdentifier && string.IsNullOrWhiteSpace(request.DisplayName))
+            {
+                displayName = newIdentifier;
+            }
+            model.ModelIdentifier = newIdentifier;
+        }
+
         model.DisplayName = displayName;
         model.Enabled = request.Enabled;
         model.TaskCapability = string.IsNullOrWhiteSpace(request.TaskCapability) ? model.TaskCapability : request.TaskCapability.Trim();
@@ -144,7 +162,7 @@ public class AiModelService
 
         var request = new ClassificationRequest(
             "Test message for connectivity check", "This is a test.", "test@example.com", "test-account@sawo.com",
-            false, "(test)", "General", string.Empty, string.Empty);
+            false, "(test)", "General", string.Empty, string.Empty, Purpose: AiUsagePurpose.ModelTest);
 
         var attempt = await _aiProvider.ClassifyAsync(request, model.ModelIdentifier, TimeSpan.FromSeconds(model.TimeoutSeconds), cancellationToken);
 

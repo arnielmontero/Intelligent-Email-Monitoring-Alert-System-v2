@@ -29,7 +29,10 @@ public static class ClassificationDecisionPolicy
         double confidence,
         double? highThreshold,
         double? mediumThreshold,
-        bool? treatMediumAsReviewRequired)
+        bool? treatMediumAsReviewRequired,
+        bool? legitimate = null,
+        bool responseExpected = true,
+        bool requireResponseForCase = false)
     {
         var high = highThreshold ?? DefaultHighThreshold;
         var medium = mediumThreshold ?? DefaultMediumThreshold;
@@ -45,6 +48,25 @@ public static class ClassificationDecisionPolicy
 
         var band = BandFor(confidence, high, medium);
 
+        // An uncertain call goes to a person rather than being dropped on the AI's say-so.
+        if (band == ConfidenceBand.Low)
+        {
+            return new DecisionPolicyResult(band, ImportanceDecision.ReviewRequired,
+                $"Low confidence (confidence {confidence:P0} < {medium:P0}); needs a person to review it.");
+        }
+
+        if (legitimate == false)
+        {
+            return new DecisionPolicyResult(band, ImportanceDecision.NotImportant,
+                "Not a legitimate business email per the Legitimate email rules (spam, marketing, automated or test message).");
+        }
+
+        if (requireResponseForCase && !responseExpected)
+        {
+            return new DecisionPolicyResult(band, ImportanceDecision.NotImportant,
+                "Relevant, but no response is needed per the Needs-a-response rules; stored without creating a Case.");
+        }
+
         return band switch
         {
             ConfidenceBand.High => new DecisionPolicyResult(band, ImportanceDecision.Important,
@@ -57,7 +79,7 @@ public static class ClassificationDecisionPolicy
                     $"Medium confidence (confidence {confidence:P0}); configured to treat as important."),
 
             _ => new DecisionPolicyResult(band, ImportanceDecision.ReviewRequired,
-                $"Low confidence (confidence {confidence:P0} < {medium:P0}); requires review per §26."),
+                $"Low confidence (confidence {confidence:P0} < {medium:P0}); needs a person to review it."),
         };
     }
 

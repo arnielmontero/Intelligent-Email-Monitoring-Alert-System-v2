@@ -10,7 +10,23 @@ public record ClassificationRequest(
     string ProfileName,
     string ProfileCategories,
     string ProfileIncludeDefinitions,
-    string ProfileExcludeDefinitions);
+    string ProfileExcludeDefinitions,
+    Guid? EmailMessageId = null,
+    string Purpose = AiUsagePurpose.EmailClassification,
+    /// <summary>Admin-defined rules (System Configuration) for what counts as a legitimate business email.</summary>
+    string? LegitimacyRules = null,
+    /// <summary>Admin-defined rules (System Configuration) for when the sender expects a reply.</summary>
+    string? ResponseRules = null);
+
+public static class AiUsagePurpose
+{
+    public const string EmailClassification = "EmailClassification";
+    public const string ModelTest = "ModelTest";
+    public const string ProfileTest = "ProfileTest";
+}
+
+/// <summary>Token usage and cost for one provider call, as reported by the provider.</summary>
+public record AiTokenUsage(int? PromptTokens, int? CompletionTokens, int? TotalTokens, decimal? CostUsd, string? GenerationId);
 
 /// <summary>
 /// Requirements §25 — the structured AI result. Confidence/relevance/category are the AI's raw
@@ -24,7 +40,9 @@ public record ClassificationResponse(
     bool ResponseExpected,
     string Priority,
     double Confidence,
-    string Summary);
+    string Summary,
+    /// <summary>Genuine business email from a real sender (not spam, phishing, marketing or an automated notice). Null if the model did not say.</summary>
+    bool? Legitimate = null);
 
 /// <summary>
 /// Phase 10 hardening — lets the provider (which alone knows whether a failure was an HTTP status,
@@ -67,7 +85,8 @@ public record ClassificationAttemptResult(
     string? ErrorMessage,
     long DurationMs,
     ClassificationFailureCategory FailureCategory = ClassificationFailureCategory.None,
-    TimeSpan? RetryAfter = null);
+    TimeSpan? RetryAfter = null,
+    AiTokenUsage? Usage = null);
 
 /// <summary>
 /// Requirements §82 (AI Provider Management) — provider-specific integration logic (OpenRouter

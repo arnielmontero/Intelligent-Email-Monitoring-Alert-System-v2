@@ -8,7 +8,10 @@ import EmailAccountsPage from "./pages/email-accounts/EmailAccountsPage";
 import EmailMonitoringPage from "./pages/email-monitoring/EmailMonitoringPage";
 import EmailClassificationPage from "./pages/email-classification/EmailClassificationPage";
 import AiModelsPage from "./pages/ai-models/AiModelsPage";
+import AiUsagePage from "./pages/ai-usage/AiUsagePage";
+import HelpPage from "./pages/help/HelpPage";
 import CasesPage from "./pages/cases/CasesPage";
+import CaseDetailPage from "./pages/cases/CaseDetailPage";
 import AgentsPage from "./pages/agents/AgentsPage";
 import ReminderPoliciesPage from "./pages/reminder-policies/ReminderPoliciesPage";
 import EscalationPoliciesPage from "./pages/escalation-policies/EscalationPoliciesPage";
@@ -24,6 +27,7 @@ import NotificationsPage from "./pages/notifications/NotificationsPage";
 import UsersPage from "./pages/users/UsersPage";
 import EmployeeActivityPage from "./pages/employee-activity/EmployeeActivityPage";
 import SystemSettingsPage from "./pages/system-settings/SystemSettingsPage";
+import SystemConfigurationPage from "./pages/system-configuration/SystemConfigurationPage";
 import MaintenancePage from "./pages/maintenance/MaintenancePage";
 
 export default function App() {
@@ -39,7 +43,10 @@ export default function App() {
           <Route path="/email-monitoring" element={<EmailMonitoringPage />} />
           <Route path="/email-classification" element={<EmailClassificationPage />} />
           <Route path="/ai-models" element={<AiModelsPage />} />
+          <Route path="/ai-usage" element={<AiUsagePage />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="/cases" element={<CasesPage />} />
+          <Route path="/cases/:id" element={<CaseDetailPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/reminder-policies" element={<ReminderPoliciesPage />} />
           <Route path="/escalation-policies" element={<EscalationPoliciesPage />} />
@@ -55,6 +62,7 @@ export default function App() {
           <Route path="/users" element={<UsersPage />} />
           <Route path="/employee-activity" element={<EmployeeActivityPage />} />
           <Route path="/system-settings" element={<SystemSettingsPage />} />
+          <Route path="/system-configuration" element={<SystemConfigurationPage />} />
           <Route path="/maintenance" element={<MaintenancePage />} />
         </Route>
       </Route>

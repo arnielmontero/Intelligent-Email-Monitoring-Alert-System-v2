@@ -23,12 +23,10 @@ public class OpenRouterClassificationProviderTests
 
     private static OpenRouterClassificationProvider CreateProvider(FakeHttpMessageHandler handler, string apiKey = "sk-test-key")
     {
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://openrouter.ai/api/v1/") };
-        var options = Options.Create(new AiClassificationOptions
-        {
-            OpenRouter = new OpenRouterOptions { BaseUrl = "https://openrouter.ai/api/v1", ApiKey = apiKey }
-        });
-        return new OpenRouterClassificationProvider(httpClient, options, NullLogger<OpenRouterClassificationProvider>.Instance);
+        var httpClient = new HttpClient(handler);
+        var options = Options.Create(new AiClassificationOptions());
+        return new OpenRouterClassificationProvider(
+            httpClient, new StaticAiProviderConnectionResolver(apiKey), options, NullLogger<OpenRouterClassificationProvider>.Instance);
     }
 
     [Fact]

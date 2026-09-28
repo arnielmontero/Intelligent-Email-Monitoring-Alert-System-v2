@@ -45,6 +45,7 @@ export interface EmailAccountDto {
   lastTestedAt: string | null;
   lastTestSucceeded: boolean | null;
   lastTestError: string | null;
+  processEmailsReceivedAfter: string | null;
 }
 
 export interface TestConnectionResult {
@@ -137,6 +138,19 @@ export const CASE_MATCH_SIGNAL_LABELS: Record<CaseMatchSignal, string> = {
   4: "Same Participant/Account", 5: "Recent Conversation", 6: "Subject (weak signal)", 7: "New Case",
 };
 
+export const CASE_COMPLETION_REASONS: Array<{ value: CaseCompletionReason; label: string }> = [
+  { value: 0, label: "Customer Request Resolved" },
+  { value: 1, label: "Employee Responded" },
+  { value: 2, label: "Phone Call Handled" },
+  { value: 3, label: "Handled Outside Email" },
+  { value: 4, label: "No Response Required" },
+  { value: 5, label: "Duplicate" },
+  { value: 6, label: "Incorrect Classification" },
+  { value: 7, label: "Cancelled by Admin" },
+  { value: 8, label: "Cancelled by Employee" },
+  { value: 9, label: "Other" },
+];
+
 export const CASE_EVENT_TYPE_LABELS: Record<CaseEventType, string> = {
   0: "Email Received", 1: "Created", 2: "Updated", 3: "Status Changed",
   4: "Reopened", 5: "Completed", 6: "Cancelled", 7: "Reply Verification",
@@ -180,6 +194,38 @@ export interface CaseEmailDto {
   receivedAt: string;
   matchSignal: CaseMatchSignal;
   matchDetail: string | null;
+  fromDisplayName: string | null;
+  toAddresses: string | null;
+  ccAddresses: string | null;
+  body: string | null;
+  bodyFromHtml: boolean;
+  attachmentCount: number;
+  classification: CaseEmailClassificationDto | null;
+}
+
+export interface CaseEmailClassificationDto {
+  decision: string;
+  category: string | null;
+  priority: string | null;
+  confidence: number | null;
+  summary: string | null;
+  actionRequired: boolean | null;
+  aiModel: string | null;
+  legitimate: boolean | null;
+  responseExpected: boolean | null;
+  decisionReason: string | null;
+}
+
+export interface CaseNotificationDto {
+  id: string;
+  createdAt: string;
+  type: string;
+  status: string;
+  title: string;
+  message: string;
+  employeeName: string;
+  deliveredAgentCount: number;
+  acknowledgedAt: string | null;
 }
 
 export interface ReplyVerificationAttemptDto {
@@ -198,6 +244,7 @@ export interface CaseDetailDto {
   emails: CaseEmailDto[];
   history: CaseEventDto[];
   verificationAttempts: ReplyVerificationAttemptDto[];
+  notifications: CaseNotificationDto[] | null;
 }
 
 // §71 Agent Registration / Connection status
@@ -457,6 +504,34 @@ export interface CaseRunResult {
   updatedCount: number;
   reopenedCount: number;
   durationMs: number;
+  items: CaseWorkflowItemDto[] | null;
+}
+
+export interface CaseWorkflowItemDto {
+  emailMessageId: string;
+  receivedAt: string;
+  fromAddress: string;
+  subject: string;
+  mailbox: string;
+  outcome: string;
+  caseId: string | null;
+  caseNumber: string | null;
+  detail: string | null;
+}
+
+export interface CaseWorkflowOverviewDto {
+  receivedLast24Hours: number;
+  awaitingAiCheck: number;
+  needsReview: number;
+  notWorkLast24Hours: number;
+  waitingForCase: number;
+  actionRequired: number;
+  inProgress: number;
+  waitingOnCustomer: number;
+  waitingInternally: number;
+  overdue: number;
+  escalated: number;
+  completedLast7Days: number;
 }
 
 // §42 — Reply Verification manual trigger.
@@ -467,6 +542,37 @@ export interface ReplyVerificationRunResult {
   pendingCount: number;
   failedCount: number;
   durationMs: number;
+  items?: ReplyCheckCaseDto[] | null;
+}
+
+/** An open Case whose reply is being checked in its mailbox's Sent folder. */
+export interface ReplyCheckCaseDto {
+  caseId: string;
+  caseNumber: string;
+  subject: string;
+  customer: string;
+  mailbox: string;
+  owner: string | null;
+  replyStatus: string;
+  lastCheckedAt: string | null;
+  lastResult: string | null;
+  lastActivityAt: string;
+}
+
+export interface MailboxReplyCheckDto {
+  emailAccountId: string;
+  mailbox: string;
+  openCases: number;
+  lastCheckedAt: string | null;
+  lastProblem: string | null;
+}
+
+export interface ReplyCheckOverviewDto {
+  awaitingFirstCheck: number;
+  noReplyYet: number;
+  replyFound: number;
+  couldNotCheck: number;
+  mailboxes: MailboxReplyCheckDto[];
 }
 
 // §87 — Dashboard.
@@ -503,6 +609,10 @@ export interface CaseEventSearchResultDto {
   actorEmployeeId: string | null;
   actorEmployeeName: string | null;
   occurredAt: string;
+  customerEmailAddress: string;
+  customerDisplayName: string | null;
+  mailboxAddress: string;
+  ownerEmployeeName: string | null;
 }
 
 // §106 — System Health (SYSTEM nav).
@@ -613,7 +723,7 @@ export interface SystemSettingDto {
   group: string;
   label: string;
   description: string;
-  type: "Text" | "Integer" | "TimeZone";
+  type: "Text" | "Integer" | "TimeZone" | "SenderList" | "LongText" | "Boolean" | "RuleList";
   value: string;
   defaultValue: string;
   isOverridden: boolean;
@@ -631,4 +741,84 @@ export interface PauseControlDto {
   reason: string | null;
   changedByEmail: string | null;
   changedAt: string | null;
+}
+
+// §82 — OpenRouter connection (AI Models page). The API key itself is never returned.
+export interface AiProviderSettingsDto {
+  provider: string;
+  baseUrl: string;
+  defaultBaseUrl: string;
+  hasApiKey: boolean;
+  apiKeyHint: string | null;
+  keySource: "CMS" | "Environment" | "None";
+  updatedByEmail: string | null;
+  updatedAt: string | null;
+}
+
+export interface AiProviderKeyCheck {
+  succeeded: boolean;
+  message: string;
+  durationMs: number;
+  label: string | null;
+  usageUsd: number | null;
+  limitUsd: number | null;
+  limitRemainingUsd: number | null;
+}
+
+export interface AiCatalogModel {
+  id: string;
+  name: string;
+  contextLength: number | null;
+  promptPricePerMillion: number | null;
+  completionPricePerMillion: number | null;
+}
+
+// AI cost monitoring (AI CONFIGURATION → AI Usage & Cost).
+export interface AiUsagePeriodDto {
+  label: string;
+  calls: number;
+  failedCalls: number;
+  tokens: number;
+  costUsd: number;
+  callsWithoutCost: number;
+}
+
+export interface AiUsageByModelDto {
+  modelIdentifier: string;
+  calls: number;
+  failedCalls: number;
+  tokens: number;
+  costUsd: number;
+  averageCostPerCall: number;
+}
+
+export interface AiUsageSummaryDto {
+  timeZone: string;
+  periods: AiUsagePeriodDto[];
+  byModelLast30Days: AiUsageByModelDto[];
+}
+
+export interface AiUsageCallDto {
+  id: string;
+  occurredAt: string;
+  provider: string;
+  modelIdentifier: string;
+  purpose: string;
+  emailMessageId: string | null;
+  emailSubject: string | null;
+  succeeded: boolean;
+  errorMessage: string | null;
+  durationMs: number;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  costUsd: number | null;
+}
+
+export interface PagedResult<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }

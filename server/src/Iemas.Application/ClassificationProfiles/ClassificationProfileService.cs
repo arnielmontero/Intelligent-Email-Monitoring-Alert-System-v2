@@ -208,9 +208,13 @@ public class ClassificationProfileService
             return Result<TestClassificationResult>.Failure("No enabled AI model is configured for EmailClassification.");
         }
 
+        var rules = await Operations.EmailRules.LoadForPromptAsync(_db, cancellationToken);
         var aiRequest = new ClassificationRequest(
             request.Subject, request.Content, "test@example.com", "test-account@sawo.com", false,
-            profile?.Name ?? "(none)", profile?.Categories ?? string.Empty, profile?.IncludeDefinitions ?? string.Empty, profile?.ExcludeDefinitions ?? string.Empty);
+            profile?.Name ?? "(none)", profile?.Categories ?? string.Empty, profile?.IncludeDefinitions ?? string.Empty, profile?.ExcludeDefinitions ?? string.Empty,
+            Purpose: AiUsagePurpose.ProfileTest,
+            LegitimacyRules: rules.Legitimacy,
+            ResponseRules: rules.Response);
 
         var attempt = await _aiProvider.ClassifyAsync(aiRequest, model.ModelIdentifier, TimeSpan.FromSeconds(model.TimeoutSeconds), cancellationToken);
 
@@ -222,12 +226,15 @@ public class ClassificationProfileService
 
         var policyResult = ClassificationDecisionPolicy.Decide(
             attempt.Response.Relevant, attempt.Response.Confidence,
-            profile?.HighConfidenceThreshold, profile?.MediumConfidenceThreshold, profile?.TreatMediumConfidenceAsReviewRequired);
+            profile?.HighConfidenceThreshold, profile?.MediumConfidenceThreshold, profile?.TreatMediumConfidenceAsReviewRequired,
+            attempt.Response.Legitimate, attempt.Response.ResponseExpected,
+            await Operations.SystemSettingsService.GetBoolAsync(_db, Operations.SystemSettingKeys.RequireResponseForCase, cancellationToken));
 
         return Result<TestClassificationResult>.Success(new TestClassificationResult(
             attempt.Response.Relevant, attempt.Response.Category, attempt.Response.ActionRequired,
             attempt.Response.Priority, attempt.Response.Confidence, attempt.Response.Summary,
-            filterResult.Reason, policyResult.Decision.ToString(), null));
+            filterResult.Reason, policyResult.Decision.ToString(), null,
+            attempt.Response.Legitimate, attempt.Response.ResponseExpected, policyResult.Reason));
     }
 
     private static bool AreThresholdsInvalid(double? high, double? medium, out string? error)

@@ -80,9 +80,9 @@ export default function DashboardPage() {
 }
 
 function Tile({ label, value, warn, good }: { label: string; value: number; warn?: boolean; good?: boolean }) {
-  const color = warn ? "#ef4444" : good ? "#22c55e" : "inherit";
+  const color = warn ? "#ef4444" : good ? "var(--color-success)" : "inherit";
   return (
-    <div style={{ border: "1px solid #334155", borderRadius: 8, padding: 16 }}>
+    <div style={{ border: "1px solid var(--color-border)", borderRadius: 8, padding: 16 }}>
       <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 28, fontWeight: 700, color }}>{value}</div>
     </div>
@@ -90,5 +90,5 @@ function Tile({ label, value, warn, good }: { label: string; value: number; warn
 }
 
 const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

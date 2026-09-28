@@ -12,11 +12,33 @@ namespace Iemas.Api.Controllers;
 public class AiModelsController : ControllerBase
 {
     private readonly AiModelService _service;
+    private readonly AiProviderSettingsService _providerSettings;
 
-    public AiModelsController(AiModelService service)
+    public AiModelsController(AiModelService service, AiProviderSettingsService providerSettings)
     {
         _service = service;
+        _providerSettings = providerSettings;
     }
+
+    /// <summary>OpenRouter connection settings. The API key is never returned, only whether one is set and its last 4 characters.</summary>
+    [HttpGet("provider")]
+    public async Task<ActionResult<AiProviderSettingsDto>> GetProviderSettings(CancellationToken cancellationToken) =>
+        Ok(await _providerSettings.GetAsync(cancellationToken));
+
+    [HttpPut("provider")]
+    public async Task<ActionResult<AiProviderSettingsDto>> UpdateProviderSettings([FromBody] UpdateAiProviderSettingsRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _providerSettings.UpdateAsync(request, cancellationToken);
+        return result.Succeeded ? Ok(result.Value) : BadRequest(new { message = result.Error });
+    }
+
+    [HttpPost("provider/test")]
+    public async Task<ActionResult<AiProviderKeyCheck>> TestProvider(CancellationToken cancellationToken) =>
+        Ok(await _providerSettings.TestAsync(cancellationToken));
+
+    [HttpGet("provider/catalog")]
+    public async Task<ActionResult<IReadOnlyList<AiCatalogModel>>> GetCatalog(CancellationToken cancellationToken) =>
+        Ok(await _providerSettings.GetCatalogAsync(cancellationToken));
 
     [HttpGet]
     public async Task<ActionResult<List<AiModelDto>>> GetAll(CancellationToken cancellationToken)

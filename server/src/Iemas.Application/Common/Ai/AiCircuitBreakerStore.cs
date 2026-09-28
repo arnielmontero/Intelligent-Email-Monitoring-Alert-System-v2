@@ -74,6 +74,15 @@ public class AiCircuitBreakerStore
     /// flight) returns <see langword="false"/> — the caller must skip this model entirely (move to
     /// fallback) without consuming any of its retry budget.
     /// </summary>
+    /// <summary>Closes every circuit for a provider, e.g. after its credentials were corrected.</summary>
+    public void ResetProvider(string provider)
+    {
+        foreach (var key in _entries.Keys.Where(k => k.Provider == provider).ToList())
+        {
+            _entries.TryRemove(key, out _);
+        }
+    }
+
     public bool TryAcquire(string provider, string modelIdentifier, out List<CircuitTransition> transitions)
     {
         transitions = new List<CircuitTransition>();

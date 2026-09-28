@@ -94,16 +94,26 @@ export default function OutboundEmailPage() {
     }
   }
 
+  async function handleDelete(account: EmailAccountDto) {
+    if (!window.confirm(`Permanently delete ${account.emailAddress} and its stored credential? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await apiClient.delete(`/email-accounts/${account.id}`);
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.message ?? "Failed to delete outbound account.");
+    }
+  }
+
   if (loading) return <p>Loading...</p>;
 
   return (
     <div>
       <h1>Outbound Email</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        Requirements §18-19 — configuration for internal IEMAS notification/escalation emails only.
-        This is a dedicated notification mailbox, never an employee's personal mailbox and never
-        monitored as a customer mailbox (kept structurally separate from Email Accounts, which are
-        inbound-only). Credentials are encrypted at rest and never displayed after saving.
+        The mailbox IEMAS uses to send its own emails (such as escalation notices). Use a dedicated notification
+        mailbox, not someone's personal one — it is never checked for customer email. Passwords are encrypted and
+        never displayed after saving.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -185,6 +195,15 @@ export default function OutboundEmailPage() {
                       {testingId === acc.id ? "Testing..." : "Test Connection"}
                     </button>{" "}
                     <button onClick={() => handleToggleActive(acc)}>{acc.isActive ? "Disable" : "Enable"}</button>
+                    <button
+                      className="btn-danger"
+                      disabled={acc.isActive}
+                      title={acc.isActive ? "Disable this account before deleting" : "Permanently delete this account"}
+                      onClick={() => handleDelete(acc)}
+                      style={{ marginLeft: 8 }}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               );
@@ -196,5 +215,5 @@ export default function OutboundEmailPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

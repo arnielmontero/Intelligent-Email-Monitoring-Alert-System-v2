@@ -6,7 +6,29 @@ public record ReplyVerificationRunResult(
     int NoReplyFoundCount,
     int PendingCount,
     int FailedCount,
-    long DurationMs);
+    long DurationMs,
+    List<ReplyCheckCaseDto>? Items = null);
+
+public record ReplyCheckCaseDto(
+    Guid CaseId,
+    string CaseNumber,
+    string Subject,
+    string Customer,
+    string Mailbox,
+    string? Owner,
+    string ReplyStatus,
+    DateTimeOffset? LastCheckedAt,
+    string? LastResult,
+    DateTimeOffset LastActivityAt);
+
+public record MailboxReplyCheckDto(Guid EmailAccountId, string Mailbox, int OpenCases, DateTimeOffset? LastCheckedAt, string? LastProblem);
+
+public record ReplyCheckOverviewDto(
+    int AwaitingFirstCheck,
+    int NoReplyYet,
+    int ReplyFound,
+    int CouldNotCheck,
+    List<MailboxReplyCheckDto> Mailboxes);
 
 public record ReplyVerificationAttemptDto(
     Guid Id,

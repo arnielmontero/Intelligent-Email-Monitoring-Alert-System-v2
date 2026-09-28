@@ -23,7 +23,7 @@ public class FakeEmailProviderAdapter : IEmailProviderAdapter
             ?? Task.FromResult(new ProviderConnectionTestResult(true, null, TimeSpan.Zero));
     }
 
-    public Task<FetchInboxResult> FetchInboxMessagesAsync(EmailProviderConnectionSettings settings, uint? knownUidValidity, uint? afterUid, int maxMessages, CancellationToken cancellationToken)
+    public Task<FetchInboxResult> FetchInboxMessagesAsync(EmailProviderConnectionSettings settings, uint? knownUidValidity, uint? afterUid, int maxMessages, CancellationToken cancellationToken, DateTimeOffset? deliveredAfter = null)
     {
         if (FetchBehavior is null)
         {

@@ -43,12 +43,14 @@ public class CasesController : ControllerBase
 
     /// <summary>§66/§86 "Case History & Logs" — global, cross-Case search, distinct from GetById's single-Case timeline.</summary>
     [HttpGet("events")]
-    public async Task<ActionResult<List<CaseEventSearchResultDto>>> SearchEvents(
-        [FromQuery] Guid? caseId, [FromQuery] CaseEventType? eventType,
+    public async Task<ActionResult<Iemas.Application.Common.PagedResult<CaseEventSearchResultDto>>> SearchEvents(
+        [FromQuery] Guid? caseId, [FromQuery] CaseEventType? eventType, [FromQuery] string? search,
+        [FromQuery] Guid? emailAccountId, [FromQuery] Guid? ownerEmployeeId,
         [FromQuery] DateTimeOffset? from, [FromQuery] DateTimeOffset? to,
-        [FromQuery] int? take, CancellationToken cancellationToken)
+        [FromQuery] int? page, [FromQuery] int? pageSize, CancellationToken cancellationToken)
     {
-        return Ok(await _caseService.SearchEventsAsync(caseId, eventType, from, to, take ?? 100, cancellationToken));
+        var filter = new CaseEventSearchFilter(caseId, eventType, search, emailAccountId, ownerEmployeeId, from, to);
+        return Ok(await _caseService.SearchEventsAsync(filter, page ?? 1, pageSize ?? 25, cancellationToken));
     }
 
     [HttpPost("{id:guid}/complete")]

@@ -55,6 +55,8 @@ public interface IAppDbContext
     DbSet<Notification> Notifications { get; }
     DbSet<EmergencyPauseControl> EmergencyPauseControls { get; }
     DbSet<SystemSetting> SystemSettings { get; }
+    DbSet<AiProviderConfig> AiProviderConfigs { get; }
+    DbSet<AiUsageRecord> AiUsageRecords { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

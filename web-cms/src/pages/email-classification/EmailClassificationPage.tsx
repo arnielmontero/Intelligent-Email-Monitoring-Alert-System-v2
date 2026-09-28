@@ -107,9 +107,8 @@ export default function EmailClassificationPage() {
     <div>
       <h1>Email Classification</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        Classification Profiles (§28) define the deterministic include/exclude signals and
-        confidence policy the AI classification pipeline uses. Assign a profile to an inbound
-        email account by name on the Email Accounts screen.
+        Classification profiles tell the AI what kind of email matters (categories, and words to include or exclude) and how
+        sure it must be. Assign a profile to a mailbox on the Email Accounts page.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -169,7 +168,7 @@ export default function EmailClassificationPage() {
         <button type="submit">Create Profile</button>
       </form>
 
-      <h2 style={{ fontSize: 16 }}>Test Classification (§29)</h2>
+      <h2 style={{ fontSize: 16 }}>Test classification</h2>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
         Never creates a real notification or Case — runs the same deterministic filter + AI
         pipeline against ad-hoc subject/content only.
@@ -196,7 +195,7 @@ export default function EmailClassificationPage() {
       </form>
 
       {testResult && (
-        <div style={{ marginTop: 16, padding: 12, border: "1px solid #334155", borderRadius: 4 }}>
+        <div style={{ marginTop: 16, padding: 12, border: "1px solid var(--color-border)", borderRadius: 4 }}>
           {testResult.error ? (
             <p>✗ {testResult.error}</p>
           ) : (
@@ -216,5 +215,5 @@ export default function EmailClassificationPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

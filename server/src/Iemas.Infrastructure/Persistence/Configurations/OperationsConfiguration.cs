@@ -1,3 +1,4 @@
+using Iemas.Domain.Ai;
 using Iemas.Domain.Notifications;
 using Iemas.Domain.Operations;
 using Microsoft.EntityFrameworkCore;
@@ -63,7 +64,39 @@ public class SystemSettingConfiguration : IEntityTypeConfiguration<SystemSetting
         builder.HasKey(s => s.Id);
         builder.Property(s => s.Key).IsRequired().HasMaxLength(100);
         builder.HasIndex(s => s.Key).IsUnique();
-        builder.Property(s => s.Value).IsRequired().HasMaxLength(1000);
+        builder.Property(s => s.Value).IsRequired().HasMaxLength(4000);
         builder.Property(s => s.UpdatedByEmail).HasMaxLength(256);
+    }
+}
+
+public class AiProviderConfigConfiguration : IEntityTypeConfiguration<AiProviderConfig>
+{
+    public void Configure(EntityTypeBuilder<AiProviderConfig> builder)
+    {
+        builder.ToTable("ai_provider_configs");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Provider).IsRequired().HasMaxLength(50);
+        builder.HasIndex(c => c.Provider).IsUnique();
+        builder.Property(c => c.BaseUrl).HasMaxLength(500);
+        builder.Property(c => c.ApiKeyEncryptionKeyId).HasMaxLength(50);
+        builder.Property(c => c.ApiKeyHint).HasMaxLength(10);
+        builder.Property(c => c.UpdatedByEmail).HasMaxLength(256);
+    }
+}
+
+public class AiUsageRecordConfiguration : IEntityTypeConfiguration<AiUsageRecord>
+{
+    public void Configure(EntityTypeBuilder<AiUsageRecord> builder)
+    {
+        builder.ToTable("ai_usage_records");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.Provider).IsRequired().HasMaxLength(50);
+        builder.Property(r => r.ModelIdentifier).IsRequired().HasMaxLength(200);
+        builder.Property(r => r.Purpose).IsRequired().HasMaxLength(50);
+        builder.Property(r => r.ErrorMessage).HasMaxLength(1000);
+        builder.Property(r => r.GenerationId).HasMaxLength(200);
+        builder.Property(r => r.CostUsd).HasPrecision(18, 8);
+        builder.HasIndex(r => r.CreatedAt);
+        builder.HasIndex(r => new { r.ModelIdentifier, r.CreatedAt });
     }
 }

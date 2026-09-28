@@ -37,6 +37,12 @@ public class EmailAccount : Entity
     public string? ClassificationProfileName { get; set; }
 
     public bool MonitoringEnabled { get; set; }
+
+    /// <summary>
+    /// Only email received after this moment is classified and can create Cases. Older email is
+    /// still stored (history, reply matching) but marked Historical. Null = process everything.
+    /// </summary>
+    public DateTimeOffset? ProcessEmailsReceivedAfter { get; set; }
     public bool IsActive { get; set; } = true;
 
     public EmailCredential? Credential { get; set; }

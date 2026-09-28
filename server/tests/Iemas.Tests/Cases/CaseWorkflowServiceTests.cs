@@ -300,6 +300,15 @@ public class CaseWorkflowServiceTests
         Assert.Equal(CaseWorkflowService.CaseProcessOutcome.Updated, outcome);
         Assert.Equal(1, await db.Cases.CountAsync());
         Assert.Equal(2, await db.CaseEmails.CountAsync());
+
+        // §66 — each email is its own "Email Received" step, stamped with when it arrived.
+        var received = await db.CaseEvents.Where(e => e.EventType == CaseEventType.EmailReceived).OrderBy(e => e.OccurredAt).ToListAsync();
+        Assert.Equal(2, received.Count);
+        Assert.Contains("\"Price Request\"", received[0].Detail);
+        Assert.Contains("\"Any Update?\"", received[1].Detail);
+        Assert.Contains("matched to this Case via", received[1].Detail);
+        Assert.Equal(second.ReceivedAt, received[1].OccurredAt);
+        Assert.False(await db.CaseEvents.AnyAsync(e => e.EventType == CaseEventType.Updated));
     }
 
     /// <summary>§48 — completing a Case requires a reason and is recorded as a history event.</summary>
@@ -418,5 +427,58 @@ public class CaseWorkflowServiceTests
 
         Assert.Equal(CaseWorkflowService.CaseProcessOutcome.Created, outcome);
         Assert.Equal(0, await db.Reminders.CountAsync());
+    }
+
+    /// <summary>Email from before the mailbox's cut-off never becomes a Case, even if it was already classified Important.</summary>
+    [Fact]
+    public async Task ProcessOneAsync_ClassifiedEmailBeforeCutoff_DoesNotCreateCase()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        account.ProcessEmailsReceivedAfter = DateTimeOffset.UtcNow.AddDays(-1);
+        db.EmailAccounts.Add(account);
+        var old = CreateMessage(account.Id, "Year-old order");
+        old.ReceivedAt = DateTimeOffset.UtcNow.AddDays(-380);
+        var fresh = CreateMessage(account.Id, "New order");
+        db.EmailMessages.AddRange(old, fresh);
+        db.EmailClassifications.Add(CreateClassification(old.Id, ImportanceDecision.Important));
+        db.EmailClassifications.Add(CreateClassification(fresh.Id, ImportanceDecision.Important));
+        await db.SaveChangesAsync();
+
+        var result = await CreateService(db).RunAsync(10, CancellationToken.None);
+
+        Assert.Equal(1, result.CreatedCount);
+        Assert.Equal("New order", (await db.Cases.SingleAsync()).Subject);
+        Assert.Equal(CaseWorkflowService.CaseProcessOutcome.Skipped, await CreateService(db).ProcessOneAsync(old.Id, CancellationToken.None));
+    }
+
+    /// <summary>The Case Workflow page shows which emails were processed and what happened to each, plus stage counts.</summary>
+    [Fact]
+    public async Task RunAsync_ReportsEachEmail_AndOverviewCountsStages()
+    {
+        using var db = TestDbContext.CreateNew();
+        var account = CreateAccount();
+        db.EmailAccounts.Add(account);
+        var first = CreateMessage(account.Id, "Price Request");
+        db.EmailMessages.Add(first);
+        db.EmailClassifications.Add(CreateClassification(first.Id, ImportanceDecision.Important));
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var waiting = await service.GetWaitingAsync(10, CancellationToken.None);
+        Assert.Equal("Price Request", Assert.Single(waiting).Subject);
+        Assert.Equal(1, (await service.GetOverviewAsync(CancellationToken.None)).WaitingForCase);
+
+        var result = await service.RunAsync(10, CancellationToken.None);
+
+        var item = Assert.Single(result.Items!);
+        Assert.Equal("New Case", item.Outcome);
+        Assert.Equal("sales@sawo.com", item.Mailbox);
+        Assert.NotNull(item.CaseNumber);
+        Assert.Empty(await service.GetWaitingAsync(10, CancellationToken.None));
+        Assert.Equal(item.CaseNumber, Assert.Single(await service.GetRecentAsync(10, CancellationToken.None)).CaseNumber);
+        var overview = await service.GetOverviewAsync(CancellationToken.None);
+        Assert.Equal(0, overview.WaitingForCase);
+        Assert.Equal(1, overview.ActionRequired);
     }
 }

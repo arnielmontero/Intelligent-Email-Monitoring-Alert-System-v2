@@ -337,9 +337,9 @@ public class ReplyVerificationServiceTests
         Assert.Contains(events, e => e.EventType == CaseEventType.ReplyVerification);
     }
 
-    /// <summary>A second run after a first NoReplyFound re-checks (pending/retry behavior) and can transition to Replied once a reply later appears — multiple attempts accumulate in the audit trail.</summary>
+    /// <summary>A Case marked "no reply found" keeps being re-checked by the recurring run, so a reply sent later is still found.</summary>
     [Fact]
-    public async Task RunAsync_SecondRunAfterNoReplyFound_CanLaterVerify_AndAccumulatesAttemptHistory()
+    public async Task RunAsync_SecondRunAfterNoReplyFound_ReChecks_AndFindsLaterReply()
     {
         using var db = TestDbContext.CreateNew();
         var theCase = await SetupCaseWithInboundMessageAsync(db, "<original@example.com>");
@@ -354,19 +354,41 @@ public class ReplyVerificationServiceTests
         await service.RunAsync(10, CancellationToken.None);
         Assert.Equal(CaseReplyStatus.NoReplyFound, (await db.Cases.SingleAsync()).ReplyStatus);
 
-        // Employee has since replied; re-run finds it. NoReplyFound Cases remain candidates
-        // because they're neither Completed/Cancelled nor already Replied — this models the
-        // recurring-job retry behavior (§54-style recheck, though the reminder engine itself is
-        // a later phase).
         adapter.FetchSentBehavior = (_, _, _, _) => Task.FromResult(new FetchSentResult(
             true, null, new[] { SentReply("<original@example.com>") }, Array.Empty<(string, string)>()));
+        var second = await service.RunAsync(10, CancellationToken.None);
 
-        var secondCandidates = await db.Cases.Where(c => c.ReplyStatus == CaseReplyStatus.AwaitingReply || c.ReplyStatus == CaseReplyStatus.VerificationPending).CountAsync();
-        // Confirm the NoReplyFound state is NOT itself a candidate for automatic re-poll under
-        // the current query (AwaitingReply/VerificationPending only) — this is a deliberate
-        // boundary documented in the tracker; re-verification of a NoReplyFound case currently
-        // requires a manual trigger or a future reminder-driven re-check, not the recurring job.
-        Assert.Equal(0, secondCandidates);
+        Assert.Equal(1, second.VerifiedCount);
+        var reloaded = await db.Cases.SingleAsync();
+        Assert.Equal(CaseReplyStatus.Replied, reloaded.ReplyStatus);
+        Assert.NotNull(reloaded.ReplyLastCheckedAt);
+        Assert.Equal(2, await db.ReplyVerificationAttempts.CountAsync(a => a.CaseId == theCase.Id));
+        Assert.Single(second.Items!);
+    }
+
+    /// <summary>Repeated checks with the same result only update the last-checked time; the history gets one entry per change.</summary>
+    [Fact]
+    public async Task RunAsync_UnchangedResult_UpdatesLastChecked_WithoutDuplicateHistory()
+    {
+        using var db = TestDbContext.CreateNew();
+        var theCase = await SetupCaseWithInboundMessageAsync(db, "<original@example.com>");
+
+        var adapter = new FakeEmailProviderAdapter
+        {
+            FetchSentBehavior = (_, _, _, _) => Task.FromResult(new FetchSentResult(
+                true, null, Array.Empty<ProviderMessage>(), Array.Empty<(string, string)>()))
+        };
+        var service = new ReplyVerificationService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter));
+
+        await service.RunAsync(10, CancellationToken.None);
+        var firstCheck = (await db.Cases.SingleAsync()).ReplyLastCheckedAt;
+        await Task.Delay(5);
+        var second = await service.RunAsync(10, CancellationToken.None);
+
+        Assert.Equal(1, second.ConsideredCount);
+        Assert.True((await db.Cases.SingleAsync()).ReplyLastCheckedAt > firstCheck);
+        Assert.Equal(1, await db.ReplyVerificationAttempts.CountAsync(a => a.CaseId == theCase.Id));
+        Assert.Equal(1, await db.CaseEvents.CountAsync(e => e.CaseId == theCase.Id && e.EventType == CaseEventType.ReplyVerification));
     }
 
     /// <summary>Manual/second attempt via direct service call still accumulates in the attempt history rather than overwriting the first.</summary>

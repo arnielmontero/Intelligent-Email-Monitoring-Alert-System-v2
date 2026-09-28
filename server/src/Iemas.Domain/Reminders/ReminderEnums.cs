@@ -52,6 +52,9 @@ public enum ReminderCancelReason
 
     /// <summary>The Case itself no longer exists (defensive — should not occur given Restrict delete behavior, but re-checked explicitly per §20/§55 discipline).</summary>
     CaseNotFound = 9,
+
+    /// <summary>The Case's customer is on the "Ignored senders" system setting.</summary>
+    SenderIgnored = 10,
 }
 
 /// <summary>

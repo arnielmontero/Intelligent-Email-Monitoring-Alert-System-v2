@@ -17,7 +17,10 @@ namespace Iemas.Infrastructure.Providers;
 public class ImapEmailProviderAdapter : IEmailProviderAdapter
 {
     private const int ConnectTimeoutSeconds = 20;
-    private const int FetchTimeoutSeconds = 60;
+    private const int FetchTimeoutSeconds = 120;
+
+    /// <summary>A run stops starting new downloads after this long and resumes from its watermark next run.</summary>
+    private static readonly TimeSpan FetchTimeBudget = TimeSpan.FromSeconds(45);
     private const int MaxConnectRetries = 2;
     private static readonly TimeSpan MaxConnectRetryDelay = TimeSpan.FromSeconds(10);
 
@@ -60,7 +63,8 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
         uint? knownUidValidity,
         uint? afterUid,
         int maxMessages,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? deliveredAfter = null)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(FetchTimeoutSeconds));
@@ -81,37 +85,86 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
             : new UniqueIdRange(UniqueId.MinValue, UniqueId.MaxValue);
 
         var uids = await inbox.SearchAsync(SearchQuery.Uids(range), timeoutCts.Token);
-        var toFetch = uids.OrderBy(u => u.Id).Take(maxMessages).ToList();
+
+        // With a cut-off, only mail delivered since then is downloaded; older mail is history and is
+        // passed over rather than queued. IMAP SINCE is day-granular, so one day of slack is added —
+        // the exact cut-off is still applied when each message is stored.
+        IList<UniqueId> candidates = uids;
+        if (deliveredAfter is DateTimeOffset since && uids.Count > 0)
+        {
+            candidates = await inbox.SearchAsync(
+                SearchQuery.Uids(range).And(SearchQuery.DeliveredAfter(since.UtcDateTime.Date.AddDays(-1))), timeoutCts.Token);
+        }
+        var ordered = candidates.OrderBy(u => u.Id).ToList();
+        var toFetch = ordered.Take(maxMessages).ToList();
 
         var messages = new List<ProviderMessage>();
         var malformed = new List<(uint Uid, string Error)>();
         uint? highestUidSeen = effectiveAfterUid;
+        string? stoppedEarlyReason = null;
+        var budget = Stopwatch.StartNew();
 
         foreach (var uid in toFetch)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (budget.Elapsed > FetchTimeBudget)
+            {
+                stoppedEarlyReason = $"Time budget reached after {messages.Count + malformed.Count} message(s); the rest continue on the next run.";
+                break;
+            }
 
             try
             {
                 var mime = await inbox.GetMessageAsync(uid, timeoutCts.Token);
                 messages.Add(NormalizeMessage(uid, mime));
             }
-            catch (Exception ex)
+            catch (Exception ex) when (IsMessageLevelFailure(ex) && client.IsConnected)
             {
-                // Requirements §20/§78 — one malformed message must not abort the whole fetch.
-                // Isolate the failure per-message and keep processing the rest of the batch.
+                // Requirements §20/§78 — one genuinely unreadable message must not abort the
+                // batch, and must not block intake forever, so the watermark moves past it.
                 malformed.Add((uid.Id, ex.Message));
             }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                // A dropped connection or timeout says nothing about this message. Stop here and
+                // leave the watermark on the last message actually handled, so this one and the
+                // rest are fetched on the next run instead of being skipped for good (§81).
+                stoppedEarlyReason = $"Stopped at message {uid.Id} ({ex.Message}); it and the rest continue on the next run.";
+                break;
+            }
 
-            // The watermark advances past every UID we attempted, including malformed ones —
-            // otherwise a permanently-malformed message would block all intake behind it forever.
             highestUidSeen = uid.Id;
         }
 
-        await client.DisconnectAsync(true, cancellationToken);
+        // Every candidate handled: the watermark can move past the whole searched range, including
+        // the skipped history, so the next run only looks at genuinely new mail.
+        if (stoppedEarlyReason is null && toFetch.Count == ordered.Count && uids.Count > 0)
+        {
+            highestUidSeen = Math.Max(highestUidSeen ?? 0, uids.Max(u => u.Id));
+        }
 
-        return new FetchInboxResult(currentUidValidity, highestUidSeen, messages, malformed);
+        if (client.IsConnected)
+        {
+            try
+            {
+                await client.DisconnectAsync(true, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The fetched messages are already in memory; a failed logout changes nothing.
+            }
+        }
+
+        return new FetchInboxResult(currentUidValidity, highestUidSeen, messages, malformed, stoppedEarlyReason);
     }
+
+    /// <summary>
+    /// Only failures that are about the message itself: unparseable MIME, or the server refusing
+    /// that one message. Connection, protocol and timeout failures are not the message's fault.
+    /// </summary>
+    public static bool IsMessageLevelFailure(Exception ex) =>
+        ex is FormatException or ParseException or ImapCommandException;
 
     /// <summary>
     /// Requirements §42/§44 — reads the account's Sent folder for messages sent on/after

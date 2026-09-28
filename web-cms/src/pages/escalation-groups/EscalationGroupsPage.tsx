@@ -97,8 +97,8 @@ export default function EscalationGroupsPage() {
     <div>
       <h1>Escalation Groups</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        Requirements §59 "Specific Group" recipient type — a named list of Employees an Escalation
-        Level can target directly. A group in use by a Level cannot be deleted.
+        A named group of employees that an escalation level can notify (for example "Sales managers").
+        A group that is in use by an escalation policy can't be deleted.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -139,7 +139,7 @@ export default function EscalationGroupsPage() {
           </div>
           <div>
             <label>Members</label>
-            <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid #334155", borderRadius: 4, padding: 8, marginTop: 4 }}>
+            <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--color-border)", borderRadius: 4, padding: 8, marginTop: 4 }}>
               {employees.map((emp) => (
                 <label key={emp.id} style={{ display: "block", padding: "2px 0" }}>
                   <input
@@ -162,5 +162,5 @@ export default function EscalationGroupsPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

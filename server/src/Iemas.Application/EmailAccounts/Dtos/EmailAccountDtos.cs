@@ -26,7 +26,8 @@ public record EmailAccountDto(
     bool HasCredential,
     DateTimeOffset? LastTestedAt,
     bool? LastTestSucceeded,
-    string? LastTestError);
+    string? LastTestError,
+    DateTimeOffset? ProcessEmailsReceivedAfter);
 
 public record CreateEmailAccountRequest(
     string EmailAddress,
@@ -42,7 +43,9 @@ public record CreateEmailAccountRequest(
     string Secret,
     Guid? OwnerEmployeeId,
     string? ClassificationProfileName,
-    bool MonitoringEnabled);
+    bool MonitoringEnabled,
+    /// <summary>Null = from now on (mailbox history is kept but not turned into Cases).</summary>
+    DateTimeOffset? ProcessEmailsReceivedAfter = null);
 
 public record UpdateEmailAccountRequest(
     string? DisplayName,
@@ -57,6 +60,8 @@ public record UpdateEmailAccountRequest(
     Guid? OwnerEmployeeId,
     string? ClassificationProfileName,
     bool MonitoringEnabled,
-    bool IsActive);
+    bool IsActive,
+    /// <summary>Null = no cut-off: every stored email is processed.</summary>
+    DateTimeOffset? ProcessEmailsReceivedAfter = null);
 
 public record TestConnectionResult(bool Succeeded, string? ErrorMessage, double DurationMs);

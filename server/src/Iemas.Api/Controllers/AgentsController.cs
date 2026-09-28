@@ -76,4 +76,16 @@ public class AgentsController : ControllerBase
 
         return NoContent();
     }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _managementService.DeleteAsync(id, cancellationToken);
+        if (!result.Succeeded)
+        {
+            return result.Error == "Agent registration not found." ? NotFound(new { message = result.Error }) : BadRequest(new { message = result.Error });
+        }
+
+        return NoContent();
+    }
 }

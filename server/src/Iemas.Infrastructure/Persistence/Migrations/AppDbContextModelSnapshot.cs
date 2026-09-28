@@ -347,6 +347,125 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                     b.ToTable("ai_model_configs", (string)null);
                 });
 
+            modelBuilder.Entity("Iemas.Domain.Ai.AiProviderConfig", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApiKeyEncryptionKeyId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ApiKeyHint")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<byte[]>("ApiKeyNonce")
+                        .HasColumnType("bytea");
+
+                    b.Property<byte[]>("ApiKeyTag")
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("BaseUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("EncryptedApiKey")
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider")
+                        .IsUnique();
+
+                    b.ToTable("ai_provider_configs", (string)null);
+                });
+
+            modelBuilder.Entity("Iemas.Domain.Ai.AiUsageRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("CompletionTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("CostUsd")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("DurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("EmailMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("GenerationId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ModelIdentifier")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int?>("PromptTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("TotalTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ModelIdentifier", "CreatedAt");
+
+                    b.ToTable("ai_usage_records", (string)null);
+                });
+
             modelBuilder.Entity("Iemas.Domain.Ai.ClassificationProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -466,6 +585,9 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<bool>("IsManuallyCorrected")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("Legitimate")
                         .HasColumnType("boolean");
 
                     b.Property<int?>("Priority")
@@ -602,6 +724,9 @@ namespace Iemas.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("ReopenCount")
                         .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ReplyLastCheckedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("ReplyStatus")
                         .HasColumnType("integer");
@@ -806,6 +931,9 @@ namespace Iemas.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("Port")
                         .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ProcessEmailsReceivedAfter")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Protocol")
                         .HasColumnType("integer");
@@ -1685,8 +1813,8 @@ namespace Iemas.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Value")
                         .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.HasKey("Id");
 

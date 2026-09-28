@@ -3,6 +3,7 @@ using Iemas.Application.Cases.Dtos;
 using Iemas.Application.Common.Interfaces;
 using Iemas.Application.Common.Providers;
 using Iemas.Domain.Cases;
+using Iemas.Domain.Email;
 using Microsoft.EntityFrameworkCore;
 
 namespace Iemas.Application.Cases;
@@ -48,10 +49,11 @@ public class ReplyVerificationService
     {
         var stopwatch = Stopwatch.StartNew();
 
-        var candidateCaseIds = await _db.Cases
-            .Where(c => c.ReplyStatus == CaseReplyStatus.AwaitingReply || c.ReplyStatus == CaseReplyStatus.VerificationPending)
-            .Where(c => c.WorkStatus != CaseWorkStatus.Completed && c.WorkStatus != CaseWorkStatus.Cancelled)
-            .OrderBy(c => c.LastActivityAt)
+        // Every open Case without a verified reply is re-checked — "no reply found" only means "not
+        // yet", and a reply sent later must still be found. Least recently checked first.
+        var candidateCaseIds = await OpenUnrepliedCases()
+            .OrderBy(c => c.ReplyLastCheckedAt ?? DateTimeOffset.MinValue)
+            .ThenBy(c => c.LastActivityAt)
             .Take(batchSize)
             .Select(c => c.Id)
             .ToListAsync(cancellationToken);
@@ -93,7 +95,82 @@ public class ReplyVerificationService
         }
 
         stopwatch.Stop();
-        return new ReplyVerificationRunResult(candidateCaseIds.Count, verified, noReply, pending, failed, stopwatch.ElapsedMilliseconds);
+        var items = await DescribeCasesAsync(_db.Cases.Where(c => candidateCaseIds.Contains(c.Id)), cancellationToken);
+        return new ReplyVerificationRunResult(candidateCaseIds.Count, verified, noReply, pending, failed, stopwatch.ElapsedMilliseconds, items);
+    }
+
+    private IQueryable<Case> OpenUnrepliedCases() =>
+        _db.Cases.Where(c =>
+            (c.ReplyStatus == CaseReplyStatus.AwaitingReply || c.ReplyStatus == CaseReplyStatus.VerificationPending
+             || c.ReplyStatus == CaseReplyStatus.NoReplyFound || c.ReplyStatus == CaseReplyStatus.VerificationFailed)
+            && c.WorkStatus != CaseWorkStatus.Completed && c.WorkStatus != CaseWorkStatus.Cancelled);
+
+    public async Task<ReplyCheckOverviewDto> GetOverviewAsync(CancellationToken cancellationToken)
+    {
+        var open = _db.Cases.AsNoTracking().Where(c => c.WorkStatus != CaseWorkStatus.Completed && c.WorkStatus != CaseWorkStatus.Cancelled);
+        var counts = await open.GroupBy(c => c.ReplyStatus).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(cancellationToken);
+        int Count(params CaseReplyStatus[] statuses) => counts.Where(c => statuses.Contains(c.Key)).Sum(c => c.Count);
+
+        var accounts = await _db.EmailAccounts.AsNoTracking()
+            .Where(a => a.Purpose == EmailAccountPurpose.Inbound)
+            .Select(a => new
+            {
+                a.Id, a.EmailAddress,
+                OpenCases = open.Count(c => c.EmailAccountId == a.Id && c.ReplyStatus != CaseReplyStatus.NotApplicable),
+                LastChecked = _db.Cases.Where(c => c.EmailAccountId == a.Id).Max(c => c.ReplyLastCheckedAt),
+                Latest = _db.ReplyVerificationAttempts.Where(r => r.Case.EmailAccountId == a.Id)
+                    .OrderByDescending(r => r.AttemptedAt)
+                    .Select(r => new { r.Outcome, r.ErrorDetail })
+                    .FirstOrDefault(),
+            })
+            .ToListAsync(cancellationToken);
+
+        var mailboxes = accounts
+            .Where(a => a.OpenCases > 0 || a.LastChecked != null)
+            .Select(a => new MailboxReplyCheckDto(a.Id, a.EmailAddress, a.OpenCases, a.LastChecked,
+                a.Latest is { Outcome: ReplyVerificationOutcome.VerificationFailed or ReplyVerificationOutcome.VerificationPending } latest
+                    ? latest.ErrorDetail ?? "The Sent folder could not be checked."
+                    : null))
+            .OrderBy(m => m.Mailbox)
+            .ToList();
+
+        return new ReplyCheckOverviewDto(
+            Count(CaseReplyStatus.AwaitingReply), Count(CaseReplyStatus.NoReplyFound), Count(CaseReplyStatus.Replied),
+            Count(CaseReplyStatus.VerificationFailed, CaseReplyStatus.VerificationPending), mailboxes);
+    }
+
+    /// <summary>Open Cases whose reply is being tracked, optionally for one reply status.</summary>
+    public Task<List<ReplyCheckCaseDto>> GetCasesAsync(CaseReplyStatus? status, int take, CancellationToken cancellationToken)
+    {
+        var query = _db.Cases.Where(c => c.ReplyStatus != CaseReplyStatus.NotApplicable
+            && c.WorkStatus != CaseWorkStatus.Completed && c.WorkStatus != CaseWorkStatus.Cancelled);
+        if (status is not null) query = query.Where(c => c.ReplyStatus == status);
+        return DescribeCasesAsync(query.OrderByDescending(c => c.LastActivityAt).Take(Math.Clamp(take, 1, 500)), cancellationToken);
+    }
+
+    private async Task<List<ReplyCheckCaseDto>> DescribeCasesAsync(IQueryable<Case> cases, CancellationToken cancellationToken)
+    {
+        var rows = await cases.AsNoTracking()
+            .Select(c => new
+            {
+                c.Id, c.CaseNumber, c.Subject, c.CustomerEmailAddress, c.CustomerDisplayName, Mailbox = c.EmailAccount.EmailAddress,
+                Owner = c.OwnerEmployee != null ? c.OwnerEmployee.FullName : null, c.ReplyStatus, c.ReplyLastCheckedAt, c.LastActivityAt,
+                Latest = _db.ReplyVerificationAttempts.Where(r => r.CaseId == c.Id).OrderByDescending(r => r.AttemptedAt)
+                    .Select(r => new { r.Outcome, r.ErrorDetail, r.MatchDetail }).FirstOrDefault(),
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(r => new ReplyCheckCaseDto(
+            r.Id, r.CaseNumber, r.Subject, r.CustomerDisplayName ?? r.CustomerEmailAddress, r.Mailbox, r.Owner, r.ReplyStatus.ToString(),
+            r.ReplyLastCheckedAt,
+            r.Latest is null ? null : r.Latest.Outcome switch
+            {
+                ReplyVerificationOutcome.VerifiedReply => $"Reply found in Sent{(string.IsNullOrWhiteSpace(r.Latest.MatchDetail) ? "" : $" ({r.Latest.MatchDetail})")}",
+                ReplyVerificationOutcome.NoReplyFound => "Sent folder checked — no reply to this customer yet",
+                ReplyVerificationOutcome.VerificationFailed => $"Couldn't check: {r.Latest.ErrorDetail}",
+                _ => $"Pending: {r.Latest.ErrorDetail ?? "will retry"}",
+            },
+            r.LastActivityAt)).ToList();
     }
 
     /// <summary>
@@ -232,6 +309,23 @@ public class ReplyVerificationService
         var targetCase = await _db.Cases.FirstOrDefaultAsync(c => c.Id == caseId, cancellationToken);
         if (targetCase is null) return outcome;
 
+        var newStatus = outcome switch
+        {
+            ReplyVerificationOutcome.VerifiedReply => CaseReplyStatus.Replied,
+            ReplyVerificationOutcome.NoReplyFound => CaseReplyStatus.NoReplyFound,
+            ReplyVerificationOutcome.VerificationFailed => CaseReplyStatus.VerificationFailed,
+            _ => CaseReplyStatus.VerificationPending,
+        };
+        targetCase.ReplyLastCheckedAt = DateTimeOffset.UtcNow;
+
+        // Cases are re-checked every run until a reply is found; an unchanged result only updates
+        // the check time, so the history isn't flooded with identical "no reply yet" entries.
+        if (targetCase.ReplyStatus == newStatus)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            return outcome;
+        }
+
         _db.ReplyVerificationAttempts.Add(new ReplyVerificationAttempt
         {
             CaseId = caseId,
@@ -243,13 +337,7 @@ public class ReplyVerificationService
             DurationMs = durationMs,
         });
 
-        targetCase.ReplyStatus = outcome switch
-        {
-            ReplyVerificationOutcome.VerifiedReply => CaseReplyStatus.Replied,
-            ReplyVerificationOutcome.NoReplyFound => CaseReplyStatus.NoReplyFound,
-            ReplyVerificationOutcome.VerificationFailed => CaseReplyStatus.VerificationFailed,
-            _ => CaseReplyStatus.VerificationPending,
-        };
+        targetCase.ReplyStatus = newStatus;
         targetCase.UpdatedAt = DateTimeOffset.UtcNow;
 
         // §45 — a verified reply moves the Case to IN_PROGRESS, not COMPLETED. The reply resolves

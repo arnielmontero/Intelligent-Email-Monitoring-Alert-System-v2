@@ -208,7 +208,7 @@ public class EmployeeService
         }
     }
 
-    public async Task<Result<bool>> DeactivateAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<Result<bool>> SetActiveAsync(Guid id, bool isActive, CancellationToken cancellationToken)
     {
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
         if (employee is null)
@@ -216,11 +216,75 @@ public class EmployeeService
             return Result<bool>.Failure("Employee not found.");
         }
 
-        employee.IsActive = false;
+        if (employee.IsActive == isActive)
+        {
+            return Result<bool>.Success(true);
+        }
+
+        employee.IsActive = isActive;
         employee.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
-        await _auditService.LogAsync("EMPLOYEE_DEACTIVATED", "Employee", id.ToString(), employee.Email, cancellationToken);
+        await _auditService.LogAsync(isActive ? "EMPLOYEE_REACTIVATED" : "EMPLOYEE_DEACTIVATED", "Employee", id.ToString(), employee.Email, cancellationToken);
 
+        return Result<bool>.Success(true);
+    }
+
+    /// <summary>
+    /// Permanently removes a deactivated Employee that nothing else refers to. Anything that is
+    /// history (Cases, Case History, activity, notifications, escalations, Agents) keeps the
+    /// Employee; configuration references must be reassigned first. A linked CMS login is unlinked.
+    /// </summary>
+    public async Task<Result<bool>> DeleteAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
+        if (employee is null)
+        {
+            return Result<bool>.Failure("Employee not found.");
+        }
+        if (employee.IsActive)
+        {
+            return Result<bool>.Failure("Deactivate this employee before deleting them.");
+        }
+
+        var history = new List<string>();
+        void AddIf(int count, string label) { if (count > 0) history.Add($"{count} {label}"); }
+        AddIf(await _db.Cases.CountAsync(c => c.OwnerEmployeeId == id, cancellationToken), "owned Case(s)");
+        AddIf(await _db.CaseEvents.CountAsync(e => e.ActorEmployeeId == id, cancellationToken), "Case History entry(s)");
+        AddIf(await _db.AgentCaseActions.CountAsync(a => a.EmployeeId == id, cancellationToken), "Employee Activity record(s)");
+        AddIf(await _db.Notifications.CountAsync(n => n.EmployeeId == id, cancellationToken), "notification(s)");
+        AddIf(await _db.EscalationEvents.CountAsync(e => e.RecipientEmployeeId == id, cancellationToken), "escalation record(s)");
+        AddIf(await _db.Agents.CountAsync(a => a.EmployeeId == id, cancellationToken), "Windows Agent(s) (delete those first)");
+        if (history.Count > 0)
+        {
+            return Result<bool>.Failure(
+                $"This employee is kept because deleting them would erase history: {string.Join(", ", history)}. They stay deactivated.");
+        }
+
+        var config = new List<string>();
+        void ConfigIf(int count, string label) { if (count > 0) config.Add($"{label} ({count})"); }
+        ConfigIf(await _db.EmailAccounts.CountAsync(a => a.OwnerEmployeeId == id, cancellationToken), "owner of email account(s)");
+        ConfigIf(await _db.Employees.CountAsync(e => e.SupervisorEmployeeId == id, cancellationToken), "supervisor of employee(s)");
+        ConfigIf(await _db.Departments.CountAsync(d => d.ManagerEmployeeId == id, cancellationToken), "manager of department(s)");
+        ConfigIf(await _db.EscalationLevels.CountAsync(l => l.SpecificEmployeeId == id, cancellationToken), "recipient in escalation level(s)");
+        ConfigIf(await _db.EscalationGroupMembers.CountAsync(m => m.EmployeeId == id, cancellationToken), "member of escalation group(s)");
+        if (config.Count > 0)
+        {
+            return Result<bool>.Failure($"Reassign this employee first — they are still: {string.Join("; ", config)}.");
+        }
+
+        var linkedUsers = await _db.Users.Where(u => u.EmployeeId == id).ToListAsync(cancellationToken);
+        foreach (var user in linkedUsers)
+        {
+            user.EmployeeId = null;
+            user.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+        _db.Employees.Remove(employee);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var details = linkedUsers.Count > 0
+            ? $"{employee.FullName} ({employee.Email}); unlinked from user(s): {string.Join(", ", linkedUsers.Select(u => u.Email))}"
+            : $"{employee.FullName} ({employee.Email})";
+        await _auditService.LogAsync("EMPLOYEE_DELETED", "Employee", id.ToString(), details, cancellationToken);
         return Result<bool>.Success(true);
     }
 }

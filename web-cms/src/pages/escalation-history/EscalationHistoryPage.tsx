@@ -58,9 +58,8 @@ export default function EscalationHistoryPage() {
     <div>
       <h1>Escalation History</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        Requirements §63/§89 — every escalation attempt (executed, skipped, recipient-unresolved, or
-        failed) is recorded here for investigation. Read-only; escalation itself runs automatically
-        on the server's recurring job.
+        Every escalation attempt — sent, skipped, or no recipient found — with the reason. Escalations run automatically;
+        this page is for looking back.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -130,5 +129,5 @@ export default function EscalationHistoryPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

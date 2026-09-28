@@ -3,8 +3,8 @@ import { apiClient } from "../../api/client";
 import type { SystemHealthDto } from "../../api/types";
 
 const STATUS_COLOR: Record<string, string> = {
-  Healthy: "#22c55e",
-  Degraded: "#f59e0b",
+  Healthy: "var(--color-success)",
+  Degraded: "var(--color-warning)",
   Unhealthy: "#ef4444",
 };
 
@@ -43,8 +43,7 @@ export default function SystemHealthPage() {
     <div>
       <h1>System Health</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        Requirements §106 — database, email provider (IMAP), AI provider (OpenRouter), and
-        background job (Hangfire) health, plus current queue depth. Auto-refreshes every 30 seconds.
+        Whether the database, mailboxes, AI provider and background jobs are working. Refreshes every 30 seconds.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -95,7 +94,7 @@ export default function SystemHealthPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };
 const tdLabel: React.CSSProperties = { padding: "4px 12px 4px 0", color: "var(--color-text-muted)" };
 const tdValue: React.CSSProperties = { padding: "4px 0", fontWeight: 600 };

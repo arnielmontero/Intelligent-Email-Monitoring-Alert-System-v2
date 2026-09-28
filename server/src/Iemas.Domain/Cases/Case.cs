@@ -50,5 +50,8 @@ public class Case : Entity
     /// <summary>Requirements §49/§36 — how many times this Case has been reopened after completion, for investigation (§89).</summary>
     public int ReopenCount { get; set; }
 
+    /// <summary>When the Sent folder was last checked for a reply to this Case (every check, even when the result didn't change).</summary>
+    public DateTimeOffset? ReplyLastCheckedAt { get; set; }
+
     public ICollection<CaseEmail> Emails { get; set; } = new List<CaseEmail>();
 }

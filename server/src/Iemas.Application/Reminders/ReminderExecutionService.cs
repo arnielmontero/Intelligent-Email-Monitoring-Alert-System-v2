@@ -136,7 +136,10 @@ public class ReminderExecutionService
 
         // §55 Reminder Recheck Rule — every condition it lists, checked fresh right now, not
         // trusted from whatever was true when this reminder was originally scheduled.
-        var cancelReason = DetermineCancelReason(targetCase);
+        var cancelReason = DetermineCancelReason(targetCase)
+            ?? ((await IgnoredSenderList.LoadAsync(_db, cancellationToken)).Matches(targetCase?.CustomerEmailAddress)
+                ? ReminderCancelReason.SenderIgnored
+                : null);
         if (cancelReason is ReminderCancelReason reason)
         {
             return await ResolveAsync(reminder, ReminderStatus.Cancelled, reason, DescribeCancelReason(reason), cancellationToken);
@@ -282,6 +285,7 @@ public class ReminderExecutionService
         ReminderCancelReason.CaseEscalated => "Case was escalated since this reminder was scheduled.",
         ReminderCancelReason.CaseNoLongerActionable => "Case moved to a waiting state that no longer requires a reminder.",
         ReminderCancelReason.CaseNotFound => "Case could not be found.",
+        ReminderCancelReason.SenderIgnored => "the customer is on the Ignored senders list.",
         _ => reason.ToString(),
     };
 

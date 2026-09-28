@@ -25,4 +25,16 @@ public class CaseWorkflowController : ControllerBase
     {
         return Ok(await _service.RunAsync(batchSize ?? 25, cancellationToken));
     }
+
+    [HttpGet("overview")]
+    public async Task<ActionResult<CaseWorkflowOverviewDto>> Overview(CancellationToken cancellationToken) =>
+        Ok(await _service.GetOverviewAsync(cancellationToken));
+
+    [HttpGet("waiting")]
+    public async Task<ActionResult<List<CaseWorkflowItemDto>>> Waiting([FromQuery] int? take, CancellationToken cancellationToken) =>
+        Ok(await _service.GetWaitingAsync(take ?? 50, cancellationToken));
+
+    [HttpGet("recent")]
+    public async Task<ActionResult<List<CaseWorkflowItemDto>>> Recent([FromQuery] int? take, CancellationToken cancellationToken) =>
+        Ok(await _service.GetRecentAsync(take ?? 20, cancellationToken));
 }

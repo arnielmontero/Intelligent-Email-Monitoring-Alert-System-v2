@@ -115,6 +115,12 @@ public class EscalationService
                 "A verified reply has resolved the reply requirement.", cancellationToken);
         }
 
+        if ((await IgnoredSenderList.LoadAsync(_db, cancellationToken)).Matches(targetCase.CustomerEmailAddress))
+        {
+            return await RecordSkipAsync(caseId, null, null, EscalationSkipReason.SenderIgnored,
+                "The customer is on the Ignored senders list.", cancellationToken);
+        }
+
         var policy = await ResolvePolicyAsync(_db, targetCase, cancellationToken);
         if (policy is null)
         {

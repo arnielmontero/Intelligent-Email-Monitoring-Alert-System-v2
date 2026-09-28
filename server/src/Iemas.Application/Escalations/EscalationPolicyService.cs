@@ -189,7 +189,7 @@ public class EscalationPolicyService
         if (string.IsNullOrWhiteSpace(request.Name)) return "Name is required.";
         if (InputSanitizer.ValidateFreeText("Name", request.Name) is { } nameError) return nameError;
         if (request.Description is not null && InputSanitizer.ValidateFreeText("Description", request.Description) is { } descriptionError) return descriptionError;
-        if (request.MaximumLevel < 1 || request.MaximumLevel > 3) return "Maximum Level must be between 1 and 3 (§58: V1 supports at most three levels).";
+        if (request.MaximumLevel < 1 || request.MaximumLevel > 3) return "Maximum Level must be between 1 and 3 (up to 3 levels are supported).";
         if (request.TriggerReminderCount < 1) return "Trigger reminder count must be at least 1.";
         if (request.GracePeriod < TimeSpan.Zero) return "Grace period cannot be negative.";
         if (request.Cooldown < TimeSpan.Zero) return "Cooldown cannot be negative.";

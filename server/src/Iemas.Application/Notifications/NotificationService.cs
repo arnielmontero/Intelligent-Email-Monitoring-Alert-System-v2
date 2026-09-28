@@ -74,6 +74,11 @@ public class NotificationService
             return NotificationSendOutcome.NoRecipient;
         }
 
+        if ((await IgnoredSenderList.LoadAsync(_db, cancellationToken)).Matches(targetCase.CustomerEmailAddress))
+        {
+            return NotificationSendOutcome.Suppressed;
+        }
+
         var template = await _db.NotificationTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Type == type, cancellationToken)
             ?? NotificationTemplateDefaults.For(type);
         if (!template.Enabled)

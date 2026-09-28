@@ -40,6 +40,9 @@ public class EmailClassification : Entity
     public string? Category { get; set; }
     public bool? ActionRequired { get; set; }
     public bool? ResponseExpected { get; set; }
+
+    /// <summary>AI's call on whether this is a genuine business email (per the Legitimate email rules). Null for older classifications.</summary>
+    public bool? Legitimate { get; set; }
     public ClassificationPriority? Priority { get; set; }
     public double? AiConfidence { get; set; }
     public string? Summary { get; set; }

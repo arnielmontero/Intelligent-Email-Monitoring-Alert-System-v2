@@ -40,9 +40,8 @@ export default function AuditLogPage() {
     <div>
       <h1>Audit Log</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        Requirements §67/§84 — what did an administrator or configuration change? Append-only;
-        this view is read-only. Distinct from Case History (what happened to a Case) and the
-        Windows Agent's own technical log (connect/disconnect/heartbeat).
+        Every change an administrator makes to settings, users, accounts and policies, with who and when.
+        This log can't be edited. What happened to individual Cases is in Case History & Logs.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -96,5 +95,5 @@ export default function AuditLogPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };

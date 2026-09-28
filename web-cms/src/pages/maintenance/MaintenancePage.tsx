@@ -143,5 +143,5 @@ const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", font
 const cardStyle: React.CSSProperties = { border: "1px solid", borderRadius: 8, padding: 16, background: "var(--color-surface)" };
 const pillStyle: React.CSSProperties = { color: "#fff", fontSize: 11, padding: "2px 8px", borderRadius: 999, marginLeft: 6 };
 const bannerStyle: React.CSSProperties = { background: "var(--color-danger)", color: "#fff", padding: "8px 12px", borderRadius: 6, marginBottom: 16 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #334155", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid #1e293b", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };
