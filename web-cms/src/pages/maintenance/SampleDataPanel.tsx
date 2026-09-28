@@ -1,47 +1,36 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { apiClient } from "../../api/client";
-import type { CaseRunResult, EmailAccountDto } from "../../api/types";
+import type { CaseRunResult } from "../../api/types";
 import { Badge } from "../../components/StatCard";
 
 interface SampleEmail {
   emailMessageId: string;
+  mailbox: string;
   fromAddress: string;
   subject: string;
   expected: string;
 }
 
 interface SampleRunResult {
-  samples: { mailbox: string; emails: SampleEmail[]; useAi: boolean };
+  samples: { emails: SampleEmail[]; useAi: boolean; teamCreated: string[] };
   caseRun: CaseRunResult | null;
 }
 
 /** Super administrators only: adds sample customer emails to a mailbox to try the whole flow. */
 export default function SampleDataPanel({ onGenerated }: { onGenerated?: () => void }) {
-  const [mailboxes, setMailboxes] = useState<EmailAccountDto[]>([]);
-  const [mailboxId, setMailboxId] = useState("");
   const [count, setCount] = useState(10);
   const [useAi, setUseAi] = useState(false);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<SampleRunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    apiClient.get<EmailAccountDto[]>("/email-accounts?purpose=0")
-      .then((r) => {
-        const usable = r.data.filter((a) => a.isActive);
-        setMailboxes(usable);
-        setMailboxId((current) => current || usable.find((a) => a.ownerEmployeeId)?.id || "");
-      })
-      .catch(() => setError("Failed to load mailboxes."));
-  }, []);
-
   async function generate() {
     setRunning(true);
     setError(null);
     setResult(null);
     try {
-      const res = await apiClient.post<SampleRunResult>("/maintenance/sample-data", { emailAccountId: mailboxId, count, useAi });
+      const res = await apiClient.post<SampleRunResult>("/maintenance/sample-data", { count, useAi });
       setResult(res.data);
       onGenerated?.();
     } catch (err: any) {
@@ -51,29 +40,20 @@ export default function SampleDataPanel({ onGenerated }: { onGenerated?: () => v
     }
   }
 
-  const selected = mailboxes.find((m) => m.id === mailboxId);
-
   return (
     <section style={panelStyle}>
       <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>Generate sample data</h2>
       <p style={mutedStyle}>
-        Adds realistic sample customer emails to a mailbox so you can try the whole flow: Cases, the pop-up on the owner's PC,
-        reply checks, reminders and escalation. Samples are marked <strong>[Sample]</strong> in the subject and come from
-        example.com addresses. Most need a reply, one is a follow-up to another, and two are not work (a newsletter and an
-        auto-reply). Remove them later with Reset email data below.
+        Adds realistic sample customer emails so you can try the whole flow: Cases, pop-ups, reply checks, reminders and
+        escalation. The first time, it also creates a <strong>sample team</strong>: a Sample Sales department with a manager
+        (Katarina Lind), a supervisor (Mark Evans) and three staff (Liam Andersson, Aino Makinen, Diego Fernandez), each
+        with a sample mailbox and a sample PC. Emails go to random active mailboxes with an owner — yours and the sample
+        ones — from random senders and domains; subjects start with <strong>[Sample]</strong>. Reset email data below
+        removes the emails and the whole sample team; your own employee, mailbox, PC and the admin sign-in are never touched.
       </p>
       {error && <div className="form-error">{error}</div>}
 
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginTop: 14 }}>
-        <div style={fieldStyle}>
-          <label htmlFor="sample-mailbox">Mailbox</label>
-          <select id="sample-mailbox" value={mailboxId} onChange={(e) => setMailboxId(e.target.value)} style={{ minWidth: 280 }}>
-            <option value="">Choose a mailbox…</option>
-            {mailboxes.map((m) => (
-              <option key={m.id} value={m.id}>{m.emailAddress} — {m.ownerEmployeeName ?? "no owner"}</option>
-            ))}
-          </select>
-        </div>
         <div style={fieldStyle}>
           <label htmlFor="sample-count">Number of emails</label>
           <select id="sample-count" value={count} onChange={(e) => setCount(Number(e.target.value))}>
@@ -84,30 +64,29 @@ export default function SampleDataPanel({ onGenerated }: { onGenerated?: () => v
           <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} />
           Let the AI read them (uses OpenRouter credit)
         </label>
-        <button className="btn-primary" onClick={generate} disabled={running || !mailboxId}>
+        <button className="btn-primary" onClick={generate} disabled={running}>
           {running ? "Generating..." : "Generate sample emails"}
         </button>
       </div>
-      {selected && !selected.ownerEmployeeId && (
-        <p style={{ ...mutedStyle, color: "var(--color-warning)", marginTop: 8 }}>This mailbox has no owner — set one on Email Accounts first.</p>
-      )}
       <p style={{ ...mutedStyle, marginTop: 8 }}>
         {useAi
           ? "The AI reads them within 2 minutes like real email, then Cases follow within another 2 minutes."
           : "They arrive already classified (no AI cost) and are turned into Cases immediately."}
-        {" "}The mailbox owner gets the pop-ups if their Windows Agent is connected.
+        {" "}Real owners get the pop-ups on their PC; sample PCs are not real computers, so their pop-ups stay queued and
+        their mailboxes always report "no reply yet", which lets reminders and escalation run.
       </p>
 
       {result && (
         <>
           <div style={successStyle}>
-            Added {result.samples.emails.length} sample email{result.samples.emails.length === 1 ? "" : "s"} to {result.samples.mailbox}.
+            {result.samples.teamCreated.length > 0 && `Sample team created (${result.samples.teamCreated.length} records). `}
+            Added {result.samples.emails.length} sample email{result.samples.emails.length === 1 ? "" : "s"}.
             {result.caseRun && ` ${result.caseRun.createdCount} new Case${result.caseRun.createdCount === 1 ? "" : "s"}, ${result.caseRun.updatedCount} added to an existing Case.`}
             {" "}<Link to="/case-workflow">Open Case Workflow</Link> · <Link to="/cases">Open Cases</Link>
           </div>
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
-              <tr><th>From</th><th>Subject</th><th>Expected</th><th>What happened</th></tr>
+              <tr><th>From</th><th>Subject</th><th>Mailbox</th><th>Expected</th><th>What happened</th></tr>
             </thead>
             <tbody>
               {result.samples.emails.map((e) => {
@@ -116,6 +95,7 @@ export default function SampleDataPanel({ onGenerated }: { onGenerated?: () => v
                   <tr key={e.emailMessageId}>
                     <td>{e.fromAddress}</td>
                     <td>{e.subject}</td>
+                    <td>{e.mailbox}</td>
                     <td style={{ color: "var(--color-text-muted)" }}>{e.expected}</td>
                     <td>
                       {item

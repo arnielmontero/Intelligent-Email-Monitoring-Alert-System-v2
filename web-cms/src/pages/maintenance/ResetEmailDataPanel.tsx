@@ -150,7 +150,7 @@ export default function ResetEmailDataPanel() {
 
       {preview && preview.testRecords.length > 0 && (
         <>
-          <div className="section-title">Test records found — also remove the ticked ones</div>
+          <div className="section-title">Test and sample records found — also remove the ticked ones</div>
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>

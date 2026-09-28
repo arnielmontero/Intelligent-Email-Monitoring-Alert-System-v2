@@ -182,6 +182,17 @@ public class ReplyVerificationService
     private async Task<List<ReplyVerificationOutcome?>> VerifyForAccountAsync(Guid emailAccountId, List<Guid> caseIds, CancellationToken cancellationToken)
     {
         var account = await _db.EmailAccounts.Include(a => a.Credential).FirstOrDefaultAsync(a => a.Id == emailAccountId, cancellationToken);
+
+        // Sample mailboxes (Generate sample data) have no server; nobody can reply from them, so they behave like an
+        // unanswered real mailbox and reminders and escalation run as they would for a real person.
+        if (account?.Host == Operations.SampleDataService.SampleMailboxHost)
+        {
+            var results = new List<ReplyVerificationOutcome?>();
+            foreach (var caseId in caseIds)
+                results.Add(await RecordAttemptAsync(caseId, ReplyVerificationOutcome.NoReplyFound, null, ReplyMatchSignal.NoMatch, null, null, 0, cancellationToken));
+            return results;
+        }
+
         if (account is null || account.Credential is null)
         {
             var results = new List<ReplyVerificationOutcome?>();

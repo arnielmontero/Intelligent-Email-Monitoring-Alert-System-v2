@@ -112,6 +112,11 @@ public class EmailAccountService
             return Result<EmailAccountDto>.Failure("An email account with this address and purpose already exists.");
         }
 
+        if (await ReservedAddresses.IsSuperAdministratorLoginAsync(_db, emailAddress, cancellationToken))
+        {
+            return Result<EmailAccountDto>.Failure(ReservedAddresses.SuperAdministratorMessage);
+        }
+
         if (request.OwnerEmployeeId is not null
             && !await _db.Employees.AnyAsync(e => e.Id == request.OwnerEmployeeId, cancellationToken))
         {

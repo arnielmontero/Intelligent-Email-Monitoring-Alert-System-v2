@@ -76,6 +76,11 @@ public class EmployeeService
             return Result<EmployeeDto>.Failure("An employee with this email already exists.");
         }
 
+        if (await ReservedAddresses.IsSuperAdministratorLoginAsync(_db, email, cancellationToken))
+        {
+            return Result<EmployeeDto>.Failure(ReservedAddresses.SuperAdministratorMessage);
+        }
+
         if (request.DepartmentId is not null
             && !await _db.Departments.AnyAsync(d => d.Id == request.DepartmentId, cancellationToken))
         {
@@ -132,6 +137,11 @@ public class EmployeeService
         if (await _db.Employees.AnyAsync(e => e.Email == email && e.Id != id, cancellationToken))
         {
             return Result<EmployeeDto>.Failure("An employee with this email already exists.");
+        }
+
+        if (await ReservedAddresses.IsSuperAdministratorLoginAsync(_db, email, cancellationToken))
+        {
+            return Result<EmployeeDto>.Failure(ReservedAddresses.SuperAdministratorMessage);
         }
 
         if (request.DepartmentId is not null

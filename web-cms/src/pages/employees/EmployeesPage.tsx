@@ -79,6 +79,10 @@ export default function EmployeesPage() {
   return (
     <div>
       <h1>Employees &amp; Ownership</h1>
+      <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
+        The people who own mailboxes and Cases, with their department and supervisor (used for escalation). A Super
+        Administrator sign-in such as admin@sawo.com is for access only and can't be used as an employee's email.
+      </p>
 
       {error && <div className="form-error">{error}</div>}
 

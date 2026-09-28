@@ -140,7 +140,9 @@ public class EmailDataResetService
     }
 
     private static bool IsTestName(string? name) =>
-        name is not null && (name.StartsWith("Live Verification", StringComparison.OrdinalIgnoreCase) || name.StartsWith("e2e-", StringComparison.OrdinalIgnoreCase));
+        name is not null && (name.StartsWith("Live Verification", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("e2e-", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("Sample", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Test employees, mailboxes, agents, users and departments left over from testing. Policies are never listed.</summary>
     public async Task<List<TestRecordDto>> DetectTestRecordsAsync(CancellationToken cancellationToken)
@@ -154,6 +156,7 @@ public class EmailDataResetService
 
         var mailboxes = (await _db.EmailAccounts.AsNoTracking().ToListAsync(cancellationToken))
             .Where(a => IsTestEmail(a.EmailAddress) || a.Host.Contains("greenmail", StringComparison.OrdinalIgnoreCase)
+                || a.Host.Equals(SampleDataService.SampleMailboxHost, StringComparison.OrdinalIgnoreCase)
                 || a.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var mailboxAddresses = mailboxes.Select(a => a.EmailAddress.ToLowerInvariant()).ToHashSet();
