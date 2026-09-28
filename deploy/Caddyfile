@@ -4,8 +4,16 @@
 # upgraded for WebSocket).
 #
 # {$DOMAIN} must be a real DNS name pointing at this host for Caddy to obtain
-# a Let's Encrypt certificate automatically. For a domain-less/IP-only or
-# fully offline deployment, see the http:// fallback block below instead.
+# a Let's Encrypt certificate automatically. It can also be the server's IP
+# address on an internal network (e.g. DOMAIN=172.16.2.68): Caddy then issues
+# its own certificate for that IP, and Windows Agents connect to
+# https://<ip>:<PROXY_HTTPS_PORT> with "Allow self-signed certificates" ticked.
+
+{
+	# Clients connecting by IP address send no server name, so without this
+	# Caddy cannot choose a certificate and the HTTPS handshake fails.
+	default_sni {$DOMAIN}
+}
 
 {$DOMAIN} {
 	encode gzip
