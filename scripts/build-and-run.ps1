@@ -94,32 +94,62 @@ $proxyHttpPort = Get-EnvPort 'PROXY_HTTP_PORT' '8080'
 $proxyPort = Get-EnvPort 'PROXY_HTTPS_PORT' '8443'
 
 # 2b. Ports ---------------------------------------------------------------------------------------
-# Stop before building if another program or container already uses a port IEMAS needs.
-# Ports held by IEMAS's own containers are fine: they are replaced when IEMAS restarts.
+# Who uses a port: $null when free, 'IEMAS' for IEMAS's own containers (replaced when IEMAS restarts), otherwise a
+# description of the other container or program.
+function Get-PortUser([string]$port) {
+    $containers = @(& docker ps --filter "publish=$port" --format '{{.Names}}' 2>$null | Where-Object { $_ })
+    $others = @($containers | Where-Object { $_ -notlike 'iemas-*' })
+    if ($others.Count -gt 0) { return "the Docker container '$($others -join "', '")'" }
+    if ($containers.Count -gt 0) { return 'IEMAS' }
+    $listener = Get-NetTCPConnection -State Listen -LocalPort ([int]$port) -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($listener) {
+        $process = (Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+        return "the program '$process' (process id $($listener.OwningProcess))"
+    }
+    return $null
+}
+
+# Writes KEY=value into .env, replacing an existing KEY line or adding one; everything else is kept as it is.
+function Set-EnvValue([string]$key, [string]$value) {
+    $path = Join-Path $root '.env'
+    $text = [System.IO.File]::ReadAllText($path)
+    $newline = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+    if ($text -match "(?m)^$key=.*$") {
+        $text = [regex]::Replace($text, "(?m)^$key=[^\r\n]*", "$key=$value")
+    } else {
+        if ($text.Length -gt 0 -and -not $text.EndsWith("`n")) { $text += $newline }
+        $text += "$key=$value$newline"
+    }
+    [System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# If a port IEMAS needs is taken by something else, move IEMAS to the next free port (saved in .env) rather than
+# stopping the other program. Ports held by IEMAS's own containers are fine.
 if (-not $CheckOnly) {
     Step "Checking that the ports are free"
-    $portsInUse = 0
-    foreach ($entry in @(@('CMS', $webPort, 'WEB_PORT'), @('Proxy HTTP', $proxyHttpPort, 'PROXY_HTTP_PORT'), @('Proxy HTTPS', $proxyPort, 'PROXY_HTTPS_PORT'))) {
-        $label, $port, $key = $entry
-        $containers = @(& docker ps --filter "publish=$port" --format '{{.Names}}' 2>$null | Where-Object { $_ })
-        $others = @($containers | Where-Object { $_ -notlike 'iemas-*' })
-        if ($others.Count -gt 0) {
-            Fail "$label port $port is used by the Docker container '$($others -join "', '")'. Stop it (docker stop $($others[0])) or set $key to a free port in .env."
-            $portsInUse++
-            continue
-        }
-        if ($containers.Count -gt 0) { Ok "$label port $port (used by IEMAS itself)"; continue }
+    $chosen = @{ 'WEB_PORT' = $webPort; 'PROXY_HTTP_PORT' = $proxyHttpPort; 'PROXY_HTTPS_PORT' = $proxyPort }
+    foreach ($entry in @(@('CMS', 'WEB_PORT'), @('Proxy HTTP', 'PROXY_HTTP_PORT'), @('Proxy HTTPS', 'PROXY_HTTPS_PORT'))) {
+        $label, $key = $entry
+        $port = $chosen[$key]
+        $user = Get-PortUser $port
+        if ($null -eq $user) { Ok "$label port $port is free"; continue }
+        if ($user -eq 'IEMAS') { Ok "$label port $port (used by IEMAS itself)"; continue }
 
-        $listener = Get-NetTCPConnection -State Listen -LocalPort ([int]$port) -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($listener) {
-            $process = (Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue).ProcessName
-            Fail "$label port $port is used by the program '$process' (process id $($listener.OwningProcess)). Close it or set $key to a free port in .env."
-            $portsInUse++
-        } else {
-            Ok "$label port $port is free"
+        $free = $null
+        for ($candidate = [int]$port + 1; $candidate -le [int]$port + 200; $candidate++) {
+            if ($chosen.Values -contains "$candidate") { continue }
+            if ($null -eq (Get-PortUser "$candidate")) { $free = "$candidate"; break }
         }
+        if (-not $free) { Stop-WithError "$label port $port is used by $user and no free port was found after it. Set $key in .env." }
+
+        Set-EnvValue $key $free
+        $chosen[$key] = $free
+        Warn "$label port $port is used by $user, so IEMAS now uses port $free instead (saved as $key=$free in .env)."
     }
-    if ($portsInUse -gt 0) { Stop-WithError "$portsInUse port(s) are already in use - see above. Nothing was changed." }
+    $webPort = $chosen['WEB_PORT']; $proxyHttpPort = $chosen['PROXY_HTTP_PORT']; $proxyPort = $chosen['PROXY_HTTPS_PORT']
+    if ($proxyPort -ne '8443') {
+        Write-Host "   NOTE  Windows Agents must connect to https://<this computer>:$proxyPort" -ForegroundColor Yellow
+    }
 }
 
 $started = Get-Date
@@ -165,7 +195,7 @@ if (-not $health) {
     Fail "The API did not answer within 3 minutes. Logs: docker logs iemas-api"
 } else {
     try { $report = $health.Substring($health.IndexOf('{')) | ConvertFrom-Json } catch { $report = $null }
-    if ($report -eq $null) {
+    if ($null -eq $report) {
         Warn "The API answered but its health report could not be read."
     } else {
         foreach ($check in $report.checks) {
