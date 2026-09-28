@@ -517,6 +517,7 @@ export interface CaseWorkflowItemDto {
   caseId: string | null;
   caseNumber: string | null;
   detail: string | null;
+  processedAt?: string | null;
 }
 
 export interface CaseWorkflowOverviewDto {

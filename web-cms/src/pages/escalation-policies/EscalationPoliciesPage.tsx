@@ -272,7 +272,7 @@ export default function EscalationPoliciesPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24 }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: 24 }}>
         <thead>
           <tr>
             <th style={thStyle}>Name</th>
@@ -410,7 +410,7 @@ export default function EscalationPoliciesPage() {
 
           <div>
             <h3 style={{ fontSize: 14 }}>Levels</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
               <thead>
                 <tr>
                   <th style={thStyle}>Level</th>
@@ -477,5 +477,5 @@ export default function EscalationPoliciesPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = {};

@@ -16,7 +16,21 @@ public class CaseService
         _db = db;
     }
 
-    public async Task<List<CaseDto>> SearchAsync(CaseListFilter filter, CancellationToken cancellationToken)
+    public async Task<List<CaseDto>> SearchAsync(CaseListFilter filter, CancellationToken cancellationToken) =>
+        await ProjectAndOrder(Filter(filter)).ToListAsync(cancellationToken);
+
+    /// <summary>The CMS Cases list: same filters as <see cref="SearchAsync"/>, one page at a time.</summary>
+    public async Task<PagedResult<CaseDto>> SearchPagedAsync(CaseListFilter filter, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var query = Filter(filter);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await ProjectAndOrder(query).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        return PagedResult<CaseDto>.Create(items, total, page, pageSize);
+    }
+
+    private IQueryable<Case> Filter(CaseListFilter filter)
     {
         var query = _db.Cases.AsNoTracking().AsQueryable();
 
@@ -26,11 +40,13 @@ public class CaseService
         if (!string.IsNullOrWhiteSpace(filter.CustomerEmailAddress)) query = query.Where(c => c.CustomerEmailAddress == filter.CustomerEmailAddress);
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
-            var term = filter.Search.Trim();
-            query = query.Where(c => c.CaseNumber.Contains(term) || c.Subject.Contains(term) || c.CustomerEmailAddress.Contains(term));
+            var term = filter.Search.Trim().ToLower();
+            query = query.Where(c => c.CaseNumber.ToLower().Contains(term) || c.Subject.ToLower().Contains(term)
+                || c.CustomerEmailAddress.ToLower().Contains(term)
+                || (c.CustomerDisplayName != null && c.CustomerDisplayName.ToLower().Contains(term)));
         }
 
-        return await ProjectAndOrder(query).ToListAsync(cancellationToken);
+        return query;
     }
 
     public async Task<CaseDetailDto?> GetDetailAsync(Guid id, CancellationToken cancellationToken)

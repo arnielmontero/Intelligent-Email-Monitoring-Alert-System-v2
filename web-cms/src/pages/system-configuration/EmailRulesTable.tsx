@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { apiClient } from "../../api/client";
 import type { SystemSettingDto } from "../../api/types";
+import Pagination from "../../components/Pagination";
+import { Badge } from "../../components/StatCard";
+
+const PAGE_SIZE = 10;
 
 type Category = "legit" | "response";
 type Direction = "yes" | "no";
@@ -17,8 +21,8 @@ const CATEGORY_LABELS: Record<Category, string> = {
 };
 
 const DIRECTION_LABELS: Record<Category, Record<Direction, string>> = {
-  legit: { yes: "✓ Is legitimate", no: "✗ Not legitimate" },
-  response: { yes: "✓ Needs a response", no: "✗ No response needed" },
+  legit: { yes: "Is legitimate", no: "Not legitimate" },
+  response: { yes: "Needs a response", no: "No response needed" },
 };
 
 interface Rule {
@@ -44,6 +48,7 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
   const [editing, setEditing] = useState<Rule | null>(null);
   const [editForm, setEditForm] = useState<Rule>({ category: "legit", direction: "no", text: "" });
   const [filter, setFilter] = useState<"all" | Category>("all");
+  const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -118,7 +123,11 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
     }
   }
 
-  const visible = rules.filter((r) => filter === "all" || r.category === filter);
+  const filtered = rules.filter((r) => filter === "all" || r.category === filter);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Stay on a real page after a delete empties the last one.
+  const currentPage = Math.min(page, totalPages);
+  const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const anyOverridden = Object.values(KEYS).flatMap((k) => Object.values(k)).some((key) => settings.find((s) => s.key === key)?.isOverridden);
 
   return (
@@ -155,7 +164,7 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
         <div style={{ display: "flex", gap: 6 }}>
           {(["all", "legit", "response"] as const).map((f) => (
-            <button key={f} className={filter === f ? "btn-primary" : undefined} onClick={() => setFilter(f)} style={{ fontSize: 12 }}>
+            <button key={f} className={filter === f ? "btn-primary" : undefined} onClick={() => { setFilter(f); setPage(1); setEditing(null); }} style={{ fontSize: 12 }}>
               {f === "all" ? `All (${rules.length})` : `${CATEGORY_LABELS[f]} (${rules.filter((r) => r.category === f).length})`}
             </button>
           ))}
@@ -163,7 +172,7 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
         {anyOverridden && <button onClick={restoreDefaults} disabled={busy} style={{ fontSize: 12 }}>Restore default rules</button>}
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
         <thead>
           <tr>
             <th style={{ ...thStyle, width: 210 }}>Category</th>
@@ -175,7 +184,6 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
         <tbody>
           {visible.map((rule) => {
             const isEditing = editing !== null && same(editing, rule);
-            const tone = rule.direction === "yes" ? "var(--color-success)" : "var(--color-danger)";
             return (
               <tr key={`${rule.category}-${rule.direction}-${rule.text}`}>
                 {isEditing ? (
@@ -207,7 +215,9 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
                 ) : (
                   <>
                     <td style={tdStyle}>{CATEGORY_LABELS[rule.category]}</td>
-                    <td style={{ ...tdStyle, color: tone, fontWeight: 600 }}>{DIRECTION_LABELS[rule.category][rule.direction]}</td>
+                    <td style={tdStyle}>
+                      <Badge tone={rule.direction === "yes" ? "good" : "bad"}>{DIRECTION_LABELS[rule.category][rule.direction]}</Badge>
+                    </td>
                     <td style={tdStyle}>{rule.text}</td>
                     <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", gap: 6 }}>
@@ -223,12 +233,19 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
           {visible.length === 0 && <tr><td style={tdStyle} colSpan={4}>No rules here — the AI uses its own judgement.</td></tr>}
         </tbody>
       </table>
+      {filtered.length > PAGE_SIZE && (
+        <Pagination page={currentPage} totalPages={totalPages} totalCount={filtered.length} pageSize={PAGE_SIZE}
+          onChange={(p) => { setPage(p); setEditing(null); }} />
+      )}
     </div>
   );
 }
 
 const panelStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, background: "var(--color-surface)" };
 const fieldStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4, minWidth: 0 };
-const noticeStyle: React.CSSProperties = { background: "#166534", color: "#fff", padding: "8px 12px", borderRadius: 6, marginBottom: 12 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "middle" };
+const noticeStyle: React.CSSProperties = {
+  background: "color-mix(in srgb, var(--color-success) 12%, transparent)", color: "var(--color-success)",
+  border: "1px solid color-mix(in srgb, var(--color-success) 30%, transparent)", padding: "8px 12px", borderRadius: 6, marginBottom: 12,
+};
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = { verticalAlign: "middle" };

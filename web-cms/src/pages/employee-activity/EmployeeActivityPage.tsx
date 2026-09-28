@@ -102,7 +102,7 @@ export default function EmployeeActivityPage() {
       {loading ? <p>Loading...</p> : (
         <>
           <h2 style={{ fontSize: 18 }}>Summary</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 28 }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: 28 }}>
             <thead>
               <tr>
                 <th style={thStyle}>Employee</th>
@@ -139,7 +139,7 @@ export default function EmployeeActivityPage() {
           </table>
 
           <h2 style={{ fontSize: 18 }}>Activity</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th style={thStyle}>When</th>
@@ -171,5 +171,5 @@ export default function EmployeeActivityPage() {
 }
 
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };

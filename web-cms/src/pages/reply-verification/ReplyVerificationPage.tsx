@@ -3,6 +3,7 @@ import { apiClient } from "../../api/client";
 import type { ReplyCheckCaseDto, ReplyCheckOverviewDto, ReplyVerificationRunResult } from "../../api/types";
 import CaseSidePanel from "../../components/CaseSidePanel";
 import { selectedRowStyle } from "../../components/styles";
+import StatCard, { Badge, type Tone } from "../../components/StatCard";
 
 interface Stage {
   label: string;
@@ -10,7 +11,7 @@ interface Stage {
   hint: string;
   /** CaseReplyStatus values shown when the card is clicked. */
   filter: string;
-  tone?: "warn" | "bad" | "good";
+  tone?: Tone;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -21,11 +22,12 @@ const STATUS_LABELS: Record<string, string> = {
   Replied: "Reply found",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  NoReplyFound: "var(--color-warning)",
-  VerificationFailed: "var(--color-danger)",
-  VerificationPending: "var(--color-danger)",
-  Replied: "var(--color-success)",
+const STATUS_TONES: Record<string, Tone> = {
+  AwaitingReply: "neutral",
+  NoReplyFound: "warn",
+  VerificationFailed: "bad",
+  VerificationPending: "bad",
+  Replied: "good",
 };
 
 /// Whether employees really replied to their Cases — found in each mailbox's Sent folder, not just claimed.
@@ -75,7 +77,7 @@ export default function ReplyVerificationPage() {
   const stages: Stage[] = overview ? [
     { label: "Not checked yet", count: overview.awaitingFirstCheck, hint: "new Cases, first check within 5 min", filter: "AwaitingReply" },
     { label: "No reply yet", count: overview.noReplyYet, hint: "Sent folder checked — nothing to the customer; reminders continue", filter: "NoReplyFound", tone: overview.noReplyYet > 0 ? "warn" : undefined },
-    { label: "Reply found", count: overview.replyFound, hint: "reply confirmed in Sent — reminders stop", filter: "Replied", tone: "good" },
+    { label: "Reply found", count: overview.replyFound, hint: "reply confirmed in Sent — reminders stop", filter: "Replied" },
   ] : [];
 
   const filters = filter.split(",").filter(Boolean);
@@ -95,28 +97,20 @@ export default function ReplyVerificationPage() {
 
         {overview && (
           <>
-            <h2 style={sectionTitle}>Open Cases by reply</h2>
-            <div style={{ display: "flex", alignItems: "stretch", gap: 6, flexWrap: "wrap" }}>
-              {stages.map((stage, i) => (
-                <div key={stage.label} style={{ display: "flex", alignItems: "center", gap: 6, flex: "1 1 200px" }}>
-                  <StageCard stage={stage} active={filter === stage.filter} onClick={() => setFilter(filter === stage.filter ? "" : stage.filter)} />
-                  {i < stages.length - 1 && <span style={arrowStyle} aria-hidden="true">→</span>}
-                </div>
+            <div className="section-title" style={{ marginTop: 8 }}>Open Cases by reply</div>
+            <div className="stat-grid">
+              {stages.map((stage) => (
+                <StatCard key={stage.label} label={stage.label} value={stage.count} hint={stage.hint} tone={stage.tone}
+                  active={filter === stage.filter} onClick={() => setFilter(filter === stage.filter ? "" : stage.filter)} />
               ))}
-              <div style={{ display: "flex", flex: "1 1 200px", marginLeft: 12 }}>
-                <StageCard
-                  stage={{
-                    label: "Couldn't check", count: overview.couldNotCheck, filter: "VerificationFailed,VerificationPending",
-                    hint: "mailbox unreachable — never counted as “no reply”; retried automatically",
-                    tone: overview.couldNotCheck > 0 ? "bad" : undefined,
-                  }}
-                  active={filter === "VerificationFailed,VerificationPending"}
-                  onClick={() => setFilter(filter === "VerificationFailed,VerificationPending" ? "" : "VerificationFailed,VerificationPending")}
-                />
-              </div>
+              <StatCard label="Couldn't check" value={overview.couldNotCheck}
+                hint="mailbox unreachable — never counted as “no reply”; retried automatically"
+                tone={overview.couldNotCheck > 0 ? "bad" : "neutral"}
+                active={filter === "VerificationFailed,VerificationPending"}
+                onClick={() => setFilter(filter === "VerificationFailed,VerificationPending" ? "" : "VerificationFailed,VerificationPending")} />
             </div>
 
-            <h2 style={sectionTitle}>Sent folders checked</h2>
+            <div className="section-title">Sent folders checked</div>
             <table style={tableStyle}>
               <thead>
                 <tr>
@@ -134,8 +128,8 @@ export default function ReplyVerificationPage() {
                     <td style={tdStyle}>{m.lastCheckedAt ? new Date(m.lastCheckedAt).toLocaleString() : "Not yet"}</td>
                     <td style={tdStyle}>
                       {m.lastProblem
-                        ? <span style={{ color: "var(--color-danger)" }}>Can't read Sent folder: {m.lastProblem}</span>
-                        : <span style={{ color: "var(--color-success)" }}>OK</span>}
+                        ? <><Badge tone="bad">Can't read Sent folder</Badge><div style={hintStyle}>{m.lastProblem}</div></>
+                        : <Badge tone="good">OK</Badge>}
                     </td>
                   </tr>
                 ))}
@@ -145,14 +139,18 @@ export default function ReplyVerificationPage() {
           </>
         )}
 
-        <h2 style={sectionTitle}>Check now</h2>
-        <p style={mutedStyle}>
-          Runs by itself every 5 minutes. Check Now looks in the Sent folders immediately (up to 100 Cases, least recently checked first)
-          — useful right after an employee says they replied.
-        </p>
-        <button className="btn-primary" onClick={runNow} disabled={running} style={{ marginBottom: 12 }}>
-          {running ? "Checking Sent folders..." : "Check Now"}
-        </button>
+        <div className="section-head">
+          <div>
+            <h2 style={sectionTitle}>Check now</h2>
+            <p style={mutedStyle}>
+              Runs by itself every 5 minutes. Check Now looks in the Sent folders immediately (up to 100 Cases, least recently
+              checked first) — useful right after an employee says they replied.
+            </p>
+          </div>
+          <button className="btn-primary" onClick={runNow} disabled={running}>
+            {running ? "Checking Sent folders..." : "Check Now"}
+          </button>
+        </div>
         {result && (
           <>
             <div style={{ ...mutedStyle, margin: "4px 0 8px" }}>
@@ -164,27 +162,15 @@ export default function ReplyVerificationPage() {
           </>
         )}
 
-        <h2 style={sectionTitle}>
-          Open Cases {filterLabel ? `— ${filterLabel}` : ""} ({shown.length})
-          {filter && <button onClick={() => setFilter("")} style={{ marginLeft: 12, fontSize: 12 }}>Show all</button>}
-        </h2>
+        <div className="section-head">
+          <h2 style={sectionTitle}>Open Cases {filterLabel ? `— ${filterLabel}` : ""} ({shown.length})</h2>
+          {filter && <button onClick={() => setFilter("")}>Show all</button>}
+        </div>
         <CaseTable items={shown} empty="No open Cases here." selectedId={selectedId} onSelect={setSelectedId} />
       </div>
 
       {selectedId && <CaseSidePanel caseId={selectedId} onClose={() => setSelectedId(null)} onChanged={load} />}
     </div>
-  );
-}
-
-function StageCard({ stage, active, onClick }: { stage: Stage; active: boolean; onClick: () => void }) {
-  const border = stage.tone === "bad" ? "var(--color-danger)" : stage.tone === "warn" ? "var(--color-warning)" : stage.tone === "good" ? "var(--color-success)" : "var(--color-border)";
-  return (
-    <button type="button" onClick={onClick} title="Show these Cases below"
-      style={{ ...cardStyle, borderColor: border, borderWidth: active ? 2 : 1, flex: 1 }}>
-      <div style={{ fontSize: 26, fontWeight: 700 }}>{stage.count}</div>
-      <div style={{ fontWeight: 600 }}>{stage.label}</div>
-      <div style={hintStyle}>{stage.hint}</div>
-    </button>
   );
 }
 
@@ -212,7 +198,7 @@ function CaseTable({ items, empty, selectedId, onSelect }: {
             <td style={tdStyle}>{c.subject || "(no subject)"}</td>
             <td style={tdStyle}>{c.mailbox}<div style={hintStyle}>{c.owner ?? "(no owner)"}</div></td>
             <td style={tdStyle}>
-              <strong style={{ color: STATUS_COLORS[c.replyStatus] ?? "var(--color-text)" }}>{STATUS_LABELS[c.replyStatus] ?? c.replyStatus}</strong>
+              <Badge tone={STATUS_TONES[c.replyStatus]}>{STATUS_LABELS[c.replyStatus] ?? c.replyStatus}</Badge>
               {c.lastResult && <div style={hintStyle}>{c.lastResult}</div>}
             </td>
             <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{c.lastCheckedAt ? new Date(c.lastCheckedAt).toLocaleString() : "Not yet"}</td>
@@ -226,12 +212,7 @@ function CaseTable({ items, empty, selectedId, onSelect }: {
 
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const hintStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 12 };
-const sectionTitle: React.CSSProperties = { fontSize: 16, margin: "24px 0 10px" };
-const cardStyle: React.CSSProperties = {
-  border: "1px solid", borderRadius: 8, padding: "10px 12px", background: "var(--color-surface)", height: "100%",
-  textAlign: "left", color: "var(--color-text)", cursor: "pointer", font: "inherit",
-};
-const arrowStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 20 };
-const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };
+const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 600, margin: "0 0 4px" };
+const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "separate", borderSpacing: 0 };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };

@@ -136,7 +136,7 @@ export default function CaseHistoryPage() {
             <strong style={{ color: "var(--color-text)" }}>{result.totalCount.toLocaleString()}</strong> event{result.totalCount === 1 ? "" : "s"}
             {activeFilters.length > 0 ? <> matching {activeFilters.join(" · ")}</> : " (no filters)"}
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th style={thStyle}>When</th>
@@ -191,5 +191,5 @@ export default function CaseHistoryPage() {
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const hintStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 12 };
 const fieldStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4, minWidth: 0 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };

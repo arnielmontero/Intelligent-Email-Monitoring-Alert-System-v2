@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { AiProviderKeyCheck, AiUsageCallDto, AiUsageSummaryDto, PagedResult } from "../../api/types";
 import Pagination from "../../components/Pagination";
+import { Badge } from "../../components/StatCard";
 
 const PAGE_SIZE = 10;
 
@@ -71,9 +72,9 @@ export default function AiUsagePage() {
 
       <div style={cardGridStyle}>
         {summary?.periods.map((p) => (
-          <div key={p.label} style={cardStyle}>
-            <div style={mutedStyle}>{p.label}</div>
-            <div style={{ fontSize: 26, fontWeight: 600, margin: "4px 0" }}>{usd(p.costUsd)}</div>
+          <div key={p.label} className="stat-card">
+            <div className="stat-label">{p.label}</div>
+            <div className="stat-value">{usd(p.costUsd)}</div>
             <div style={hintStyle}>
               {number(p.calls)} call{p.calls === 1 ? "" : "s"} · {number(p.tokens)} tokens
               {p.failedCalls > 0 && <> · <span style={{ color: "var(--color-danger)" }}>{p.failedCalls} failed</span></>}
@@ -81,13 +82,13 @@ export default function AiUsagePage() {
             {p.callsWithoutCost > 0 && <div style={hintStyle}>{p.callsWithoutCost} call(s) had no cost reported</div>}
           </div>
         ))}
-        <div style={cardStyle}>
-          <div style={mutedStyle}>OpenRouter account</div>
+        <div className="stat-card">
+          <div className="stat-label">OpenRouter account</div>
           {!account ? (
             <div style={hintStyle}>Loading…</div>
           ) : account.succeeded ? (
             <>
-              <div style={{ fontSize: 26, fontWeight: 600, margin: "4px 0" }}>{usd(account.usageUsd, 2)}</div>
+              <div className="stat-value">{usd(account.usageUsd, 2)}</div>
               <div style={hintStyle}>
                 used on this key{account.limitUsd !== null ? ` of ${usd(account.limitUsd, 2)} limit` : " (no spending limit)"}
                 {account.limitRemainingUsd !== null && ` · ${usd(account.limitRemainingUsd, 2)} left`}
@@ -177,8 +178,8 @@ export default function AiUsagePage() {
               </td>
               <td style={tdStyle}>
                 {c.succeeded
-                  ? <span style={{ color: "var(--color-success)" }}>✓ OK</span>
-                  : <span style={{ color: "var(--color-danger)" }} title={c.errorMessage ?? undefined}>✗ {truncate(c.errorMessage ?? "Failed", 60)}</span>}
+                  ? <Badge tone="good">OK</Badge>
+                  : <span title={c.errorMessage ?? undefined}><Badge tone="bad">Failed</Badge> <span style={hintStyle}>{truncate(c.errorMessage ?? "", 60)}</span></span>}
               </td>
               <td style={tdRight}>
                 {c.totalTokens === null ? "—" : `${number(c.promptTokens)} / ${number(c.completionTokens)}`}
@@ -210,12 +211,11 @@ function truncate(text: string, max: number) {
 
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const hintStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 12 };
-const sectionTitle: React.CSSProperties = { fontSize: 18, margin: "28px 0 12px" };
+const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 600, margin: "28px 0 12px" };
 const cardGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginTop: 16 };
-const cardStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: 14, background: "var(--color-surface)" };
 const fieldStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4, minWidth: 180 };
-const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
+const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "separate", borderSpacing: 0 };
+const thStyle: React.CSSProperties = { textAlign: "left" };
 const thRight: React.CSSProperties = { ...thStyle, textAlign: "right" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };
 const tdRight: React.CSSProperties = { ...tdStyle, textAlign: "right", whiteSpace: "nowrap" };

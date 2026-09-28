@@ -30,6 +30,7 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <form className="login-card" onSubmit={handleSubmit}>
+        <img src="/logo.png" alt="Company logo" className="login-logo" />
         <h1>IEMAS</h1>
         <p className="subtitle">Intelligent Email Monitoring &amp; Alert System</p>
 

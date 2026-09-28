@@ -41,7 +41,8 @@ public record CaseWorkflowItemDto(
     string Outcome,
     Guid? CaseId,
     string? CaseNumber,
-    string? Detail);
+    string? Detail,
+    DateTimeOffset? ProcessedAt = null);
 
 /// <summary>
 /// Requirements §20 (pipeline: Case Matching/Creation stage, following Phase 4's Classification
@@ -169,12 +170,37 @@ public class CaseWorkflowService
             .ToList();
     }
 
-    /// <summary>The most recent emails placed into Cases (by the automatic runs or Run Now), newest first.</summary>
-    public async Task<List<CaseWorkflowItemDto>> GetRecentAsync(int take, CancellationToken cancellationToken)
+    /// <summary>Emails placed into Cases (by the automatic runs or Run Now), searchable, sortable and paged; newest first by default.</summary>
+    public async Task<PagedResult<CaseWorkflowItemDto>> GetRecentAsync(
+        int page, int pageSize, string? search, string? sort, bool descending, CancellationToken cancellationToken)
     {
-        var rows = await _db.CaseEmails.AsNoTracking()
-            .OrderByDescending(ce => ce.CreatedAt)
-            .Take(Math.Clamp(take, 1, 200))
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = _db.CaseEmails.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(ce => ce.EmailMessage.FromAddress.ToLower().Contains(term)
+                || ce.EmailMessage.Subject.ToLower().Contains(term)
+                || ce.EmailMessage.EmailAccount.EmailAddress.ToLower().Contains(term)
+                || ce.Case.CaseNumber.ToLower().Contains(term));
+        }
+
+        query = (sort?.ToLowerInvariant()) switch
+        {
+            "received" => descending ? query.OrderByDescending(ce => ce.EmailMessage.ReceivedAt) : query.OrderBy(ce => ce.EmailMessage.ReceivedAt),
+            "from" => descending ? query.OrderByDescending(ce => ce.EmailMessage.FromAddress) : query.OrderBy(ce => ce.EmailMessage.FromAddress),
+            "subject" => descending ? query.OrderByDescending(ce => ce.EmailMessage.Subject) : query.OrderBy(ce => ce.EmailMessage.Subject),
+            "mailbox" => descending ? query.OrderByDescending(ce => ce.EmailMessage.EmailAccount.EmailAddress) : query.OrderBy(ce => ce.EmailMessage.EmailAccount.EmailAddress),
+            "case" => descending ? query.OrderByDescending(ce => ce.Case.CaseNumber) : query.OrderBy(ce => ce.Case.CaseNumber),
+            _ => descending ? query.OrderByDescending(ce => ce.CreatedAt) : query.OrderBy(ce => ce.CreatedAt),
+        };
+
+        var total = await query.CountAsync(cancellationToken);
+        var rows = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(ce => new
             {
                 ce.EmailMessageId, ce.EmailMessage.ReceivedAt, ce.EmailMessage.FromAddress, ce.EmailMessage.Subject,
@@ -182,11 +208,13 @@ public class CaseWorkflowService
             })
             .ToListAsync(cancellationToken);
 
-        return rows.Select(r => new CaseWorkflowItemDto(
+        var items = rows.Select(r => new CaseWorkflowItemDto(
             r.EmailMessageId, r.ReceivedAt, r.FromAddress, r.Subject, r.Mailbox,
             r.MatchSignal == CaseMatchSignal.NewCase ? "New Case" : "Added to existing Case",
             r.CaseId, r.CaseNumber,
-            r.MatchSignal == CaseMatchSignal.NewCase ? $"Processed {r.CreatedAt:u}" : $"Matched by {DescribeSignal(r.MatchSignal)} · processed {r.CreatedAt:u}")).ToList();
+            r.MatchSignal == CaseMatchSignal.NewCase ? null : $"Matched by {DescribeSignal(r.MatchSignal)}",
+            r.CreatedAt)).ToList();
+        return PagedResult<CaseWorkflowItemDto>.Create(items, total, page, pageSize);
     }
 
     private IQueryable<Guid> CandidateMessageIds() =>

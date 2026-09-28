@@ -98,7 +98,7 @@ export default function SystemSettingsPage() {
               Retention periods are recorded policy only. No automatic clean-up acts on them yet — they don't delete data.
             </p>
           )}
-          {!items.every((s) => s.type === "SenderList") && <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          {!items.every((s) => s.type === "SenderList") && <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <tbody>
               {items.map((s) => {
                 const dirty = (draft[s.key] ?? s.value).trim() !== s.value;
@@ -160,4 +160,4 @@ function supportedTimeZones(): string[] {
 
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const noticeStyle: React.CSSProperties = { background: "#166534", color: "#fff", padding: "8px 12px", borderRadius: 6, marginBottom: 16 };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };

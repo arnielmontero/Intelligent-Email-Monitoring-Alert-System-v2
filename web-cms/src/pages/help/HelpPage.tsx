@@ -110,7 +110,7 @@ export default function HelpPage() {
 
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const hintStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 12, marginTop: 2 };
-const sectionTitle: React.CSSProperties = { fontSize: 18, margin: "28px 0 12px" };
+const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 600, margin: "28px 0 12px" };
 const groupTitleStyle: React.CSSProperties = { fontSize: 15, display: "flex", alignItems: "center", gap: 8, margin: "0 0 10px" };
 const cardStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: "12px 14px", background: "var(--color-surface)", scrollMarginTop: 16 };
 const flowStyle: React.CSSProperties = { listStyle: "none", padding: 0, margin: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 };

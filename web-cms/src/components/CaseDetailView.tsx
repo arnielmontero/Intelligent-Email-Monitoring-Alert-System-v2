@@ -231,7 +231,7 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 const hintStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 12 };
-const sectionTitle: React.CSSProperties = { fontSize: 18, margin: "28px 0 12px" };
+const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 600, margin: "28px 0 12px" };
 const compactSectionTitle: React.CSSProperties = { fontSize: 15, margin: "20px 0 10px" };
 const pillStyle: React.CSSProperties = { color: "#fff", fontSize: 12, padding: "2px 10px", borderRadius: 999 };
 const panelStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: 14, background: "var(--color-surface)" };
@@ -242,6 +242,6 @@ const bodyStyle: React.CSSProperties = {
   background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: 6, padding: 12, marginTop: 10, maxHeight: 480, overflow: "auto",
 };
 const dotStyle: React.CSSProperties = { position: "absolute", left: -6, top: 10, width: 10, height: 10, borderRadius: 999, background: "var(--color-accent)" };
-const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };
+const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "separate", borderSpacing: 0 };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };

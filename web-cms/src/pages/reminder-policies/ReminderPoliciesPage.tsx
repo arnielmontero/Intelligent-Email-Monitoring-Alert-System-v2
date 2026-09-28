@@ -179,7 +179,7 @@ export default function ReminderPoliciesPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24 }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: 24 }}>
         <thead>
           <tr>
             <th style={thStyle}>Name</th>
@@ -301,5 +301,5 @@ export default function ReminderPoliciesPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = {};

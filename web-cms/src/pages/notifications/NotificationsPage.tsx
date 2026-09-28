@@ -135,7 +135,7 @@ function TemplatesTab() {
   return (
     <div>
       {error && <div className="form-error">{error}</div>}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24 }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: 24 }}>
         <thead>
           <tr>
             <th style={thStyle}>Notification</th>
@@ -275,7 +275,7 @@ function LogTab() {
 
       {error && <div className="form-error">{error}</div>}
       {loading ? <p>Loading...</p> : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
           <thead>
             <tr>
               <th style={thStyle}>Created</th>
@@ -317,5 +317,5 @@ const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", font
 const panelStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, marginBottom: 16, background: "var(--color-surface)" };
 const activeTabStyle: React.CSSProperties = { background: "var(--color-accent)", color: "#fff" };
 const pillStyle: React.CSSProperties = { color: "#fff", fontSize: 11, padding: "2px 8px", borderRadius: 999 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };

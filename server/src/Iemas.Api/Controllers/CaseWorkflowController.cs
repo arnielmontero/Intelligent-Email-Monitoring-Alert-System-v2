@@ -1,4 +1,5 @@
 using Iemas.Application.Cases;
+using Iemas.Application.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -35,6 +36,8 @@ public class CaseWorkflowController : ControllerBase
         Ok(await _service.GetWaitingAsync(take ?? 50, cancellationToken));
 
     [HttpGet("recent")]
-    public async Task<ActionResult<List<CaseWorkflowItemDto>>> Recent([FromQuery] int? take, CancellationToken cancellationToken) =>
-        Ok(await _service.GetRecentAsync(take ?? 20, cancellationToken));
+    public async Task<ActionResult<PagedResult<CaseWorkflowItemDto>>> Recent(
+        [FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] string? search, [FromQuery] string? sort, [FromQuery] bool? desc,
+        CancellationToken cancellationToken) =>
+        Ok(await _service.GetRecentAsync(page ?? 1, pageSize ?? 10, search, sort, desc ?? true, cancellationToken));
 }

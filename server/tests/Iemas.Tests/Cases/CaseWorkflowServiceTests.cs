@@ -476,7 +476,9 @@ public class CaseWorkflowServiceTests
         Assert.Equal("sales@sawo.com", item.Mailbox);
         Assert.NotNull(item.CaseNumber);
         Assert.Empty(await service.GetWaitingAsync(10, CancellationToken.None));
-        Assert.Equal(item.CaseNumber, Assert.Single(await service.GetRecentAsync(10, CancellationToken.None)).CaseNumber);
+        Assert.Equal(item.CaseNumber, Assert.Single((await service.GetRecentAsync(1, 10, null, null, true, CancellationToken.None)).Items).CaseNumber);
+        Assert.Single((await service.GetRecentAsync(1, 10, "PRICE", "subject", false, CancellationToken.None)).Items);
+        Assert.Empty((await service.GetRecentAsync(1, 10, "no-such-sender", null, true, CancellationToken.None)).Items);
         var overview = await service.GetOverviewAsync(CancellationToken.None);
         Assert.Equal(0, overview.WaitingForCase);
         Assert.Equal(1, overview.ActionRequired);

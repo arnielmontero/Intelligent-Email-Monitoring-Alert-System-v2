@@ -22,16 +22,18 @@ public class CasesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<CaseDto>>> Search(
+    public async Task<ActionResult<Iemas.Application.Common.PagedResult<CaseDto>>> Search(
         [FromQuery] CaseWorkStatus? workStatus,
         [FromQuery] Guid? ownerEmployeeId,
         [FromQuery] Guid? emailAccountId,
         [FromQuery] string? customerEmailAddress,
         [FromQuery] string? search,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
         CancellationToken cancellationToken)
     {
         var filter = new CaseListFilter(workStatus, ownerEmployeeId, emailAccountId, customerEmailAddress, search);
-        return Ok(await _caseService.SearchAsync(filter, cancellationToken));
+        return Ok(await _caseService.SearchPagedAsync(filter, page ?? 1, pageSize ?? 15, cancellationToken));
     }
 
     [HttpGet("{id:guid}")]

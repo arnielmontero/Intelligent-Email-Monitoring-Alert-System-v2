@@ -172,7 +172,7 @@ export default function AiModelsPage() {
       <ProviderPanel onSaved={loadCatalog} />
 
       <h2 style={sectionTitle}>Models</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 28 }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: 28 }}>
         <thead>
           <tr>
             <th style={thStyle}>Model</th>
@@ -427,11 +427,11 @@ function Field({ label, wide, children }: { label: string; wide?: boolean; child
 
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const hintStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 12 };
-const sectionTitle: React.CSSProperties = { fontSize: 18, margin: "24px 0 12px" };
+const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 600, margin: "28px 0 12px" };
 const panelStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, background: "var(--color-surface)", marginBottom: 8 };
 const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 12 };
 const fullWidth: React.CSSProperties = { width: "100%" };
 const noticeStyle: React.CSSProperties = { background: "#166534", color: "#fff", padding: "8px 12px", borderRadius: 6, margin: "8px 0" };
 const pillStyle: React.CSSProperties = { color: "#fff", fontSize: 12, padding: "2px 10px", borderRadius: 999 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "10px 8px", verticalAlign: "top" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };

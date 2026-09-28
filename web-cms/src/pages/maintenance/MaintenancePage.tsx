@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { AuditLogDto, PauseControlDto } from "../../api/types";
 import { useAuthStore } from "../../store/authStore";
+import { Badge } from "../../components/StatCard";
 
 /// Requirements §91 — Emergency Pause. Changes are permission-controlled (Administrator+),
 /// audited, timestamped and attributed; pausing never deletes Cases.
@@ -75,13 +76,11 @@ export default function MaintenancePage() {
 
       <div style={{ display: "grid", gap: 12, marginBottom: 32 }}>
         {controls.map((c) => (
-          <div key={c.control} style={{ ...cardStyle, borderColor: c.isPaused ? "var(--color-danger)" : "var(--color-border)" }}>
+          <div key={c.control} style={{ ...cardStyle, borderColor: c.isPaused ? "var(--color-danger)" : "var(--color-border)", borderLeftWidth: c.isPaused ? 3 : 1 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
               <div style={{ flex: "1 1 320px" }}>
                 <strong>{c.label}</strong>{" "}
-                <span style={{ ...pillStyle, background: c.isPaused ? "var(--color-danger)" : "#166534" }}>
-                  {c.isPaused ? "PAUSED" : "RUNNING"}
-                </span>
+                <span style={{ marginLeft: 6 }}><Badge tone={c.isPaused ? "bad" : "good"}>{c.isPaused ? "Paused" : "Running"}</Badge></span>
                 <div style={mutedStyle}>{c.description}</div>
                 {c.changedAt && (
                   <div style={{ ...mutedStyle, marginTop: 4 }}>
@@ -112,7 +111,7 @@ export default function MaintenancePage() {
       </div>
 
       <h2>Recent changes</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
         <thead>
           <tr>
             <th style={thStyle}>When</th>
@@ -140,8 +139,7 @@ export default function MaintenancePage() {
 }
 
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
-const cardStyle: React.CSSProperties = { border: "1px solid", borderRadius: 8, padding: 16, background: "var(--color-surface)" };
-const pillStyle: React.CSSProperties = { color: "#fff", fontSize: 11, padding: "2px 8px", borderRadius: 999, marginLeft: 6 };
+const cardStyle: React.CSSProperties = { border: "1px solid", borderRadius: 8, padding: 16, background: "var(--color-surface)", boxShadow: "var(--shadow-card)" };
 const bannerStyle: React.CSSProperties = { background: "var(--color-danger)", color: "#fff", padding: "8px 12px", borderRadius: 6, marginBottom: 16 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = {};

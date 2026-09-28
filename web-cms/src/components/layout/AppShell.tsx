@@ -72,7 +72,10 @@ export default function AppShell() {
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
-        <div className="app-brand" title="IEMAS — Intelligent Email Monitoring & Alert System">{organizationName}</div>
+        <div className="app-brand" title="IEMAS — Intelligent Email Monitoring & Alert System">
+          <img src="/logo.png" alt="" className="brand-logo" />
+          <span>{organizationName}</span>
+        </div>
         <nav>
           {NAV_SECTIONS.map((section) => {
             // A group with a single page (Dashboard, Help) is a plain link.
@@ -122,7 +125,7 @@ export default function AppShell() {
             {(["system", "light", "dark"] as ThemePreference[]).map((option) => (
               <button key={option} aria-pressed={theme === option} onClick={() => chooseTheme(option)}
                 title={option === "system" ? "Follow the Windows / browser setting" : `${option[0].toUpperCase()}${option.slice(1)} theme`}>
-                {option === "system" ? "System" : option === "light" ? "☀ Light" : "☾ Dark"}
+                {option === "system" ? "System" : option === "light" ? "Light" : "Dark"}
               </button>
             ))}
           </div>

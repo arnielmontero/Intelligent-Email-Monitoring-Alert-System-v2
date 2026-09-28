@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiClient } from "../../api/client";
-import type { CaseDto } from "../../api/types";
+import type { CaseDto, PagedResult } from "../../api/types";
 import { CASE_WORK_STATUS_LABELS, CASE_REPLY_STATUS_LABELS } from "../../api/types";
 import CaseSidePanel from "../../components/CaseSidePanel";
+import Pagination from "../../components/Pagination";
 import { selectedRowStyle } from "../../components/styles";
 
 
 export default function CasesPage() {
-  const [cases, setCases] = useState<CaseDto[]>([]);
+  const [result, setResult] = useState<PagedResult<CaseDto> | null>(null);
+  const [page, setPage] = useState(1);
+  const cases = result?.items ?? [];
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
@@ -20,11 +23,11 @@ export default function CasesPage() {
   async function load() {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ page: String(page), pageSize: "15" });
       if (statusFilter !== "") params.set("workStatus", statusFilter);
       if (search) params.set("search", search);
-      const res = await apiClient.get<CaseDto[]>(`/cases?${params.toString()}`);
-      setCases(res.data);
+      const res = await apiClient.get<PagedResult<CaseDto>>(`/cases?${params.toString()}`);
+      setResult(res.data);
     } catch {
       setError("Failed to load cases.");
     } finally {
@@ -35,14 +38,15 @@ export default function CasesPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, page]);
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
-    load();
+    if (page === 1) load();
+    else setPage(1);
   }
 
-  if (loading) return <p>Loading...</p>;
+  if (loading && !result) return <p>Loading...</p>;
 
   return (
     <div style={{ display: "flex", gap: 24 }}>
@@ -56,7 +60,7 @@ export default function CasesPage() {
         {error && <div className="form-error">{error}</div>}
 
         <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
             <option value="">All statuses</option>
             {Object.entries(CASE_WORK_STATUS_LABELS).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
@@ -71,7 +75,7 @@ export default function CasesPage() {
           <button type="submit">Search</button>
         </form>
 
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
           <thead>
             <tr>
               <th style={thStyle}>Case #</th>
@@ -106,6 +110,9 @@ export default function CasesPage() {
             )}
           </tbody>
         </table>
+        {result && result.totalCount > 0 && (
+          <Pagination page={result.page} totalPages={result.totalPages} totalCount={result.totalCount} pageSize={result.pageSize} onChange={setPage} />
+        )}
       </div>
 
       {selectedId && <CaseSidePanel caseId={selectedId} onClose={() => setSelectedId(null)} onChanged={load} />}
@@ -113,5 +120,5 @@ export default function CasesPage() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = {};

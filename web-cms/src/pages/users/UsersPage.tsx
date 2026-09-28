@@ -188,7 +188,7 @@ export default function UsersPage() {
             </div>
           </form>
 
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 32 }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: 32 }}>
             <thead>
               <tr>
                 <th style={thStyle}>User</th>
@@ -264,5 +264,5 @@ export default function UsersPage() {
 const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const noticeStyle: React.CSSProperties = { background: "#166534", color: "#fff", padding: "8px 12px", borderRadius: 6, marginBottom: 16 };
 const panelStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, marginBottom: 24, background: "var(--color-surface)" };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };

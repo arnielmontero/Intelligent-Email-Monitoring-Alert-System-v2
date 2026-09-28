@@ -283,7 +283,7 @@ export default function EmailAccountsPage() {
         </form>
       )}
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
         <thead>
           <tr>
             <th style={thStyle}>Email</th>
@@ -361,6 +361,6 @@ const noticeStyle: React.CSSProperties = { background: "#166534", color: "#fff",
 const panelStyle: React.CSSProperties = { border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, marginBottom: 24, background: "var(--color-surface)" };
 const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 };
 const fullWidth: React.CSSProperties = { width: "100%" };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px", verticalAlign: "top" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = { verticalAlign: "top" };
 const panelInnerStyle: React.CSSProperties = { marginTop: 16, display: "flex", flexDirection: "column", gap: 4 };

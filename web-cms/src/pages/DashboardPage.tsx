@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
 import type { DashboardSummaryDto } from "../api/types";
+import StatCard from "../components/StatCard";
 
 /// Requirements §87 — every metric named there, computed from real data via GET /api/v1/dashboard/summary.
 export default function DashboardPage() {
@@ -31,31 +32,41 @@ export default function DashboardPage() {
   return (
     <div>
       <h1>Dashboard</h1>
+      <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Today at a glance. Updates every 60 seconds.</p>
 
       {error && <div className="form-error">{error}</div>}
 
       {summary && (
         <>
-          <div style={gridStyle}>
-            <Tile label="Important Emails Today" value={summary.importantEmailsToday} />
-            <Tile label="Open Cases" value={summary.openCases} />
-            <Tile label="Awaiting Reply" value={summary.awaitingReply} />
-            <Tile label="Overdue" value={summary.overdue} warn={summary.overdue > 0} />
-            <Tile label="Escalated" value={summary.escalated} warn={summary.escalated > 0} />
-            <Tile label="Completed Today" value={summary.completedToday} good />
-            <Tile label="Online Employees" value={summary.onlineEmployees} good />
-            <Tile label="Offline Employees" value={summary.offlineEmployees} />
-            <Tile label="Pending Agent Approvals" value={summary.pendingAgentApprovals} warn={summary.pendingAgentApprovals > 0} />
-            <Tile label="AI Errors" value={summary.aiErrors} warn={summary.aiErrors > 0} />
-            <Tile label="Email Monitoring Errors" value={summary.emailMonitoringErrors} warn={summary.emailMonitoringErrors > 0} />
-            <Tile label="Background Job Failures" value={summary.backgroundJobFailures} warn={summary.backgroundJobFailures > 0} />
+          <div className="section-title" style={{ marginTop: 0 }}>Work</div>
+          <div className="stat-grid">
+            <StatCard label="Important emails today" value={summary.importantEmailsToday} to="/case-workflow" />
+            <StatCard label="Open Cases" value={summary.openCases} to="/cases" />
+            <StatCard label="Awaiting reply" value={summary.awaitingReply} to="/reply-verification" />
+            <StatCard label="Overdue" value={summary.overdue} tone={summary.overdue > 0 ? "warn" : "neutral"} to="/cases?status=6" />
+            <StatCard label="Escalated" value={summary.escalated} tone={summary.escalated > 0 ? "bad" : "neutral"} to="/cases?status=7" />
+            <StatCard label="Completed today" value={summary.completedToday} to="/cases?status=8" />
           </div>
 
-          <h2 style={{ fontSize: 15, marginTop: 28 }}>Open Cases by Employee</h2>
+          <div className="section-title">Team &amp; devices</div>
+          <div className="stat-grid">
+            <StatCard label="Employees online" value={summary.onlineEmployees} to="/employee-activity" />
+            <StatCard label="Employees offline" value={summary.offlineEmployees} to="/employee-activity" />
+            <StatCard label="Agents awaiting approval" value={summary.pendingAgentApprovals} tone={summary.pendingAgentApprovals > 0 ? "warn" : "neutral"} to="/agents" />
+          </div>
+
+          <div className="section-title">System</div>
+          <div className="stat-grid">
+            <StatCard label="AI errors" value={summary.aiErrors} tone={summary.aiErrors > 0 ? "bad" : "neutral"} to="/system-health" />
+            <StatCard label="Mailbox errors" value={summary.emailMonitoringErrors} tone={summary.emailMonitoringErrors > 0 ? "bad" : "neutral"} to="/email-monitoring" />
+            <StatCard label="Background job failures" value={summary.backgroundJobFailures} tone={summary.backgroundJobFailures > 0 ? "bad" : "neutral"} to="/system-health" />
+          </div>
+
+          <div className="section-title">Open Cases by employee</div>
           {summary.openCasesByEmployee.length === 0 ? (
             <p style={{ color: "var(--color-text-muted)" }}>No open Cases.</p>
           ) : (
-            <table style={{ borderCollapse: "collapse" }}>
+            <table style={{ borderCollapse: "separate", borderSpacing: 0, minWidth: 360 }}>
               <thead>
                 <tr><th style={thStyle}>Employee</th><th style={thStyle}>Open Cases</th></tr>
               </thead>
@@ -70,25 +81,11 @@ export default function DashboardPage() {
             </table>
           )}
 
-          <p style={{ color: "var(--color-text-muted)", fontSize: 12, marginTop: 24 }}>
-            For full dependency status see <a href="/system-health">System Health</a>. Auto-refreshes every 60 seconds.
-          </p>
         </>
       )}
     </div>
   );
 }
 
-function Tile({ label, value, warn, good }: { label: string; value: number; warn?: boolean; good?: boolean }) {
-  const color = warn ? "#ef4444" : good ? "var(--color-success)" : "inherit";
-  return (
-    <div style={{ border: "1px solid var(--color-border)", borderRadius: 8, padding: 16 }}>
-      <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 700, color }}>{value}</div>
-    </div>
-  );
-}
-
-const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "8px" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid var(--color-row-border)", padding: "8px" };
+const thStyle: React.CSSProperties = { textAlign: "left" };
+const tdStyle: React.CSSProperties = {};
