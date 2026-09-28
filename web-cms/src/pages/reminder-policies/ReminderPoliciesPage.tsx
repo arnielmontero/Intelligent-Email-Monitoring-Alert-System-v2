@@ -173,8 +173,9 @@ export default function ReminderPoliciesPage() {
     <div>
       <h1>Reminder Policies</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        How often employees are reminded about a Case that still needs a reply: first reminder, time between reminders,
-        maximum number, business hours, weekends and holidays. One policy is the default.
+        How often the Case owner is reminded by pop-up while no reply has been found in the Sent folder: first reminder,
+        time between reminders, maximum number, business hours and whether weekends count. Reminders stop as soon as
+        a reply is found. One policy is the default.
       </p>
 
       {error && <div className="form-error">{error}</div>}

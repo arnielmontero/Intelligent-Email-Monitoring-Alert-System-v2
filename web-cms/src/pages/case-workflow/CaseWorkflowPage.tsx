@@ -107,7 +107,7 @@ export default function CaseWorkflowPage() {
     { label: "Not work", count: overview.notWorkLast24Hours, hint: "AI: no Case needed (last 24 h)" },
     { label: "Needs review", count: overview.needsReview, hint: "AI was unsure — a person decides", link: "/email-classification", tone: overview.needsReview > 0 ? "warn" : undefined },
     { label: "Overdue", count: overview.overdue, hint: "no reply in time", link: "/cases?status=6", tone: overview.overdue > 0 ? "bad" : undefined },
-    { label: "Escalated", count: overview.escalated, hint: "supervisor/manager informed", link: "/cases?status=7", tone: overview.escalated > 0 ? "bad" : undefined },
+    { label: "Escalated", count: overview.escalated, hint: "no reply after reminders — see Escalation History", link: "/cases?status=7", tone: overview.escalated > 0 ? "bad" : undefined },
   ] : [];
 
   return (

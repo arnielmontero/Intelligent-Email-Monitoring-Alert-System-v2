@@ -97,7 +97,8 @@ export default function EscalationGroupsPage() {
     <div>
       <h1>Escalation Groups</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        A named group of employees that an escalation level can notify (for example "Sales managers").
+        A named group of employees that an escalation level can name as its recipient (for example "Sales managers").
+        The group is recorded in Escalation History; its members are not contacted automatically yet.
         A group that is in use by an escalation policy can't be deleted.
       </p>
 

@@ -3,11 +3,13 @@ import { apiClient } from "../../api/client";
 import type { AuditLogDto, PauseControlDto } from "../../api/types";
 import { useAuthStore } from "../../store/authStore";
 import { Badge } from "../../components/StatCard";
+import ResetEmailDataPanel from "./ResetEmailDataPanel";
 
 /// Requirements §91 — Emergency Pause. Changes are permission-controlled (Administrator+),
 /// audited, timestamped and attributed; pausing never deletes Cases.
 export default function MaintenancePage() {
   const canEdit = useAuthStore((s) => s.hasRole("SuperAdministrator", "Administrator"));
+  const canReset = useAuthStore((s) => s.hasRole("SuperAdministrator"));
   const [controls, setControls] = useState<PauseControlDto[]>([]);
   const [history, setHistory] = useState<AuditLogDto[]>([]);
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -134,6 +136,8 @@ export default function MaintenancePage() {
           {history.length === 0 && <tr><td style={tdStyle} colSpan={5}>No pause changes recorded.</td></tr>}
         </tbody>
       </table>
+
+      {canReset && <ResetEmailDataPanel />}
     </div>
   );
 }

@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { ClassificationProfileDto, TestClassificationResult } from "../../api/types";
+import { Badge } from "../../components/StatCard";
+
+const lines = (text: string | null | undefined) => (text ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
 
 export default function EmailClassificationPage() {
   const [profiles, setProfiles] = useState<ClassificationProfileDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openProfileId, setOpenProfileId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -124,22 +128,42 @@ export default function EmailClassificationPage() {
           </tr>
         </thead>
         <tbody>
-          {profiles.map((p) => (
-            <tr key={p.id}>
-              <td style={tdStyle}>
-                {p.name}
-                {p.description && <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{p.description}</div>}
-              </td>
-              <td style={tdStyle}>{p.enabled ? "Yes" : "No"}</td>
-              <td style={tdStyle}>{p.categories.split("\n").filter(Boolean).length} categories</td>
-              <td style={tdStyle}>
-                <button onClick={() => handleToggleEnabled(p)} style={{ marginRight: 8 }}>
-                  {p.enabled ? "Disable" : "Enable"}
-                </button>
-                <button onClick={() => handleDelete(p.id)}>Delete</button>
-              </td>
-            </tr>
-          ))}
+          {profiles.map((p) => {
+            const isOpen = openProfileId === p.id;
+            const include = lines(p.includeDefinitions);
+            const exclude = lines(p.excludeDefinitions);
+            return (
+              <Fragment key={p.id}>
+                <tr>
+                  <td style={tdStyle}>
+                    {p.name}
+                    {p.description && <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{p.description}</div>}
+                  </td>
+                  <td style={tdStyle}>{p.enabled ? "Yes" : "No"}</td>
+                  <td style={tdStyle}>
+                    <button type="button" className="link-button" aria-expanded={isOpen}
+                      onClick={() => setOpenProfileId(isOpen ? null : p.id)}>
+                      {lines(p.categories).length} categories · {include.length} include · {exclude.length} exclude
+                      <span aria-hidden="true" style={{ marginLeft: 6 }}>{isOpen ? "▴" : "▾"}</span>
+                    </button>
+                  </td>
+                  <td style={{ ...tdStyle, whiteSpace: "nowrap", textAlign: "right" }}>
+                    <button onClick={() => handleToggleEnabled(p)} style={{ marginRight: 8 }}>
+                      {p.enabled ? "Disable" : "Enable"}
+                    </button>
+                    <button className="btn-danger" onClick={() => handleDelete(p.id)}>Delete</button>
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr>
+                    <td colSpan={4} style={{ background: "var(--color-surface-alt)" }}>
+                      <ProfileDetails categories={lines(p.categories)} include={include} exclude={exclude} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
 
@@ -215,5 +239,36 @@ export default function EmailClassificationPage() {
   );
 }
 
+/** What the AI is told for this profile: the categories it may choose, and the words that make an email count or not. */
+function ProfileDetails({ categories, include, exclude }: { categories: string[]; include: string[]; exclude: string[] }) {
+  return (
+    <div style={{ display: "grid", gap: 14, padding: "4px 0" }}>
+      <div>
+        <div className="section-title" style={{ margin: "0 0 6px" }}>Categories ({categories.length})</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {categories.map((c) => <Badge key={c} tone="info">{c}</Badge>)}
+          {categories.length === 0 && <span style={mutedStyle}>None — the AI picks its own category.</span>}
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
+        <DefinitionList title="Counts as important when it mentions" items={include} empty="No include words." />
+        <DefinitionList title="Not important when it mentions" items={exclude} empty="No exclude words." />
+      </div>
+    </div>
+  );
+}
+
+function DefinitionList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
+  return (
+    <div>
+      <div className="section-title" style={{ margin: "0 0 6px" }}>{title} ({items.length})</div>
+      {items.length === 0
+        ? <span style={mutedStyle}>{empty}</span>
+        : <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>{items.map((i) => <li key={i}>{i}</li>)}</ul>}
+    </div>
+  );
+}
+
+const mutedStyle: React.CSSProperties = { color: "var(--color-text-muted)", fontSize: 13 };
 const thStyle: React.CSSProperties = { textAlign: "left" };
 const tdStyle: React.CSSProperties = {};

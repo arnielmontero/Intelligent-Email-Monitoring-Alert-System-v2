@@ -5,11 +5,12 @@ import NavIcon from "../../components/layout/NavIcon";
 
 const FLOW = [
   { title: "Email arrives", text: "IEMAS checks each monitored mailbox every 2 minutes." },
-  { title: "AI reads it", text: "Is it relevant, a legitimate business email, and does it need a reply?" },
-  { title: "Case created", text: "Only email that needs work becomes a Case, owned by the mailbox's owner." },
+  { title: "AI reads it", text: "Is it relevant, a legitimate business email, and does it need a reply? (every 2 minutes)" },
+  { title: "Case created", text: "Only email that needs work becomes a Case, owned by the mailbox's owner (every 2 minutes)." },
   { title: "Employee alerted", text: "A pop-up appears on the owner's PC through the Windows Agent." },
-  { title: "Reminders", text: "If no reply is found in the Sent folder, reminders follow." },
-  { title: "Escalation", text: "Still no reply? The supervisor or manager is told." },
+  { title: "Reply checked", text: "Every 5 minutes the mailbox's Sent folder is checked for the reply." },
+  { title: "Reminders", text: "No reply yet? The owner gets reminder pop-ups until one is found." },
+  { title: "Escalation", text: "Still no reply? The Case is marked Escalated and the owner is warned; who it should go to is recorded in Escalation History." },
 ];
 
 const SETUP = [
@@ -50,8 +51,8 @@ export default function HelpPage() {
         <strong style={{ fontSize: 16 }}>IEMAS = Intelligent Email Monitoring &amp; Alert System</strong>
         <p style={{ margin: "6px 0 0", lineHeight: 1.55 }}>
           IEMAS watches your company mailboxes, uses AI to spot customer emails that need a reply, alerts the right employee on
-          their PC, reminds them until a reply is actually sent, and escalates to a supervisor if nobody responds — so no
-          customer email is forgotten.
+          their PC, reminds them until a reply is actually found in the Sent folder, and marks the Case Escalated if nobody
+          responds — so no customer email is forgotten.
         </p>
       </div>
       <p style={mutedStyle}>What each part of IEMAS does. Use “Help for this page” at the top of any page to jump straight to its entry.</p>

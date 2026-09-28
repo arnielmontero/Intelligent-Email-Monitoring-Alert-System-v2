@@ -56,6 +56,7 @@ public static class DependencyInjection
         services.AddScoped<NotificationService>();
         services.AddScoped<NotificationAdminService>();
         services.AddScoped<EmergencyPauseService>();
+        services.AddScoped<EmailDataResetService>();
         services.AddScoped<SystemSettingsService>();
         services.AddScoped<UserManagementService>();
         services.AddScoped<EmployeeActivityQueryService>();

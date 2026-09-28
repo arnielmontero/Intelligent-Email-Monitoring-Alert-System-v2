@@ -111,9 +111,9 @@ export default function OutboundEmailPage() {
     <div>
       <h1>Outbound Email</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        The mailbox IEMAS uses to send its own emails (such as escalation notices). Use a dedicated notification
-        mailbox, not someone's personal one — it is never checked for customer email. Passwords are encrypted and
-        never displayed after saving.
+        An SMTP mailbox set aside for IEMAS's own outgoing email. For now it is only stored and connection-tested —
+        IEMAS does not send any email yet; employees are alerted by pop-ups on their PC. It is never checked for
+        customer email. Passwords are encrypted and never displayed after saving.
       </p>
 
       {error && <div className="form-error">{error}</div>}

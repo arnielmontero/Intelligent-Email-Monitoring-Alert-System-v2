@@ -266,8 +266,9 @@ export default function EscalationPoliciesPage() {
     <div>
       <h1>Escalation Policies</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        When a Case still has no reply after its reminders, who should be told and when: grace period, time between
-        levels, and up to 3 levels of recipients. One policy is the default.
+        When a Case still has no reply after its reminders: after how many reminders, the grace period, and up to 3
+        levels with a recipient each. The Case is marked Escalated and the owner gets an Escalation pop-up; the
+        recipient is recorded in Escalation History but is not contacted automatically yet. One policy is the default.
       </p>
 
       {error && <div className="form-error">{error}</div>}
