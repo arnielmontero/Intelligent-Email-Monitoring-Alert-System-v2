@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Hangfire;
+using Iemas.Application.Cases;
 using Iemas.Application.EmailClassification;
 using Iemas.Application.EmailIntake;
 using Iemas.Application.Escalations;
@@ -26,7 +27,7 @@ namespace Iemas.Api.Jobs;
 /// mid-batch when its own next cron tick fires, which would otherwise mean two instances racing
 /// over the same candidate set, most of that work thrown away, and doubled DB/IMAP/AI-provider load
 /// during exactly the conditions (a struggling dependency) where that load is least wanted. Email
-/// Intake and AI Classification are the tightest interval of any job here (every 2 minutes), so they
+/// Intake (every minute) and AI Classification (every 2 minutes, plus straight after intake) are the tightest, so they
 /// are most likely to genuinely overlap their own next tick under a slow/degraded dependency.
 ///
 /// For AI Classification specifically, this guard is not just an efficiency concern: the circuit
@@ -37,6 +38,12 @@ namespace Iemas.Api.Jobs;
 /// without ever needing to fall back on the lock contention path. A distributed Hangfire lock
 /// (backed by PostgreSQL storage, so it works correctly even if the overlapping tick lands on a
 /// different server process) simply skips the second invocation instead.
+///
+/// The email pipeline is chained so a customer email reaches its owner as soon as possible instead of
+/// waiting for three separate timers: when intake stores new email it queues classification at once,
+/// and when classification finds important email it queues the Case step at once (which sends the
+/// pop-up). The queued runs go through these same guarded methods, so they can never overlap a
+/// scheduled run of the same step; the recurring schedules remain as a safety net.
 /// </summary>
 public class RecurringJobGuards
 {
@@ -44,6 +51,9 @@ public class RecurringJobGuards
     private readonly EscalationService _escalationService;
     private readonly EmailIntakeService _emailIntakeService;
     private readonly EmailClassificationService _emailClassificationService;
+    private readonly CaseWorkflowService _caseWorkflowService;
+    private readonly IBackgroundJobClient _jobs;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<RecurringJobGuards> _logger;
 
     public RecurringJobGuards(
@@ -51,12 +61,18 @@ public class RecurringJobGuards
         EscalationService escalationService,
         EmailIntakeService emailIntakeService,
         EmailClassificationService emailClassificationService,
+        CaseWorkflowService caseWorkflowService,
+        IBackgroundJobClient jobs,
+        IConfiguration configuration,
         ILogger<RecurringJobGuards> logger)
     {
         _reminderExecutionService = reminderExecutionService;
         _escalationService = escalationService;
         _emailIntakeService = emailIntakeService;
         _emailClassificationService = emailClassificationService;
+        _caseWorkflowService = caseWorkflowService;
+        _jobs = jobs;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -70,11 +86,35 @@ public class RecurringJobGuards
 
     [DisableConcurrentExecution(timeoutInSeconds: 60)]
     public Task RunEmailIntakeAsync(CancellationToken cancellationToken) =>
-        RunJobAsync("email-intake", () => _emailIntakeService.RunAllAsync(cancellationToken));
+        RunJobAsync("email-intake", async () =>
+        {
+            var results = await _emailIntakeService.RunAllAsync(cancellationToken);
+            var stored = results.Sum(r => r.PersistedCount);
+            if (stored > 0)
+            {
+                _logger.LogInformation("{Stored} new email(s) stored; starting AI classification now", stored);
+                var batchSize = _configuration.GetValue("AiClassification:BatchSize", 25);
+                _jobs.Enqueue<RecurringJobGuards>(guards => guards.RunEmailClassificationAsync(batchSize, CancellationToken.None));
+            }
+        });
 
     [DisableConcurrentExecution(timeoutInSeconds: 60)]
     public Task RunEmailClassificationAsync(int batchSize, CancellationToken cancellationToken) =>
-        RunJobAsync("email-classification", () => _emailClassificationService.RunAsync(batchSize, cancellationToken));
+        RunJobAsync("email-classification", async () =>
+        {
+            var result = await _emailClassificationService.RunAsync(batchSize, cancellationToken);
+            if (result.ImportantCount > 0)
+            {
+                _logger.LogInformation("{Important} important email(s) classified; creating Cases now", result.ImportantCount);
+                var caseBatchSize = _configuration.GetValue("CaseWorkflow:BatchSize", 25);
+                _jobs.Enqueue<RecurringJobGuards>(guards => guards.RunCaseWorkflowAsync(caseBatchSize, CancellationToken.None));
+            }
+        });
+
+    /// <summary>Case creation/matching; also sends the owner's New Email pop-up. Guarded because it now runs both on its schedule and straight after classification.</summary>
+    [DisableConcurrentExecution(timeoutInSeconds: 60)]
+    public Task RunCaseWorkflowAsync(int batchSize, CancellationToken cancellationToken) =>
+        RunJobAsync("case-workflow", () => _caseWorkflowService.RunAsync(batchSize, cancellationToken));
 
     // Hangfire jobs have no HTTP request to inherit a correlation ID from (CorrelationIdMiddleware
     // only covers the API pipeline), so each job execution gets its own, distinguishable by job

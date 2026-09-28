@@ -142,9 +142,9 @@
                     <Border Style="{StaticResource HelpCard}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource HelpHeading}" Text="How a customer email reaches you"/>
-                            <TextBlock Style="{StaticResource HelpText}" Text="1. IEMAS checks your mailbox for new email every 2 minutes."/>
-                            <TextBlock Style="{StaticResource HelpText}" Text="2. The AI reads it: is it a real business email, and does it need a reply? Newsletters, auto-replies and similar do not become Cases."/>
-                            <TextBlock Style="{StaticResource HelpText}" Text="3. If it needs a reply, a Case is created and you get a pop-up. Follow-up emails from the same customer about the same topic are added to the same Case. This can take up to about 6 minutes after the email arrives."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="1. IEMAS checks your mailbox for new email every minute."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="2. The AI reads it straight away: is it a real business email, and does it need a reply? Newsletters, auto-replies and similar do not become Cases."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="3. If it needs a reply, a Case is created and you get a pop-up. Follow-up emails from the same customer about the same topic are added to the same Case. This usually happens within about a minute of the email arriving (a little longer if the AI service is slow)."/>
                             <TextBlock Style="{StaticResource HelpText}" Text="4. Every 5 minutes IEMAS looks in the mailbox's Sent folder for your reply. Once it is found, the Case is marked replied and reminders stop."/>
                             <TextBlock Style="{StaticResource HelpText}" Text="5. No reply yet? You get reminder pop-ups (how often is set by your administrator). After enough reminders the Case becomes Escalated and your supervisor's details are recorded for it."/>
                         </StackPanel>
@@ -247,7 +247,7 @@
                             <TextBlock Style="{StaticResource HelpTerm}" Text="I replied but still get reminders"/>
                             <TextBlock Style="{StaticResource HelpText}" Text="Wait up to 5 minutes for the Sent-folder check. Make sure you replied from the mailbox the customer wrote to, by replying to their email (not a new email). If you answered by phone or from another address, complete the Case with the matching reason."/>
                             <TextBlock Style="{StaticResource HelpTerm}" Text="A customer email did not become a Case"/>
-                            <TextBlock Style="{StaticResource HelpText}" Text="Allow about 6 minutes. The AI may have decided it needs no reply, or the sender may be on the ignored list. Ask your administrator to check Case Workflow in the CMS."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Allow a few minutes. The AI may have decided it needs no reply, or the sender may be on the ignored list. Ask your administrator to check Case Workflow in the CMS."/>
                             <TextBlock Style="{StaticResource HelpTerm}" Text="No pop-ups appear"/>
                             <TextBlock Style="{StaticResource HelpText}" Text="Check the status light is green, and that Windows notifications and Focus assist / Do not disturb allow IEMAS Agent."/>
                             <TextBlock Style="{StaticResource HelpTerm}" Text="Registration fails"/>

@@ -1,5 +1,8 @@
 using Iemas.Application.Common.Interfaces;
 using Iemas.Domain.Ai;
+using Iemas.Domain.Escalations;
+using Iemas.Domain.Reminders;
+using Iemas.Application.Operations;
 using Iemas.Application.Notifications;
 using Iemas.Domain.Identity;
 using Iemas.Domain.Notifications;
@@ -52,6 +55,7 @@ public static class DbSeeder
 
         await SeedAiDefaultsAsync(db, configuration);
         await SeedNotificationTemplatesAsync(db);
+        await SeedDefaultPoliciesAsync(db);
     }
 
     /// <summary>§51/§52 — the six predefined notification messages, editable afterwards in the CMS. Existing rows are never overwritten.</summary>
@@ -73,6 +77,60 @@ public static class DbSeeder
     /// configured; classification will cleanly fail to REVIEW_REQUIRED until a key is set (§83),
     /// rather than the system having no model to try at all.
     /// </summary>
+    /// <summary>
+    /// A new installation needs a default reminder and escalation policy, or no follow-up is ever sent for a Case
+    /// nobody answers. Created only when no policy of that kind exists at all; administrators change them on the
+    /// Reminder Policies / Escalation Policies pages.
+    /// </summary>
+    public static async Task SeedDefaultPoliciesAsync(AppDbContext db)
+    {
+        if (!await db.ReminderPolicies.AnyAsync())
+        {
+            // Business hours only make sense in the organisation's time zone; while it is still UTC (not set yet),
+            // reminders are not limited to business hours rather than arriving at the wrong local time.
+            var timeZone = await db.SystemSettings.Where(s => s.Key == SystemSettingKeys.DefaultTimeZone).Select(s => s.Value).FirstOrDefaultAsync();
+            var hasTimeZone = !string.IsNullOrWhiteSpace(timeZone) && timeZone != "UTC" && TimeZoneInfo.TryFindSystemTimeZoneById(timeZone, out _);
+            db.ReminderPolicies.Add(new ReminderPolicy
+            {
+                Name = "Standard follow-up",
+                Description = "Created automatically. Reminds the Case owner 1 hour after a Case is created and then every 2 hours, up to 3 times, until a reply is found in the Sent folder.",
+                Enabled = true,
+                IsDefault = true,
+                InitialDelay = TimeSpan.FromHours(1),
+                ReminderInterval = TimeSpan.FromHours(2),
+                MaxReminders = 3,
+                MinimumInterval = TimeSpan.FromMinutes(30),
+                RestrictToBusinessHours = hasTimeZone,
+                BusinessHoursStart = TimeSpan.FromHours(8),
+                BusinessHoursEnd = TimeSpan.FromHours(17),
+                ExcludeWeekends = hasTimeZone,
+                TimeZoneId = hasTimeZone ? timeZone! : "UTC",
+                ExpirationWindow = TimeSpan.FromDays(3),
+            });
+        }
+
+        if (!await db.EscalationPolicies.AnyAsync())
+        {
+            var policy = new EscalationPolicy
+            {
+                Name = "Standard escalation",
+                Description = "Created automatically. After 3 reminders without a reply and a 1-hour grace period the Case is escalated to the owner's supervisor, then 4 hours later to the department manager.",
+                Enabled = true,
+                IsDefault = true,
+                TriggerReminderCount = 3,
+                GracePeriod = TimeSpan.FromHours(1),
+                Cooldown = TimeSpan.FromDays(1),
+                MaximumLevel = 2,
+                Channel = "Pop-up",
+            };
+            policy.Levels.Add(new EscalationLevel { Level = 1, DelayAfterPreviousLevel = TimeSpan.Zero, RecipientType = EscalationRecipientType.EmployeeSupervisor });
+            policy.Levels.Add(new EscalationLevel { Level = 2, DelayAfterPreviousLevel = TimeSpan.FromHours(4), RecipientType = EscalationRecipientType.DepartmentManager });
+            db.EscalationPolicies.Add(policy);
+        }
+
+        await db.SaveChangesAsync();
+    }
+
     private static async Task SeedAiDefaultsAsync(AppDbContext db, IConfiguration configuration)
     {
         if (!await db.ClassificationProfiles.AnyAsync(p => p.Name == "Sales"))

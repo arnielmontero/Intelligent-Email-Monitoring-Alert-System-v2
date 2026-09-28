@@ -66,7 +66,7 @@ public class MaintenanceController : ControllerBase
 
     /// <summary>
     /// Adds sample customer emails to a mailbox for trying the system. Pre-classified samples are turned into Cases
-    /// straight away (the same Case step that runs every 2 minutes); AI samples wait for the classifier.
+    /// straight away (the same Case step that runs after classification and every 2 minutes); AI samples wait for the classifier.
     /// </summary>
     [HttpPost("sample-data")]
     [Authorize(Policy = "RequireSuperAdministrator")]

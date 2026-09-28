@@ -4,9 +4,9 @@ import { NAV_SECTIONS, helpAnchor } from "../../components/layout/navigation";
 import NavIcon from "../../components/layout/NavIcon";
 
 const FLOW = [
-  { title: "Email arrives", text: "IEMAS checks each monitored mailbox every 2 minutes." },
-  { title: "AI reads it", text: "Is it relevant, a legitimate business email, and does it need a reply? (every 2 minutes)" },
-  { title: "Case created", text: "Only email that needs work becomes a Case, owned by the mailbox's owner (every 2 minutes)." },
+  { title: "Email arrives", text: "IEMAS checks each monitored mailbox every minute." },
+  { title: "AI reads it", text: "Straight away: is it relevant, a legitimate business email, and does it need a reply?" },
+  { title: "Case created", text: "Straight away, only for email that needs work; owned by the mailbox's owner. Usually within about a minute of arriving." },
   { title: "Employee alerted", text: "A pop-up appears on the owner's PC through the Windows Agent." },
   { title: "Reply checked", text: "Every 5 minutes the mailbox's Sent folder is checked for the reply." },
   { title: "Reminders", text: "No reply yet? The owner gets reminder pop-ups until one is found." },

@@ -70,7 +70,7 @@ export default function SampleDataPanel({ onGenerated }: { onGenerated?: () => v
       </div>
       <p style={{ ...mutedStyle, marginTop: 8 }}>
         {useAi
-          ? "The AI reads them within 2 minutes like real email, then Cases follow within another 2 minutes."
+          ? "The AI reads them within about 2 minutes, then Cases follow straight away, like real email."
           : "They arrive already classified (no AI cost) and are turned into Cases immediately."}
         {" "}Real owners get the pop-ups on their PC; sample PCs are not real computers, so their pop-ups stay queued and
         their mailboxes always report "no reply yet", which lets reminders and escalation run.

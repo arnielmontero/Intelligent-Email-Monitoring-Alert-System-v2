@@ -70,7 +70,7 @@ export default function EmailMonitoringPage() {
     <div>
       <h1>Email Monitoring &amp; Intake</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-        IEMAS checks each active mailbox for new email every 2 minutes. Use Run Now to check immediately, for example
+        IEMAS checks each active mailbox for new email every minute; new email then goes straight on to the AI and into a Case. Use Run Now to check immediately, for example
         after adding or fixing an account.
       </p>
 

@@ -326,14 +326,15 @@ app.MapHub<AgentHub>("/hubs/agent").RequireAuthorization(RequireAgentPolicy);
 // EmailIntake__Enabled remains as a deploy-time switch that stops the job from being registered.
 //
 // Phase 10 hardening: routed through RecurringJobGuards, same [DisableConcurrentExecution] reason
-// as the Reminder/Escalation jobs below — this is the tightest interval of any job (2 minutes), so
+// as the Reminder/Escalation jobs below — this is the tightest interval of any job (1 minute), so
 // it is the one most likely to genuinely overlap its own next tick under a slow/degraded mailbox.
 if (builder.Configuration.GetValue("EmailIntake:Enabled", true))
 {
     RecurringJob.AddOrUpdate<RecurringJobGuards>(
         "email-intake-poll-all-accounts",
         guards => guards.RunEmailIntakeAsync(CancellationToken.None),
-        builder.Configuration["EmailIntake:CronSchedule"] ?? "*/2 * * * *");
+        // Every minute: new email then goes straight on to classification and Case creation (see RecurringJobGuards).
+        builder.Configuration["EmailIntake:CronSchedule"] ?? "* * * * *");
 }
 
 // Requirements §20 (AI Classification pipeline stage), §79/§20 (restart-safe, re-checks current
@@ -359,9 +360,9 @@ if (builder.Configuration.GetValue("AiClassification:Enabled", true))
 // never re-processed). Same idempotent-upsert registration pattern as the two jobs above.
 if (builder.Configuration.GetValue("CaseWorkflow:Enabled", true))
 {
-    RecurringJob.AddOrUpdate<CaseWorkflowService>(
+    RecurringJob.AddOrUpdate<RecurringJobGuards>(
         "case-workflow-poll-important-messages",
-        service => service.RunAsync(builder.Configuration.GetValue("CaseWorkflow:BatchSize", 25), CancellationToken.None),
+        guards => guards.RunCaseWorkflowAsync(builder.Configuration.GetValue("CaseWorkflow:BatchSize", 25), CancellationToken.None),
         builder.Configuration["CaseWorkflow:CronSchedule"] ?? "*/2 * * * *");
 }
 

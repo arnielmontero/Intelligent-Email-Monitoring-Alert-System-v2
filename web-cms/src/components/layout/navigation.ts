@@ -50,7 +50,7 @@ export const NAV_SECTIONS: NavSection[] = [
       {
         label: "Email Monitoring & Intake",
         path: "/email-monitoring",
-        help: "Shows each mailbox being checked for new email. IEMAS checks every 2 minutes by itself; Run Now checks one mailbox immediately and shows how many emails were fetched. New email is then read by the AI (every 2 minutes) and turned into Cases (every 2 minutes), so a new email can take up to about 6 minutes to become a Case.",
+        help: "Shows each mailbox being checked for new email. IEMAS checks every minute by itself; Run Now checks one mailbox immediately and shows how many emails were fetched. New email goes straight on to the AI and, if it needs a reply, straight into a Case with a pop-up for the owner, so it usually reaches the owner within about a minute of arriving.",
         tasks: ["Run Now after adding or fixing a mailbox", "See why a mailbox isn't being checked (monitoring off, deactivated)"],
       },
       {

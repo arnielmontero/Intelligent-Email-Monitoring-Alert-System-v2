@@ -134,7 +134,7 @@ export default function CaseWorkflowPage() {
         <div>
           <h2 style={sectionTitle}>Emails waiting to become a Case ({waiting.length})</h2>
           <p style={mutedStyle}>
-            Important emails the AI approved that are not in a Case yet. This happens automatically every 2 minutes;
+            Important emails the AI approved that are not in a Case yet. This normally happens straight after the AI has read them (and every 2 minutes as a safety net);
             Run Now does it immediately and shows what happened to each email.
           </p>
         </div>
