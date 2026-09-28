@@ -1,4 +1,5 @@
 using Iemas.Application.Audit;
+using Iemas.Application.Cases;
 using Iemas.Application.Operations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,12 +18,17 @@ public class MaintenanceController : ControllerBase
     private readonly EmergencyPauseService _pauseService;
     private readonly AuditQueryService _auditQueryService;
     private readonly EmailDataResetService _resetService;
+    private readonly SampleDataService _sampleDataService;
+    private readonly CaseWorkflowService _caseWorkflowService;
 
-    public MaintenanceController(EmergencyPauseService pauseService, AuditQueryService auditQueryService, EmailDataResetService resetService)
+    public MaintenanceController(EmergencyPauseService pauseService, AuditQueryService auditQueryService, EmailDataResetService resetService,
+        SampleDataService sampleDataService, CaseWorkflowService caseWorkflowService)
     {
         _pauseService = pauseService;
         _auditQueryService = auditQueryService;
         _resetService = resetService;
+        _sampleDataService = sampleDataService;
+        _caseWorkflowService = caseWorkflowService;
     }
 
     [HttpGet("pause")]
@@ -57,6 +63,22 @@ public class MaintenanceController : ControllerBase
             ? BadRequest(new { message = $"Type {EmailDataResetService.ConfirmationWord} to confirm the reset." })
             : Ok(result);
     }
+
+    /// <summary>
+    /// Adds sample customer emails to a mailbox for trying the system. Pre-classified samples are turned into Cases
+    /// straight away (the same Case step that runs every 2 minutes); AI samples wait for the classifier.
+    /// </summary>
+    [HttpPost("sample-data")]
+    [Authorize(Policy = "RequireSuperAdministrator")]
+    public async Task<ActionResult<SampleDataRunResult>> GenerateSampleData([FromBody] GenerateSampleDataRequest request, CancellationToken cancellationToken)
+    {
+        var (result, error) = await _sampleDataService.GenerateAsync(request, cancellationToken);
+        if (result is null) return BadRequest(new { message = error });
+        var caseRun = request.UseAi ? null : await _caseWorkflowService.RunAsync(100, cancellationToken);
+        return Ok(new SampleDataRunResult(result, caseRun));
+    }
 }
+
+public record SampleDataRunResult(GenerateSampleDataResult Samples, CaseRunResult? CaseRun);
 
 public record ResetEmailDataRequest(string? Confirmation, List<Guid>? RemoveTestRecordIds);

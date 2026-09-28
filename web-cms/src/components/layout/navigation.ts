@@ -201,8 +201,8 @@ export const NAV_SECTIONS: NavSection[] = [
       {
         label: "Maintenance / Emergency Pause",
         path: "/maintenance",
-        help: "Emergency switches to pause email fetching, AI classification, reminders, escalations or pop-ups — for example during a problem or maintenance. Nothing is deleted; work resumes where it stopped. Super administrators also find Reset email data here: it deletes all emails, Cases and their history and starts fresh from now, keeping every setting, user, mailbox and policy.",
-        tasks: ["Pause one engine with a reason, then Resume", "Reset email data after testing (type RESET to confirm), optionally removing leftover test employees, mailboxes and agents"],
+        help: "Emergency switches to pause email fetching, AI classification, reminders, escalations or pop-ups — for example during a problem or maintenance. Nothing is deleted; work resumes where it stopped. Super administrators also find two tools here. Generate sample data adds sample customer emails (marked [Sample], from example.com) to a mailbox to try the whole flow — Cases, pop-ups, reply checks, reminders, escalation — either already classified (no AI cost, Cases made immediately) or read by the AI like real mail. Reset email data deletes all emails, Cases and their history and starts fresh from now, keeping every setting, user, mailbox and policy.",
+        tasks: ["Pause one engine with a reason, then Resume", "Generate sample emails to test the system", "Reset email data after testing (type RESET to confirm), optionally removing leftover test employees, mailboxes and agents"],
       },
     ],
   },
