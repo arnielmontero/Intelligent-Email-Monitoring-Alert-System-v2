@@ -86,6 +86,42 @@ foreach ($key in 'POSTGRES_PASSWORD', 'JWT_SECRET', 'AGENT_JWT_SECRET', 'CREDENT
 if ((Invoke-Docker ($compose + @('config', '-q')) -Quiet) -ne 0) { Stop-WithError "The Docker configuration is invalid - see the log." }
 Ok ".env and Docker configuration are valid"
 
+function Get-EnvPort([string]$key, [string]$default) {
+    if ($envText -match "(?m)^$key=(\d+)") { return $Matches[1] } else { return $default }
+}
+$webPort = Get-EnvPort 'WEB_PORT' '8091'
+$proxyHttpPort = Get-EnvPort 'PROXY_HTTP_PORT' '8080'
+$proxyPort = Get-EnvPort 'PROXY_HTTPS_PORT' '8443'
+
+# 2b. Ports ---------------------------------------------------------------------------------------
+# Stop before building if another program or container already uses a port IEMAS needs.
+# Ports held by IEMAS's own containers are fine: they are replaced when IEMAS restarts.
+if (-not $CheckOnly) {
+    Step "Checking that the ports are free"
+    $portsInUse = 0
+    foreach ($entry in @(@('CMS', $webPort, 'WEB_PORT'), @('Proxy HTTP', $proxyHttpPort, 'PROXY_HTTP_PORT'), @('Proxy HTTPS', $proxyPort, 'PROXY_HTTPS_PORT'))) {
+        $label, $port, $key = $entry
+        $containers = @(& docker ps --filter "publish=$port" --format '{{.Names}}' 2>$null | Where-Object { $_ })
+        $others = @($containers | Where-Object { $_ -notlike 'iemas-*' })
+        if ($others.Count -gt 0) {
+            Fail "$label port $port is used by the Docker container '$($others -join "', '")'. Stop it (docker stop $($others[0])) or set $key to a free port in .env."
+            $portsInUse++
+            continue
+        }
+        if ($containers.Count -gt 0) { Ok "$label port $port (used by IEMAS itself)"; continue }
+
+        $listener = Get-NetTCPConnection -State Listen -LocalPort ([int]$port) -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($listener) {
+            $process = (Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+            Fail "$label port $port is used by the program '$process' (process id $($listener.OwningProcess)). Close it or set $key to a free port in .env."
+            $portsInUse++
+        } else {
+            Ok "$label port $port is free"
+        }
+    }
+    if ($portsInUse -gt 0) { Stop-WithError "$portsInUse port(s) are already in use - see above. Nothing was changed." }
+}
+
 $started = Get-Date
 if (-not $CheckOnly) {
     # 3. Build ------------------------------------------------------------------------------------
@@ -143,8 +179,6 @@ if (-not $health) {
     }
 }
 
-$webPort = if ($envText -match '(?m)^WEB_PORT=(\d+)') { $Matches[1] } else { '8091' }
-$proxyPort = if ($envText -match '(?m)^PROXY_HTTPS_PORT=(\d+)') { $Matches[1] } else { '8443' }
 $cmsUrl = "http://localhost:$webPort"
 
 $code = Get-HttpStatus "$cmsUrl/"
