@@ -27,8 +27,15 @@ public class AgentSyncService
 
     public async Task<AgentSyncResponse?> SyncAsync(Guid agentId, Guid employeeId, CancellationToken cancellationToken)
     {
-        var actionRequired = await _caseService.SearchAsync(
-            new CaseListFilter(CaseWorkStatus.ActionRequired, employeeId, null, null, null), cancellationToken);
+        // Everything the employee still has to act on: new, not started, being worked on ("I'll Handle This"),
+        // overdue or escalated — so a Case never disappears from the Agent while it still needs a reply.
+        var openStatuses = new[] { CaseWorkStatus.New, CaseWorkStatus.ActionRequired, CaseWorkStatus.InProgress, CaseWorkStatus.Overdue, CaseWorkStatus.Escalated };
+        var actionRequired = new List<CaseDto>();
+        foreach (var status in openStatuses)
+        {
+            actionRequired.AddRange(await _caseService.SearchAsync(new CaseListFilter(status, employeeId, null, null, null), cancellationToken));
+        }
+        actionRequired = actionRequired.OrderByDescending(c => c.LastActivityAt).ToList();
 
         // §9 "Waiting" bucket — Cases where the employee is not the one blocking progress.
         var waitingStatuses = new[] { CaseWorkStatus.WaitingForCustomer, CaseWorkStatus.WaitingForInternal, CaseWorkStatus.WaitingForApproval };

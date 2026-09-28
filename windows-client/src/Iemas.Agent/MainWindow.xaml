@@ -26,6 +26,29 @@
         <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
             <Setter Property="Background" Value="#6B7280"/>
         </Style>
+        <Style x:Key="HelpHeading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#111827"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+        <Style x:Key="HelpText" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="#374151"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="LineHeight" Value="18"/>
+        </Style>
+        <Style x:Key="HelpTerm" TargetType="TextBlock" BasedOn="{StaticResource HelpText}">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#111827"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
+        <Style x:Key="HelpCard" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="16,4,16,12"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
     </Window.Resources>
     <Grid Background="#F3F4F6">
         <Grid.RowDefinitions>
@@ -100,8 +123,140 @@
 
             <!-- History -->
             <Grid x:Name="HistoryPanel" Visibility="Collapsed">
-                <TextBlock Text="Recent completed/cancelled Cases appear here after Sync." Foreground="#6B7280" Margin="16" TextWrapping="Wrap"/>
+                <TextBlock Text="History is not available in the Agent yet. Completed and cancelled Cases, with their full timeline, can be seen by an administrator in the IEMAS CMS (Case History)." Foreground="#6B7280" Margin="16" TextWrapping="Wrap"/>
             </Grid>
+
+            <!-- Help: how the Agent and IEMAS work, from the employee's side. Reachable before registration too. -->
+            <ScrollViewer x:Name="HelpPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="16,12,16,16">
+                    <TextBlock Text="HELP" FontWeight="Bold" FontSize="13" Foreground="#374151" Margin="0,0,0,8"/>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="What this app does"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="IEMAS (Intelligent Email Monitoring &amp; Alert System) watches the company mailbox you own. When a customer email needs a reply, IEMAS creates a Case for it and this app tells you with a pop-up. It keeps reminding you until your reply is found in the mailbox's Sent folder, and escalates the Case if nobody answers."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Keep the app running: closing the window only hides it to the system tray (the IEMAS icon near the clock). Pop-ups only appear while the app is running and connected - ones missed while it was closed are not shown later, but every open Case appears in the lists as soon as the app connects again."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="How a customer email reaches you"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="1. IEMAS checks your mailbox for new email every 2 minutes."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="2. The AI reads it: is it a real business email, and does it need a reply? Newsletters, auto-replies and similar do not become Cases."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="3. If it needs a reply, a Case is created and you get a pop-up. Follow-up emails from the same customer about the same topic are added to the same Case. This can take up to about 6 minutes after the email arrives."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="4. Every 5 minutes IEMAS looks in the mailbox's Sent folder for your reply. Once it is found, the Case is marked replied and reminders stop."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="5. No reply yet? You get reminder pop-ups (how often is set by your administrator). After enough reminders the Case becomes Escalated and your supervisor's details are recorded for it."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="The status light (top left)"/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="● Connected (green)"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Everything works; pop-ups arrive straight away."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Connecting... / Disconnected"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="The app is trying to reach the IEMAS server. It keeps retrying by itself. If it stays like this, check your network and the Server URL in Settings."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Not Registered / Awaiting Approval / Registration Rejected"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="This PC is not linked to you yet - see First-time setup below."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Error"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="The server no longer accepts this PC (for example it was revoked by an administrator). Register again."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="First-time setup"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="1. Open Settings and check the Server URL your administrator gave you (for example https://server:8443). Tick &quot;Allow self-signed certificates&quot; only if your administrator tells you to. Save."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="2. On the Register screen enter the company email address IEMAS watches for you, and a name for this PC (your computer name is filled in). Click Register."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="3. The status shows Awaiting Approval. An administrator approves the PC in the IEMAS CMS (Windows Agents). The app notices within a few seconds and connects by itself - no codes or keys to copy."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="4. Tick &quot;Start with Windows&quot; in Settings so you never miss an alert."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="Pop-ups"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="You get a pop-up for a new Case, for reminders, when a Case is overdue, just before it escalates, and when it has escalated."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Open Case"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Opens the Case in this app, where you can act on it."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Acknowledge"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Tells IEMAS you have seen it. This is only recorded - it does not count as a reply and does not stop reminders."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="The tabs"/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Action Required"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Every open Case that still needs you: new, being worked on, overdue or escalated. Each card shows the customer, the subject, when it arrived, how many emails it has and the Case number; its status is shown when it is not simply waiting for action."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Waiting"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Cases you marked as waiting for the customer or for a colleague. No reminders are sent for these."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="History"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Not available in the app yet; finished Cases can be looked up by an administrator in the IEMAS CMS."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Open Email"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Opens your email program (for example Outlook) so you can reply. Always reply from the same mailbox the customer wrote to - IEMAS finds your reply in that mailbox's Sent folder."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Settings"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Server URL, certificates, Start with Windows, and Sign Out / Re-register. The app version is shown at the bottom."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="Working on a Case"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Open Case (or Add Update) opens the Case window. It shows the Case number, subject, customer, the work and reply status and when it arrived. The buttons:"/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Acknowledge"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Records that you have seen the Case. Nothing else changes."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="I'll Handle This"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Marks the Case In progress. It stays in Action Required, and reminders continue until your reply is found."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Already Replied"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Records that you say you replied. IEMAS still confirms it by finding the reply in the Sent folder (within about 5 minutes); only then do reminders stop. If you replied from another mailbox or by phone, use Complete Case instead."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Waiting for Customer / Waiting Internally"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Moves the Case to the Waiting tab and stops reminders - use it when the next step is not yours (you asked the customer a question, or a colleague must answer first)."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Remind Me Later"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Schedules an extra reminder pop-up for this Case in 1 hour."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Request Escalation"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Records that you want help from your supervisor; it is visible to administrators in the Case timeline. It does not escalate the Case by itself - tell your supervisor directly if it is urgent."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Cancel Case / Reopen"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Cancel closes a Case that should not have been created, and it leaves your lists. Reopen only affects a finished or cancelled Case (bringing it back to Action Required); on an open Case it changes nothing."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Add a comment or update"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Adds a note to the Case timeline (for example &quot;Called the customer, sending a quote tomorrow&quot;). Administrators and supervisors can read it."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Every button shows the result underneath (&quot;Recorded...&quot; or &quot;Failed: ...&quot;). Each click is recorded, so click once and wait for the result."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="Completing a Case"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="When the customer's request is dealt with, choose a reason under Mark Completed, add a comment if useful, and click Complete Case. The Case leaves your lists and all reminders stop. The reasons:"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="• CustomerRequestResolved - the customer got what they needed&#x0a;• EmployeeResponded - you replied to the customer&#x0a;• PhoneCallHandled - sorted out by phone&#x0a;• HandledOutsideEmail - sorted out another way (meeting, chat)&#x0a;• NoResponseRequired - the email turned out not to need a reply&#x0a;• Duplicate - the same request is already another Case&#x0a;• IncorrectClassification - it should never have been a Case&#x0a;• CancelledByEmployee / CancelledByAdmin - withdrawn&#x0a;• Other - explain in the comment"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="If the customer writes again about the same topic, IEMAS reopens the Case and you get a new pop-up."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="The tray icon"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Closing or minimising the window hides it; the app keeps running. Double-click the IEMAS icon near the clock, or right-click it and choose Open IEMAS, to bring the window back. Right-click also offers Settings, Help and Exit. Exit stops the app: you get no pop-ups until you start it again."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource HelpCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HelpHeading}" Text="Something is not right?"/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="I replied but still get reminders"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Wait up to 5 minutes for the Sent-folder check. Make sure you replied from the mailbox the customer wrote to, by replying to their email (not a new email). If you answered by phone or from another address, complete the Case with the matching reason."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="A customer email did not become a Case"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Allow about 6 minutes. The AI may have decided it needs no reply, or the sender may be on the ignored list. Ask your administrator to check Case Workflow in the CMS."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="No pop-ups appear"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Check the status light is green, and that Windows notifications and Focus assist / Do not disturb allow IEMAS Agent."/>
+                            <TextBlock Style="{StaticResource HelpTerm}" Text="Registration fails"/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="The email must be a mailbox IEMAS already watches, and the Server URL must be correct. Your administrator can check both."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="For anything else, contact your IEMAS administrator and mention the version shown in Settings."/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- Settings -->
             <StackPanel x:Name="SettingsPanel" Visibility="Collapsed" Margin="16">
@@ -126,6 +281,7 @@
                 <Button Content="History" Style="{StaticResource TabButton}" Click="ShowHistory_Click"/>
                 <Button Content="Open Email" Style="{StaticResource TabButton}" Click="OpenEmail_Click"/>
                 <Button Content="Settings" Style="{StaticResource TabButton}" Click="ShowSettings_Click"/>
+                <Button Content="Help" Style="{StaticResource TabButton}" Click="ShowHelp_Click"/>
             </StackPanel>
         </Border>
     </Grid>

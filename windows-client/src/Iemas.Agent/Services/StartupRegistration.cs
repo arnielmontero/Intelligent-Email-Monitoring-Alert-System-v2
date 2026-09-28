@@ -15,7 +15,8 @@ public static class StartupRegistration
 
         if (enabled)
         {
-            var exePath = Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+            // Assembly.Location is empty in a single-file .exe, so fall back to the app folder instead.
+            var exePath = Environment.ProcessPath ?? System.IO.Path.Combine(AppContext.BaseDirectory, "IemasAgent.exe");
             key.SetValue(ValueName, $"\"{exePath}\"");
         }
         else

@@ -64,6 +64,7 @@ public partial class App : Application
         menu.Items.Add("Open IEMAS", null, (_, _) => ShowMainWindow());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Settings", null, (_, _) => { ShowMainWindow(); _mainWindow?.ShowSettings(); });
+        menu.Items.Add("Help", null, (_, _) => { ShowMainWindow(); _mainWindow?.ShowHelp(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitApplication());
         _notifyIcon.ContextMenuStrip = menu;

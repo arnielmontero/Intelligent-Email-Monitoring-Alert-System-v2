@@ -77,6 +77,31 @@ public class AgentSyncServiceTests
         Assert.Single(result.Waiting);
     }
 
+    /// <summary>A Case the employee took on ("I'll Handle This"), or that is overdue or escalated, still needs a reply and must stay listed.</summary>
+    [Fact]
+    public async Task SyncAsync_ActionRequired_IncludesInProgressOverdueAndEscalated_NotFinished()
+    {
+        using var db = TestDbContext.CreateNew();
+        var employee = CreateEmployee();
+        db.Employees.Add(employee);
+        var agent = CreateApprovedAgent(employee.Id);
+        db.Agents.Add(agent);
+        var account = new EmailAccount
+        {
+            EmailAddress = "sales@sawo.com", Purpose = EmailAccountPurpose.Inbound, Protocol = EmailProtocol.Imap,
+            Host = "imap.example.com", Port = 993, Username = "sales@sawo.com", AuthMethod = EmailAuthMethod.Password,
+        };
+        db.EmailAccounts.Add(account);
+        foreach (var status in new[] { CaseWorkStatus.ActionRequired, CaseWorkStatus.InProgress, CaseWorkStatus.Overdue, CaseWorkStatus.Escalated, CaseWorkStatus.Completed, CaseWorkStatus.Cancelled })
+            db.Cases.Add(CreateCase(account.Id, employee.Id, status));
+        await db.SaveChangesAsync();
+
+        var result = await CreateService(db).SyncAsync(agent.Id, employee.Id, CancellationToken.None);
+
+        Assert.Equal(4, result!.ActionRequired.Count);
+        Assert.DoesNotContain(result.ActionRequired, c => c.WorkStatus is CaseWorkStatus.Completed or CaseWorkStatus.Cancelled);
+    }
+
     [Fact]
     public async Task SyncAsync_UnknownAgent_ReturnsNull()
     {

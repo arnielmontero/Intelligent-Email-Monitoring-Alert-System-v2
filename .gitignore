@@ -13,6 +13,7 @@ web-cms/.vite/
 windows-client/**/bin/
 windows-client/**/obj/
 windows-client/dist/
+windows-client/dist-new/
 
 # Logs
 server/**/logs/

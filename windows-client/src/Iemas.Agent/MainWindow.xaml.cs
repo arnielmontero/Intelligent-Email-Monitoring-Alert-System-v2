@@ -17,7 +17,7 @@ namespace Iemas.Agent;
 /// </summary>
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
-    private enum Tab { ActionRequired, Waiting, History, Settings }
+    private enum Tab { ActionRequired, Waiting, History, Settings, Help }
     private Tab _currentTab = Tab.ActionRequired;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -69,6 +69,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         CaseListPanel.Visibility = Visibility.Collapsed;
         HistoryPanel.Visibility = Visibility.Collapsed;
         SettingsPanel.Visibility = Visibility.Collapsed;
+        HelpPanel.Visibility = Visibility.Collapsed;
+
+        // Help is readable before registration too - that is when people need it most.
+        if (_currentTab == Tab.Help)
+        {
+            HelpPanel.Visibility = Visibility.Visible;
+            return;
+        }
 
         // Settings (server URL) must always be reachable, even before registration — otherwise a
         // user pointed at the wrong/unreachable server URL has no way to fix it from the UI.
@@ -122,7 +130,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         public string CustomerDisplay => string.IsNullOrWhiteSpace(Case.CustomerDisplayName) ? Case.CustomerEmailAddress : Case.CustomerDisplayName!;
         public string Subject => Case.Subject;
-        public string ReceivedSummary => $"Received: {Case.FirstEmailReceivedAt.ToLocalTime():t} • {Case.EmailCount} message(s) • {Case.CaseNumber}";
+        public string ReceivedSummary => $"Received: {Case.FirstEmailReceivedAt.ToLocalTime():t} • {Case.EmailCount} message(s) • {Case.CaseNumber}{StatusSuffix}";
+
+        /// <summary>Shown when the Case is more than plainly "action required", e.g. after "I'll Handle This".</summary>
+        private string StatusSuffix => Case.WorkStatus switch
+        {
+            CaseWorkStatus.InProgress => " • In progress",
+            CaseWorkStatus.Overdue => " • Overdue",
+            CaseWorkStatus.Escalated => " • Escalated",
+            CaseWorkStatus.WaitingForCustomer => " • Waiting for customer",
+            CaseWorkStatus.WaitingForInternal => " • Waiting internally",
+            CaseWorkStatus.WaitingForApproval => " • Waiting for approval",
+            _ => string.Empty,
+        };
     }
 
     // --- Registration ---
@@ -179,6 +199,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void ShowWaiting_Click(object sender, RoutedEventArgs e) { _currentTab = Tab.Waiting; RenderForState(); }
     private void ShowHistory_Click(object sender, RoutedEventArgs e) { _currentTab = Tab.History; RenderForState(); }
     private void ShowSettings_Click(object sender, RoutedEventArgs e) { ShowSettings(); }
+    private void ShowHelp_Click(object sender, RoutedEventArgs e) { ShowHelp(); }
+
+    public void ShowHelp()
+    {
+        _currentTab = Tab.Help;
+        RenderForState();
+    }
 
     public void ShowSettings()
     {
