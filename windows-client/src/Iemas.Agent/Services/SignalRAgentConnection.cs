@@ -26,7 +26,8 @@ public class SignalRAgentConnection : IAsyncDisposable
 
     public AgentConnectionState State { get; private set; } = AgentConnectionState.Disconnected;
 
-    public async Task ConnectAsync(string serverBaseUrl, string accessToken, bool allowInsecureTls, CancellationToken ct)
+    /// <param name="accessTokenProvider">Asked on every (re)connect, so a reconnect always uses the current sign-in token rather than the one from the first handshake (which expires after 15 minutes).</param>
+    public async Task ConnectAsync(string serverBaseUrl, Func<string?> accessTokenProvider, bool allowInsecureTls, CancellationToken ct)
     {
         await DisposeConnectionAsync();
 
@@ -35,7 +36,7 @@ public class SignalRAgentConnection : IAsyncDisposable
         _connection = new HubConnectionBuilder()
             .WithUrl(hubUrl, options =>
             {
-                options.AccessTokenProvider = () => Task.FromResult<string?>(accessToken);
+                options.AccessTokenProvider = () => Task.FromResult(accessTokenProvider());
                 if (allowInsecureTls)
                 {
                     options.HttpMessageHandlerFactory = handler =>
@@ -46,9 +47,14 @@ public class SignalRAgentConnection : IAsyncDisposable
                         }
                         return handler;
                     };
+                    // The WebSocket transport doesn't use the HTTP handler above; without this it fails on a
+                    // self-signed certificate and SignalR silently drops to slower fallback transports.
+                    options.WebSocketConfiguration = socket => socket.RemoteCertificateValidationCallback = (_, _, _, _) => true;
                 }
             })
-            .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(30) })
+            // Keep trying for as long as the app runs: an Agent that gave up after a network blip would show
+            // no more pop-ups until restarted.
+            .WithAutomaticReconnect(new RetryForever())
             .Build();
 
         // §72 — the one and only server-to-agent push method name; payload is always the closed
@@ -76,7 +82,16 @@ public class SignalRAgentConnection : IAsyncDisposable
         };
 
         SetState(AgentConnectionState.Connecting);
-        await _connection.StartAsync(ct);
+        try
+        {
+            await _connection.StartAsync(ct);
+        }
+        catch
+        {
+            // Reported as Disconnected so the heartbeat signs in again and retries (see AgentSessionManager).
+            SetState(AgentConnectionState.Disconnected);
+            throw;
+        }
         SetState(AgentConnectionState.Connected);
     }
 
@@ -114,6 +129,15 @@ public class SignalRAgentConnection : IAsyncDisposable
             return await _connection.InvokeAsync<AgentSyncResponse>("Sync", ct);
         }
         return null;
+    }
+
+    /// <summary>Retries immediately, then after 2, 5 and 15 seconds, then every 30 seconds without end.</summary>
+    private sealed class RetryForever : IRetryPolicy
+    {
+        private static readonly TimeSpan[] Delays = { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15) };
+
+        public TimeSpan? NextRetryDelay(RetryContext retryContext) =>
+            retryContext.PreviousRetryCount < Delays.Length ? Delays[retryContext.PreviousRetryCount] : TimeSpan.FromSeconds(30);
     }
 
     private void SetState(AgentConnectionState state)

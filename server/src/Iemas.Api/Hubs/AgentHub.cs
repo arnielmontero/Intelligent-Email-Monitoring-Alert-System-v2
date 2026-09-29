@@ -21,11 +21,13 @@ public class AgentHub : Hub
 {
     private readonly AgentSyncService _syncService;
     private readonly Realtime.AgentConnectionTracker _connections;
+    private readonly Application.Notifications.NotificationService _notifications;
 
-    public AgentHub(AgentSyncService syncService, Realtime.AgentConnectionTracker connections)
+    public AgentHub(AgentSyncService syncService, Realtime.AgentConnectionTracker connections, Application.Notifications.NotificationService notifications)
     {
         _syncService = syncService;
         _connections = connections;
+        _notifications = notifications;
     }
 
     private Guid AgentId => Guid.Parse(Context.User!.FindFirst("agent_id")!.Value);
@@ -39,6 +41,9 @@ public class AgentHub : Hub
         await _syncService.RecordConnectedAsync(AgentId, Context.ConnectionAborted);
         await _syncService.SyncAsync(AgentId, EmployeeId, Context.ConnectionAborted);
         await base.OnConnectedAsync();
+
+        // Pop-ups raised while this employee had no Agent connected are shown now instead of being lost.
+        await _notifications.DeliverMissedAsync(EmployeeId, Context.ConnectionAborted);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)

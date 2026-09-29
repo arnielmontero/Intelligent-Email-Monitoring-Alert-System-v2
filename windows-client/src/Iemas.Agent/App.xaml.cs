@@ -47,6 +47,7 @@ public partial class App : Application
         _mainWindow.Show();
 
         Session.StateUpdated += UpdateTrayState;
+        Session.PushReceived += ShowPopup;
 
         await Session.StartAsync();
     }
@@ -70,6 +71,16 @@ public partial class App : Application
         _notifyIcon.ContextMenuStrip = menu;
 
         _notifyIcon.DoubleClick += (_, _) => ShowMainWindow();
+    }
+
+    /// <summary>Every alert from the server is shown in the Agent's own always-on-top pop-up.</summary>
+    private void ShowPopup(Models.AgentPushMessage message)
+    {
+        if (message.Type is not ("SHOW_CASE" or "SHOW_REMINDER" or "SHOW_NOTIFICATION")) return;
+        Dispatcher.Invoke(() => Views.PopupWindow.Show(
+            message,
+            openCase: caseId => { ShowMainWindow(); _mainWindow?.FocusCase(caseId); },
+            acknowledge: caseId => _ = Session.SubmitActionAsync(caseId, Models.CaseActionType.Acknowledged, null)));
     }
 
     private void SetupToastActivation()

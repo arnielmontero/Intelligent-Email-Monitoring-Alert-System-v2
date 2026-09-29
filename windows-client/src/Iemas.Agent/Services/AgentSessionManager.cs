@@ -144,7 +144,7 @@ public class AgentSessionManager : IAsyncDisposable
 
         try
         {
-            await _signalR.ConnectAsync(_settings.ServerUrl, authResult.Value.AccessToken, _settings.AllowInsecureTls, CancellationToken.None);
+            await _signalR.ConnectAsync(_settings.ServerUrl, () => _api.AccessToken, _settings.AllowInsecureTls, CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -213,6 +213,14 @@ public class AgentSessionManager : IAsyncDisposable
             // before expiry rather than waiting for a 401, so the SignalR connection (which used the
             // token at handshake time) doesn't silently start rejecting hub calls mid-session.
             if (DateTimeOffset.UtcNow >= _tokenExpiresAt.AddMinutes(-2) && _registrationKey is not null)
+            {
+                await AuthenticateAndConnectAsync();
+                return;
+            }
+
+            // The live connection carries the pop-ups; if it has dropped for good, sign in again and reconnect
+            // rather than carrying on with REST heartbeats only (which would look "connected" but get no alerts).
+            if (_signalR.State == AgentConnectionState.Disconnected && _registrationKey is not null)
             {
                 await AuthenticateAndConnectAsync();
                 return;

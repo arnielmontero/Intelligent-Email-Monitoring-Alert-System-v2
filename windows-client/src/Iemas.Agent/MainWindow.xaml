@@ -135,7 +135,7 @@
                         <StackPanel>
                             <TextBlock Style="{StaticResource HelpHeading}" Text="What this app does"/>
                             <TextBlock Style="{StaticResource HelpText}" Text="IEMAS (Intelligent Email Monitoring &amp; Alert System) watches the company mailbox you own. When a customer email needs a reply, IEMAS creates a Case for it and this app tells you with a pop-up. It keeps reminding you until your reply is found in the mailbox's Sent folder, and escalates the Case if nobody answers."/>
-                            <TextBlock Style="{StaticResource HelpText}" Text="Keep the app running: closing the window only hides it to the system tray (the IEMAS icon near the clock). Pop-ups only appear while the app is running and connected - ones missed while it was closed are not shown later, but every open Case appears in the lists as soon as the app connects again."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Keep the app running: closing the window only hides it to the system tray (the IEMAS icon near the clock). Pop-ups appear while the app is running and connected. Pop-ups missed while it was closed or offline are shown when it connects again (the last 5 from the past 24 hours, for Cases that still need you), and every open Case appears in the lists straight away."/>
                         </StackPanel>
                     </Border>
 
@@ -177,7 +177,7 @@
                     <Border Style="{StaticResource HelpCard}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource HelpHeading}" Text="Pop-ups"/>
-                            <TextBlock Style="{StaticResource HelpText}" Text="You get a pop-up for a new Case, for reminders, when a Case is overdue, just before it escalates, and when it has escalated."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="You get a pop-up for a new Case, for reminders, when a Case is overdue, just before it escalates, and when it has escalated. It is an IEMAS window in the bottom-right corner of the screen, always on top, with a short sound; it stays until you choose Open Case, Acknowledge or close it (x). Several pop-ups stack upwards. A copy is also kept in the Windows notification centre."/>
                             <TextBlock Style="{StaticResource HelpTerm}" Text="Open Case"/>
                             <TextBlock Style="{StaticResource HelpText}" Text="Opens the Case in this app, where you can act on it."/>
                             <TextBlock Style="{StaticResource HelpTerm}" Text="Acknowledge"/>
@@ -249,7 +249,7 @@
                             <TextBlock Style="{StaticResource HelpTerm}" Text="A customer email did not become a Case"/>
                             <TextBlock Style="{StaticResource HelpText}" Text="Allow a few minutes. The AI may have decided it needs no reply, or the sender may be on the ignored list. Ask your administrator to check Case Workflow in the CMS."/>
                             <TextBlock Style="{StaticResource HelpTerm}" Text="No pop-ups appear"/>
-                            <TextBlock Style="{StaticResource HelpText}" Text="Check the status light is green, and that Windows notifications and Focus assist / Do not disturb allow IEMAS Agent."/>
+                            <TextBlock Style="{StaticResource HelpText}" Text="Check the status light is green. The IEMAS pop-up does not depend on Windows notification settings or Do not disturb. If the light is not green the app reconnects by itself within about a minute; pop-ups missed meanwhile are shown when it does. Make sure the Case is yours: pop-ups go to the owner of the mailbox the email arrived in."/>
                             <TextBlock Style="{StaticResource HelpTerm}" Text="Registration fails"/>
                             <TextBlock Style="{StaticResource HelpText}" Text="The email must be a mailbox IEMAS already watches, and the Server URL must be correct. Your administrator can check both."/>
                             <TextBlock Style="{StaticResource HelpText}" Text="For anything else, contact your IEMAS administrator and mention the version shown in Settings."/>

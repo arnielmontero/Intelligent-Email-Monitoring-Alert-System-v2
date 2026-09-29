@@ -17,27 +17,31 @@ public class AgentNotificationDispatcher : IAgentNotificationDispatcher
 {
     private readonly IHubContext<AgentHub> _hubContext;
     private readonly IAppDbContext _db;
+    private readonly AgentConnectionTracker _connections;
     private readonly ILogger<AgentNotificationDispatcher> _logger;
 
-    public AgentNotificationDispatcher(IHubContext<AgentHub> hubContext, IAppDbContext db, ILogger<AgentNotificationDispatcher> logger)
+    public AgentNotificationDispatcher(IHubContext<AgentHub> hubContext, IAppDbContext db, AgentConnectionTracker connections, ILogger<AgentNotificationDispatcher> logger)
     {
         _hubContext = hubContext;
         _db = db;
+        _connections = connections;
         _logger = logger;
     }
 
     public async Task<int> NotifyEmployeeAsync(Guid employeeId, AgentPushCommand command, CancellationToken cancellationToken)
     {
-        // §13 Option A (All Active Agents) — every Agent belonging to this Employee that is
-        // currently marked Connected receives the push. A Disconnected Agent is skipped here, not
-        // queued: it will see current, authoritative state on its own next SYNC (§74/§75), which is
-        // the whole reason server state, not SignalR delivery, remains the source of truth (§76).
-        var agentIds = await _db.Agents
-            .Where(a => a.EmployeeId == employeeId
-                        && a.RegistrationStatus == AgentRegistrationStatus.Approved
-                        && a.ConnectionStatus == AgentConnectionStatus.Connected)
+        // §13 Option A (All Active Agents) — every approved Agent of this Employee with a live hub
+        // connection receives the push. The live connection, not the stored ConnectionStatus, decides:
+        // sign-in and REST heartbeats keep ConnectionStatus "Connected" even while the push channel is
+        // down, and sending to a user with no open connection silently reaches nobody. An Agent without
+        // a live connection is skipped; the notification stays Queued and is delivered when it
+        // reconnects (NotificationService.DeliverMissedAsync).
+        var agentIds = (await _db.Agents
+            .Where(a => a.EmployeeId == employeeId && a.RegistrationStatus == AgentRegistrationStatus.Approved)
             .Select(a => a.Id)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken))
+            .Where(_connections.IsConnected)
+            .ToList();
 
         if (agentIds.Count == 0)
         {

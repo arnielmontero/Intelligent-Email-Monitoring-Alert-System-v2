@@ -30,7 +30,9 @@ public static class ToastService
                     .SetBackgroundActivation());
             }
 
-            builder.Show();
+            // Recorded silently in the Windows notification centre; the visible alert is the Agent's own
+            // pop-up window (Views/PopupWindow), which Windows notification settings can't hide.
+            builder.Show(toast => toast.SuppressPopup = true);
             return null;
         }
         catch (Exception ex)

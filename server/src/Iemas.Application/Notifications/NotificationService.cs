@@ -124,6 +124,57 @@ public class NotificationService
         return delivered > 0 ? NotificationSendOutcome.Sent : NotificationSendOutcome.Queued;
     }
 
+    /// <summary>How far back undelivered pop-ups are still worth showing when an Agent (re)connects.</summary>
+    public static readonly TimeSpan MissedDeliveryWindow = TimeSpan.FromHours(24);
+
+    /// <summary>At most this many missed pop-ups are shown at once, newest last, so a long absence doesn't flood the screen.</summary>
+    public const int MissedDeliveryLimit = 5;
+
+    /// <summary>
+    /// Delivers pop-ups that were queued because none of the employee's Agents was connected, for Cases that
+    /// still need attention. Called when an Agent connects. Each one is sent once: it is marked Sent on delivery.
+    /// </summary>
+    public async Task<int> DeliverMissedAsync(Guid employeeId, CancellationToken cancellationToken)
+    {
+        if (_dispatcher is null || await _db.IsPausedAsync(PauseControl.AgentNotifications, cancellationToken)) return 0;
+
+        var since = DateTimeOffset.UtcNow - MissedDeliveryWindow;
+        var missed = await _db.Notifications
+            .Where(n => n.EmployeeId == employeeId && n.Status == NotificationDeliveryStatus.Queued && n.CreatedAt >= since
+                        && n.Case != null
+                        && n.Case.WorkStatus != CaseWorkStatus.Completed && n.Case.WorkStatus != CaseWorkStatus.Cancelled
+                        && n.Case.ReplyStatus != CaseReplyStatus.Replied)
+            .Include(n => n.Case)
+            .OrderByDescending(n => n.CreatedAt)
+            .Take(MissedDeliveryLimit)
+            .ToListAsync(cancellationToken);
+
+        var sent = 0;
+        foreach (var notification in missed.OrderBy(n => n.CreatedAt))
+        {
+            var pushType = notification.Type switch
+            {
+                NotificationType.NewEmail => AgentPushCommandType.ShowCase,
+                NotificationType.FirstReminder or NotificationType.Reminder => AgentPushCommandType.ShowReminder,
+                _ => AgentPushCommandType.ShowNotification,
+            };
+            var delivered = await _dispatcher.NotifyEmployeeAsync(
+                employeeId,
+                new AgentPushCommand(pushType, notification.CaseId, notification.Case!.CaseNumber, notification.Title, notification.Message),
+                cancellationToken);
+            if (delivered == 0) break; // the Agent went away again; the rest stay queued for next time
+
+            notification.DeliveredAgentCount = delivered;
+            notification.Status = NotificationDeliveryStatus.Sent;
+            notification.SentAt = DateTimeOffset.UtcNow;
+            notification.UpdatedAt = notification.SentAt;
+            sent++;
+        }
+
+        if (sent > 0) await _db.SaveChangesAsync(cancellationToken);
+        return sent;
+    }
+
     /// <summary>§104 ACKNOWLEDGED — the employee acknowledged the Case, so every still-open notification for it is acknowledged.</summary>
     public static async Task<int> AcknowledgeForCaseAsync(IAppDbContext db, Guid caseId, Guid employeeId, CancellationToken cancellationToken)
     {

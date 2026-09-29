@@ -15,6 +15,9 @@ public class AgentConnectionTracker
         _connections.GetOrAdd(agentId, _ => new ConcurrentDictionary<string, byte>())[connectionId] = 0;
 
     /// <summary>Returns how many connections the Agent still has open.</summary>
+    /// <summary>Whether the Agent has at least one live hub connection right now — the only reliable sign a push can reach it.</summary>
+    public bool IsConnected(Guid agentId) => _connections.TryGetValue(agentId, out var set) && !set.IsEmpty;
+
     public int Remove(Guid agentId, string connectionId)
     {
         if (!_connections.TryGetValue(agentId, out var set))
