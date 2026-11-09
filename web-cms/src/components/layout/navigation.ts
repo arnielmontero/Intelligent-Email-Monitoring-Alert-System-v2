@@ -67,6 +67,12 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: "cases",
     items: [
       {
+        label: "Setup & Configuration",
+        path: "/setup",
+        help: "One place to get the system ready: a live checklist (API key, AI model, agent mailboxes, outbound email, business hours, escalation recipients, internal domains) and a link to every screen where each part is configured.",
+        tasks: ["See what is still missing", "Jump to the screen that fixes it"],
+      },
+      {
         label: "Inquiry Supervision",
         path: "/inquiry-supervision",
         help: "Every customer inquiry, followed until the agent confirms it is resolved: how many each agent has awaiting a first reply, waiting on the customer, inactive, potentially resolved, overdue or escalated. Click a number to list them; open one to read the whole conversation (customer, agent and internal messages) and confirm, reject or reassign it.",

@@ -10,6 +10,7 @@ import type {
   PagedResult,
 } from "../../api/types";
 import Pagination from "../../components/Pagination";
+import StatCard from "../../components/StatCard";
 import { selectedRowStyle } from "../../components/styles";
 import { useAuthStore } from "../../store/authStore";
 
@@ -117,6 +118,8 @@ export default function InquirySupervisionPage() {
         </p>
         {error && <div className="form-error">{error}</div>}
 
+        {overview && <SummaryCards overview={overview} bucket={bucket} employeeId={employeeId} onPick={(b) => pick(b, null)} />}
+
         {overview && (
           <div style={{ overflowX: "auto", marginBottom: 24 }}>
             <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13 }}>
@@ -164,6 +167,8 @@ export default function InquirySupervisionPage() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
           <select value={bucket} onChange={(e) => pick(e.target.value, employeeId)}>
             {BUCKETS.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
+            <option value="awaiting-agent">Awaiting agent (any)</option>
+            <option value="active">Active conversations</option>
             <option value="all">Everything</option>
           </select>
           {agentName && (
@@ -215,6 +220,26 @@ export default function InquirySupervisionPage() {
       </div>
 
       {selectedId && <InquiryPanel caseId={selectedId} onClose={() => setSelectedId(null)} onChanged={reload} />}
+    </div>
+  );
+}
+
+function SummaryCards({ overview, bucket, employeeId, onPick }: { overview: InquiryOverviewDto; bucket: string; employeeId: string | null; onPick: (b: string) => void }) {
+  const t = overview.totals;
+  const awaitingAgent = t.awaitingInitialResponse + t.customerFollowUp + t.inactive;
+  const active = t.awaitingCustomer + t.awaitingInternal;
+  const on = (b: string) => bucket === b && employeeId === null;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12, marginBottom: 20 }}>
+      <StatCard label="Detected (all time)" value={overview.totalDetected} hint="Every inquiry ever recorded" onClick={() => onPick("all")} active={on("all")} />
+      <StatCard label="New" value={t.awaitingInitialResponse} hint="No first reply yet" tone={t.awaitingInitialResponse ? "warn" : "neutral"} onClick={() => onPick("awaiting-initial")} active={on("awaiting-initial")} />
+      <StatCard label="Awaiting agent" value={awaitingAgent} hint="The agent owes a reply" tone={awaitingAgent ? "warn" : "neutral"} onClick={() => onPick("awaiting-agent")} active={on("awaiting-agent")} />
+      <StatCard label="Active conversations" value={active} hint="Waiting on customer or internal" tone="info" onClick={() => onPick("active")} active={on("active")} />
+      <StatCard label="Potentially resolved" value={t.potentiallyResolved} hint="Waiting for the agent to confirm" tone="info" onClick={() => onPick("potentially-resolved")} active={on("potentially-resolved")} />
+      <StatCard label="Unresolved" value={t.openTotal} hint="Still under supervision" onClick={() => onPick("open")} active={on("open")} />
+      <StatCard label="Overdue" value={t.overdue} hint="Past the resolution target" tone={t.overdue ? "bad" : "neutral"} onClick={() => onPick("overdue")} active={on("overdue")} />
+      <StatCard label="Escalated" value={t.escalated} hint="Management has been told" tone={t.escalated ? "bad" : "neutral"} onClick={() => onPick("escalated")} active={on("escalated")} />
+      <StatCard label="Resolved" value={t.resolvedLast30Days} hint="Confirmed, last 30 days" tone="good" onClick={() => onPick("resolved")} active={on("resolved")} />
     </div>
   );
 }

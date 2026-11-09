@@ -35,9 +35,17 @@ export default function SystemSettingsPage() {
     load();
   }, []);
 
+  // A group made only of sender lists (Email filtering) has its own editor; a sender list inside a mixed
+  // group (Inquiry detection: internal domains) is edited here like the other settings.
+  const ownEditorKeys = useMemo(() => {
+    const byGroup = new Map<string, SystemSettingDto[]>();
+    settings.forEach((s) => byGroup.set(s.group, [...(byGroup.get(s.group) ?? []), s]));
+    return new Set(Array.from(byGroup.values()).filter((items) => items.every((s) => s.type === "SenderList")).flat().map((s) => s.key));
+  }, [settings]);
+
   const changed = useMemo(
-    () => settings.filter((s) => s.type !== "SenderList" && (draft[s.key] ?? s.value).trim() !== s.value),
-    [settings, draft],
+    () => settings.filter((s) => !ownEditorKeys.has(s.key) && (draft[s.key] ?? s.value).trim() !== s.value),
+    [settings, draft, ownEditorKeys],
   );
 
   const groups = useMemo(() => {
@@ -109,19 +117,38 @@ export default function SystemSettingsPage() {
                       <div style={mutedStyle}>{s.description}</div>
                     </td>
                     <td style={tdStyle}>
-                      <input
-                        type={s.type === "Integer" ? "number" : "text"}
-                        min={s.min ?? undefined}
-                        max={s.max ?? undefined}
-                        value={draft[s.key] ?? ""}
-                        onChange={(e) => setDraft((d) => ({ ...d, [s.key]: e.target.value }))}
-                        list={s.type === "TimeZone" ? "iemas-timezones" : undefined}
-                        style={{ width: s.type === "Integer" ? 120 : 280 }}
-                      />
+                      {s.type === "Boolean" ? (
+                        <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={(draft[s.key] ?? s.value) === "true"}
+                            onChange={(e) => setDraft((d) => ({ ...d, [s.key]: e.target.checked ? "true" : "false" }))}
+                          />
+                          {(draft[s.key] ?? s.value) === "true" ? "On" : "Off"}
+                        </label>
+                      ) : s.type === "RuleList" || s.type === "SenderList" || s.type === "LongText" ? (
+                        <textarea
+                          rows={Math.min(10, Math.max(3, (draft[s.key] ?? "").split("\n").length + 1))}
+                          value={draft[s.key] ?? ""}
+                          placeholder="One per line"
+                          onChange={(e) => setDraft((d) => ({ ...d, [s.key]: e.target.value }))}
+                          style={{ width: 380 }}
+                        />
+                      ) : (
+                        <input
+                          type={s.type === "Integer" ? "number" : "text"}
+                          min={s.min ?? undefined}
+                          max={s.max ?? undefined}
+                          value={draft[s.key] ?? ""}
+                          onChange={(e) => setDraft((d) => ({ ...d, [s.key]: e.target.value }))}
+                          list={s.type === "TimeZone" ? "iemas-timezones" : undefined}
+                          style={{ width: s.type === "Integer" ? 120 : 280 }}
+                        />
+                      )}
                       {s.type === "Integer" && group === "Retention" && <span style={mutedStyle}> days</span>}
                     </td>
                     <td style={{ ...tdStyle, ...mutedStyle, width: "25%" }}>
-                      Default: {s.defaultValue || "(empty)"}
+                      Default: {s.type === "RuleList" || s.type === "SenderList" ? (s.defaultValue ? `${s.defaultValue.split("\n").length} entries` : "(empty)") : (s.defaultValue || "(empty)")}
                       {s.isOverridden && s.updatedByEmail && (
                         <div>Set by {s.updatedByEmail}{s.updatedAt ? ` on ${new Date(s.updatedAt).toLocaleString()}` : ""}</div>
                       )}

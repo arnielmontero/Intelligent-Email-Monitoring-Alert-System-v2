@@ -845,6 +845,15 @@ export interface InquiryOverviewDto {
   totals: AgentInquiryCountsDto;
   agents: AgentInquiryCountsDto[];
   generatedAt: string;
+  totalDetected: number;
+}
+
+export interface SetupCheckItemDto {
+  key: string;
+  label: string;
+  ok: boolean;
+  detail: string;
+  link: string;
 }
 
 export interface InquiryRowDto {

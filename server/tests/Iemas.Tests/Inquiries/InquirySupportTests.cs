@@ -125,6 +125,46 @@ public class SupervisionSwitchAndActionsTests
     }
 
     [Fact]
+    public async Task SetupCheck_ReportsWhatIsMissing_AndNeverReturnsASecret()
+    {
+        using var db = TestDbContext.CreateNew();
+        var overview = new InquiryOverviewService(db, new AgentReplyProtector(new PassThroughEncryptionService()),
+            new StaticAiProviderConnectionResolver(null));
+
+        var empty = await overview.GetSetupCheckAsync(CancellationToken.None);
+        Assert.False(empty.Single(i => i.Key == "ai-key").Ok);
+        Assert.False(empty.Single(i => i.Key == "agent-mailboxes").Ok);
+        Assert.False(empty.Single(i => i.Key == "outbound-smtp").Ok);
+        Assert.True(empty.Single(i => i.Key == "internal-domains").Ok);   // default sawo.com
+        Assert.True(empty.Single(i => i.Key == "supervision").Ok);
+        Assert.All(empty.Where(i => !i.Ok), i => Assert.StartsWith("/", i.Link));
+
+        var withKey = new InquiryOverviewService(db, new AgentReplyProtector(new PassThroughEncryptionService()),
+            new StaticAiProviderConnectionResolver("sk-or-SECRET-VALUE-123456"));
+        var items = await withKey.GetSetupCheckAsync(CancellationToken.None);
+        Assert.True(items.Single(i => i.Key == "ai-key").Ok);
+        Assert.DoesNotContain("SECRET", string.Join(" ", items.Select(i => i.Detail)));
+    }
+
+    [Fact]
+    public async Task List_AwaitingAgentAndActiveBuckets_SelectTheRightStages()
+    {
+        using var h = new InquiryHarness(Agent1);
+        var first = h.Receive(Agent1, Customer, "Request for quotation", "I would like to request a quotation. How much?", Monday0900);
+        h.Receive(Agent1, "bo@other.example", "Pricing", "Could you send your price list? How much is delivery?", Monday0900);
+        await h.RunAsync(Monday0900.AddMinutes(1));
+        h.Send(Agent1, Customer, "Re: Request for quotation", "Which model do you need?", Day(0, 10), inReplyTo: first);
+        await h.RunAsync(Day(0, 10, 5));
+        var overview = new InquiryOverviewService(h.Db, new AgentReplyProtector(new PassThroughEncryptionService()));
+
+        var awaitingAgent = await overview.ListAsync("awaiting-agent", null, null, 1, 50, CancellationToken.None);
+        var active = await overview.ListAsync("active", null, null, 1, 50, CancellationToken.None);
+
+        Assert.Equal("bo@other.example", Assert.Single(awaitingAgent.Items).Customer);
+        Assert.Equal(Customer, Assert.Single(active.Items).Customer);
+    }
+
+    [Fact]
     public async Task Overview_CountsInquiriesPerAgentAndStage()
     {
         using var h = new InquiryHarness(Agent1, "agent2@sawo.com");

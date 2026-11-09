@@ -42,6 +42,11 @@ public class InquiriesController : ControllerBase
     public async Task<ActionResult<InquiryOverviewDto>> Overview(CancellationToken cancellationToken) =>
         Ok(await _overview.GetOverviewAsync(cancellationToken));
 
+    /// <summary>Is the system configured to run? (API key, mailboxes, outbound email, calendar, escalation recipients...)</summary>
+    [HttpGet("setup-check")]
+    public async Task<ActionResult<IReadOnlyList<SetupCheckItemDto>>> SetupCheck(CancellationToken cancellationToken) =>
+        Ok(await _overview.GetSetupCheckAsync(cancellationToken));
+
     [HttpGet]
     public async Task<ActionResult<PagedResult<InquiryRowDto>>> List(
         [FromQuery] string? bucket, [FromQuery] Guid? employeeId, [FromQuery] string? search,

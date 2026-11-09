@@ -1,5 +1,6 @@
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Operations;
 using Iemas.Domain.Cases;
 using Iemas.Domain.Email;
 using Iemas.Domain.Escalations;
@@ -12,7 +13,9 @@ public sealed record AgentInquiryCountsDto(
     int AwaitingInitialResponse, int CustomerFollowUp, int AwaitingCustomer, int AwaitingInternal, int Inactive,
     int PotentiallyResolved, int Overdue, int Escalated, int OpenTotal, int ResolvedLast30Days);
 
-public sealed record InquiryOverviewDto(AgentInquiryCountsDto Totals, IReadOnlyList<AgentInquiryCountsDto> Agents, DateTimeOffset GeneratedAt);
+public sealed record InquiryOverviewDto(AgentInquiryCountsDto Totals, IReadOnlyList<AgentInquiryCountsDto> Agents, DateTimeOffset GeneratedAt, int TotalDetected = 0);
+
+public sealed record SetupCheckItemDto(string Key, string Label, bool Ok, string Detail, string Link);
 
 public sealed record InquiryRowDto(
     Guid Id, string CaseNumber, string Subject, string Customer, string? AgentName, Guid? EmployeeId,
@@ -38,11 +41,78 @@ public class InquiryOverviewService
 {
     private readonly IAppDbContext _db;
     private readonly AgentReplyProtector _protector;
+    private readonly Iemas.Application.AiModels.IAiProviderConnectionResolver? _aiConnection;
 
-    public InquiryOverviewService(IAppDbContext db, AgentReplyProtector protector)
+    public InquiryOverviewService(IAppDbContext db, AgentReplyProtector protector, Iemas.Application.AiModels.IAiProviderConnectionResolver? aiConnection = null)
     {
         _db = db;
         _protector = protector;
+        _aiConnection = aiConnection;
+    }
+
+    /// <summary>
+    /// Is the system actually configured to supervise inquiries? Inspects real configuration (not
+    /// defaults): API key, AI model, agent mailboxes, outbound SMTP, business calendar, escalation
+    /// recipients and internal domains. Never returns a secret.
+    /// </summary>
+    public async Task<IReadOnlyList<SetupCheckItemDto>> GetSetupCheckAsync(CancellationToken cancellationToken)
+    {
+        var items = new List<SetupCheckItemDto>();
+        void Add(string key, string label, bool ok, string detail, string link) => items.Add(new SetupCheckItemDto(key, label, ok, detail, link));
+
+        var connection = _aiConnection is null ? null : await _aiConnection.ResolveAsync(cancellationToken);
+        var hasKey = !string.IsNullOrWhiteSpace(connection?.ApiKey);
+        Add("ai-key", "OpenRouter API key", hasKey,
+            hasKey ? $"Configured ({connection!.KeySource}). Use Test on the AI Models page to check it works." : "No key. Uncertain emails cannot be classified and resolutions cannot be assessed.", "/ai-models");
+
+        var models = await _db.AiModelConfigs.AsNoTracking().CountAsync(m => m.Enabled && m.TaskCapability == "EmailClassification", cancellationToken);
+        Add("ai-model", "AI model", models > 0, models > 0 ? $"{models} enabled" : "No enabled model.", "/ai-models");
+
+        var agents = await _db.EmailAccounts.AsNoTracking()
+            .Where(a => a.Purpose == EmailAccountPurpose.Inbound && a.IsActive && a.MonitoringEnabled)
+            .Select(a => new { a.EmailAddress, a.OwnerEmployeeId }).ToListAsync(cancellationToken);
+        var unowned = agents.Count(a => a.OwnerEmployeeId is null);
+        Add("agent-mailboxes", "Agent mailboxes monitored", agents.Count > 0 && unowned == 0,
+            agents.Count == 0 ? "No active monitored mailbox."
+            : unowned > 0 ? $"{unowned} of {agents.Count} mailbox(es) have no owner, so their inquiries have no agent."
+            : $"{agents.Count} mailbox(es), all with an owner.", "/email-accounts");
+
+        var smtp = await _db.EmailAccounts.AsNoTracking()
+            .AnyAsync(a => a.Purpose == EmailAccountPurpose.Outbound && a.IsActive && a.Protocol == EmailProtocol.Smtp, cancellationToken);
+        Add("outbound-smtp", "Outbound email for management escalations", smtp,
+            smtp ? "An active SMTP account is configured." : "No active Outbound SMTP account: management cannot be emailed.", "/outbound-email");
+
+        var calendar = await _db.ReminderPolicies.AsNoTracking().Include(p => p.Holidays)
+            .FirstOrDefaultAsync(p => p.Enabled && p.IsDefault, cancellationToken);
+        Add("calendar", "Business hours, working days and holidays", calendar is { RestrictToBusinessHours: true },
+            calendar is null ? "No default Reminder Policy: deadlines count 08:00-17:00 Monday-Friday UTC."
+            : !calendar.RestrictToBusinessHours ? "The default policy ignores business hours, so deadlines count around the clock."
+            : $"{calendar.BusinessHoursStart:hh\\:mm}-{calendar.BusinessHoursEnd:hh\\:mm} {calendar.TimeZoneId}, {(calendar.ExcludeWeekends ? "weekdays only" : "7 days")}, {calendar.Holidays.Count} holiday(s).",
+            "/reminder-policies");
+
+        var policy = await _db.EscalationPolicies.AsNoTracking().Include(p => p.Levels)
+            .FirstOrDefaultAsync(p => p.Enabled && p.IsDefault, cancellationToken);
+        var level1 = policy?.Levels.OrderBy(l => l.Level).FirstOrDefault();
+        var needsSupervisor = level1?.RecipientType == Domain.Escalations.EscalationRecipientType.EmployeeSupervisor;
+        var ownerIds = agents.Where(a => a.OwnerEmployeeId != null).Select(a => a.OwnerEmployeeId!.Value).Distinct().ToList();
+        var withoutSupervisor = needsSupervisor
+            ? await _db.Employees.AsNoTracking().CountAsync(e => ownerIds.Contains(e.Id) && e.SupervisorEmployeeId == null, cancellationToken)
+            : 0;
+        Add("escalation", "Management escalation recipients", policy is not null && level1 is not null && withoutSupervisor == 0,
+            policy is null ? "No default escalation policy."
+            : level1 is null ? "The escalation policy has no levels."
+            : withoutSupervisor > 0 ? $"{withoutSupervisor} agent(s) have no supervisor, so level 1 cannot reach anyone for them (Employees & Ownership)."
+            : $"{policy.Levels.Count} level(s); level 1 goes to {level1.RecipientType}.", "/escalation-policies");
+
+        var internalDomains = (await SystemSettingsService.GetValueAsync(_db, SystemSettingKeys.InternalDomains, cancellationToken))
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Add("internal-domains", "Internal company domains", internalDomains.Length > 0,
+            internalDomains.Length > 0 ? string.Join(", ", internalDomains) : "None: internal email could start customer inquiries.", "/system-settings");
+
+        var enabled = await SystemSettingsService.GetBoolAsync(_db, SystemSettingKeys.SupervisionEnabled, cancellationToken);
+        Add("supervision", "Inquiry supervision switched on", enabled,
+            enabled ? "On" : "Off: the older reminder engines are used and stop at the first reply.", "/system-settings");
+        return items;
     }
 
     public async Task<InquiryOverviewDto> GetOverviewAsync(CancellationToken cancellationToken)
@@ -65,7 +135,7 @@ public class InquiryOverviewService
             .Select(g => Count(g.Key.OwnerEmployeeId, g.Key.Name ?? "(unassigned)", g.ToList()))
             .OrderByDescending(a => a.Overdue + a.Escalated).ThenByDescending(a => a.OpenTotal).ThenBy(a => a.AgentName)
             .ToList();
-        return new InquiryOverviewDto(Count(null, "All agents", typed), agents, DateTimeOffset.UtcNow);
+        return new InquiryOverviewDto(Count(null, "All agents", typed), agents, DateTimeOffset.UtcNow, await _db.Cases.CountAsync(cancellationToken));
     }
 
     private sealed record CountRow(Guid? OwnerEmployeeId, string? Name, InquiryStage Stage, bool Overdue, bool Escalated);
@@ -106,6 +176,9 @@ public class InquiryOverviewService
             "follow-up" => q.Where(c => c.Stage == InquiryStage.CustomerFollowUpReceived),
             "awaiting-customer" => q.Where(c => c.Stage == InquiryStage.InitialResponseReceived || c.Stage == InquiryStage.AgentFollowUpSent || c.Stage == InquiryStage.AwaitingCustomer),
             "awaiting-internal" => q.Where(c => c.Stage == InquiryStage.AwaitingInternal),
+            "awaiting-agent" => q.Where(c => c.Stage == InquiryStage.AwaitingInitialResponse || c.Stage == InquiryStage.CustomerFollowUpReceived || c.Stage == InquiryStage.Inactive),
+            "active" => q.Where(c => c.Stage == InquiryStage.InitialResponseReceived || c.Stage == InquiryStage.AgentFollowUpSent
+                || c.Stage == InquiryStage.AwaitingCustomer || c.Stage == InquiryStage.AwaitingInternal),
             "inactive" => q.Where(c => c.Stage == InquiryStage.Inactive),
             "potentially-resolved" => q.Where(c => c.Stage == InquiryStage.PotentiallyResolved),
             "overdue" => open.Where(c => c.OverdueSince != null),
