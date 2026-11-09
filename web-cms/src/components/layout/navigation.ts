@@ -44,8 +44,8 @@ export const NAV_SECTIONS: NavSection[] = [
       {
         label: "Outbound Email",
         path: "/outbound-email",
-        help: "An SMTP mailbox set aside for IEMAS's own outgoing email. Right now it is only stored and connection-tested: IEMAS does not send any email yet — employees are alerted by pop-ups on their PC. It is never checked for customer email.",
-        tasks: ["Add the SMTP server and password", "Test the connection"],
+        help: "An SMTP mailbox for IEMAS's own internal email: management escalation emails are sent from it. It never sends, replies to or forwards customer email, and is never checked for customer email.",
+        tasks: ["Add the SMTP server and password", "Test the connection", "Check Escalation History for emails that could not be sent"],
       },
       {
         label: "Email Monitoring & Intake",
@@ -66,6 +66,12 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Case Management",
     icon: "cases",
     items: [
+      {
+        label: "Inquiry Supervision",
+        path: "/inquiry-supervision",
+        help: "Every customer inquiry, followed until the agent confirms it is resolved: how many each agent has awaiting a first reply, waiting on the customer, inactive, potentially resolved, overdue or escalated. Click a number to list them; open one to read the whole conversation (customer, agent and internal messages) and confirm, reject or reassign it.",
+        tasks: ["See which agent has inquiries waiting on them", "Open an inquiry to read the full conversation", "Confirm an inquiry is resolved, or keep it open", "Reassign an inquiry to another agent"],
+      },
       {
         label: "Cases / Work Topics",
         path: "/cases",

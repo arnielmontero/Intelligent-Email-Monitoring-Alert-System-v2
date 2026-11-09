@@ -54,7 +54,7 @@ public record ApiErrorResponse(string? Message);
 // Enums — declaration order must match the server's Iemas.Domain enums exactly, since the server
 // serializes them as their underlying int by default (no JsonStringEnumConverter registered there).
 
-public enum CaseWorkStatus { New = 0, ActionRequired = 1, InProgress = 2, WaitingForCustomer = 3, WaitingForInternal = 4, WaitingForApproval = 5, Overdue = 6, Escalated = 7, Completed = 8, Cancelled = 9, Expired = 10, ReviewRequired = 11 }
+public enum CaseWorkStatus { New = 0, ActionRequired = 1, InProgress = 2, WaitingForCustomer = 3, WaitingForInternal = 4, WaitingForApproval = 5, Overdue = 6, Escalated = 7, Completed = 8, Cancelled = 9, Expired = 10, ReviewRequired = 11, PotentiallyResolved = 12 }
 
 public enum CaseReplyStatus { NotApplicable = 0, AwaitingReply = 1, ReplyVerificationPending = 2, ReplyVerificationFailed = 3, ReplyNotFound = 4, Replied = 5 }
 
@@ -63,7 +63,7 @@ public enum CaseNotificationStatus { None = 0, Scheduled = 1, Queued = 2, Sent =
 public enum CaseCompletionReason { CustomerRequestResolved = 0, EmployeeResponded = 1, PhoneCallHandled = 2, HandledOutsideEmail = 3, NoResponseRequired = 4, Duplicate = 5, IncorrectClassification = 6, CancelledByAdmin = 7, CancelledByEmployee = 8, Other = 9 }
 
 /// <summary>§46 — the fixed set of Case actions an employee can take via the Agent, in the server's exact declaration order (Iemas.Domain.Agents.CaseActionType).</summary>
-public enum CaseActionType { Acknowledged = 0, WillHandle = 1, AlreadyReplied = 2, WaitingForCustomer = 3, WaitingForInternal = 4, RemindLater = 5, MarkCompleted = 6, Cancel = 7, Reopen = 8, RequestEscalation = 9 }
+public enum CaseActionType { Acknowledged = 0, WillHandle = 1, AlreadyReplied = 2, WaitingForCustomer = 3, WaitingForInternal = 4, RemindLater = 5, MarkCompleted = 6, Cancel = 7, Reopen = 8, RequestEscalation = 9, ConfirmResolved = 10, RejectResolution = 11 }
 
 /// <summary>§68/§71 registration status, server enum order.</summary>
 public enum AgentRegistrationStatus { Pending = 0, Approved = 1, Rejected = 2, Revoked = 3 }

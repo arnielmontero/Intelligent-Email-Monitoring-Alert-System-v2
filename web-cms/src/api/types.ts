@@ -102,12 +102,12 @@ export interface TestAiModelResult {
 }
 
 // §40 status enums
-export type CaseWorkStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+export type CaseWorkStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 export type CaseReplyStatus = 0 | 1 | 2 | 3 | 4 | 5;
 export type CaseNotificationStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type CaseCompletionReason = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type CaseMatchSignal = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
-export type CaseEventType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+export type CaseEventType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17;
 
 // §42 Reply Verification
 export type ReplyVerificationOutcome = 0 | 1 | 2 | 3;
@@ -125,7 +125,7 @@ export const REPLY_MATCH_SIGNAL_LABELS: Record<ReplyMatchSignal, string> = {
 export const CASE_WORK_STATUS_LABELS: Record<CaseWorkStatus, string> = {
   0: "New", 1: "Action Required", 2: "In Progress", 3: "Waiting for Customer",
   4: "Waiting for Internal", 5: "Waiting for Approval", 6: "Overdue", 7: "Escalated",
-  8: "Completed", 9: "Cancelled", 10: "Expired", 11: "Review Required",
+  8: "Completed", 9: "Cancelled", 10: "Expired", 11: "Review Required", 12: "Potentially Resolved",
 };
 
 export const CASE_REPLY_STATUS_LABELS: Record<CaseReplyStatus, string> = {
@@ -155,6 +155,7 @@ export const CASE_EVENT_TYPE_LABELS: Record<CaseEventType, string> = {
   0: "Email Received", 1: "Created", 2: "Updated", 3: "Status Changed",
   4: "Reopened", 5: "Completed", 6: "Cancelled", 7: "Reply Verification",
   8: "Employee Action", 9: "Employee Comment", 10: "Reminder", 11: "Escalation",
+  12: "Stage Changed", 13: "Agent Reply", 14: "Internal Activity", 15: "AI Resolution Check", 16: "Reassigned", 17: "Supervision Notice",
 };
 
 export interface CaseDto {
@@ -822,4 +823,80 @@ export interface PagedResult<T> {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+// Inquiry supervision (inquiry-supervision/PROGRESS.md)
+export interface AgentInquiryCountsDto {
+  employeeId: string | null;
+  agentName: string;
+  awaitingInitialResponse: number;
+  customerFollowUp: number;
+  awaitingCustomer: number;
+  awaitingInternal: number;
+  inactive: number;
+  potentiallyResolved: number;
+  overdue: number;
+  escalated: number;
+  openTotal: number;
+  resolvedLast30Days: number;
+}
+
+export interface InquiryOverviewDto {
+  totals: AgentInquiryCountsDto;
+  agents: AgentInquiryCountsDto[];
+  generatedAt: string;
+}
+
+export interface InquiryRowDto {
+  id: string;
+  caseNumber: string;
+  subject: string;
+  customer: string;
+  agentName: string | null;
+  employeeId: string | null;
+  stage: string;
+  stageLabel: string;
+  stageChangedAt: string;
+  workStatus: string;
+  firstEmailReceivedAt: string;
+  firstAgentResponseAt: string | null;
+  lastActivityAt: string;
+  resolutionDueAt: string | null;
+  isOverdue: boolean;
+  escalations: number;
+  aiVerdict: string | null;
+  aiConfidence: number | null;
+}
+
+export interface ConversationMessageDto {
+  id: string;
+  role: "Customer" | "Agent" | "Internal";
+  direction: "Inbound" | "Outbound";
+  at: string;
+  from: string;
+  to: string;
+  subject: string;
+  text: string | null;
+  attachments: number;
+}
+
+export interface InquirySupervisionDto {
+  caseId: string;
+  caseNumber: string;
+  stage: string;
+  stageLabel: string;
+  stageChangedAt: string;
+  firstAgentResponseAt: string | null;
+  lastCustomerMessageAt: string | null;
+  lastAgentMessageAt: string | null;
+  lastInternalActivityAt: string | null;
+  resolutionDueAt: string | null;
+  overdueSince: string | null;
+  episodeRemindersSent: number;
+  episodeEscalations: number;
+  aiVerdict: string | null;
+  aiConfidence: number | null;
+  aiReason: string | null;
+  aiAssessedAt: string | null;
+  conversation: ConversationMessageDto[];
 }

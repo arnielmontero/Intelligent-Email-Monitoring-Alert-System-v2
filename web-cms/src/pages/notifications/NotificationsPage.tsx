@@ -10,15 +10,21 @@ const TYPE_LABELS: Record<string, string> = {
   Overdue: "Overdue",
   EscalationWarning: "Escalation Warning",
   Escalation: "Escalation",
+  CustomerFollowUpDue: "Follow-up May Be Needed",
+  ConfirmResolution: "Confirm Resolution",
+  UpdateRequested: "Update Needed",
 };
 
 const TYPE_TRIGGERS: Record<string, string> = {
   NewEmail: "A new Case is created or reopened by a customer email.",
   FirstReminder: "The first reminder for a Case.",
   Reminder: "Every later reminder.",
-  Overdue: "Not sent automatically yet — no engine moves Cases to Overdue.",
-  EscalationWarning: "The reminder that reaches the escalation policy's trigger count.",
-  Escalation: "An escalation level executes for the Case (sent to the Case owner).",
+  Overdue: "The inquiry passed its resolution target (inquiry supervision).",
+  EscalationWarning: "The last reminder before management is told.",
+  Escalation: "Management was told about the inquiry (sent to the Case owner).",
+  CustomerFollowUpDue: "The customer has not replied for the waiting period; a follow-up may be needed.",
+  ConfirmResolution: "The AI thinks the inquiry is resolved; the agent is asked to confirm or reject.",
+  UpdateRequested: "The conversation stalled or an internal wait expired; the agent is asked for an update.",
 };
 
 const STATUS_COLORS: Record<string, string> = {

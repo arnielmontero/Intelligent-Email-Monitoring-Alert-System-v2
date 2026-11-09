@@ -141,6 +141,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             CaseWorkStatus.WaitingForCustomer => " • Waiting for customer",
             CaseWorkStatus.WaitingForInternal => " • Waiting internally",
             CaseWorkStatus.WaitingForApproval => " • Waiting for approval",
+            CaseWorkStatus.PotentiallyResolved => " • Looks resolved - please confirm",
             _ => string.Empty,
         };
     }

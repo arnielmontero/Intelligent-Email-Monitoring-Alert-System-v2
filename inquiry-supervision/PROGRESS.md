@@ -153,7 +153,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done and verified (note 
   - A message older than the current stage never rewinds it.
   - Only Resolved and Closed are terminal.
 - [x] `CaseWorkStatus` is projected from the stage, so the existing CMS and Windows Agent keep working. `CaseWorkStatus.PotentiallyResolved` was added.
-- [ ] CMS and Windows Agent show the new stage and the confirm/reject buttons. See Phase 8 and the Windows Agent task below.
+- [x] The CMS and the Windows Agent show the new stage and the confirm/reject buttons (see Phase 8)
 
 ### Phase 4: Supervise after the first reply (G2, G3). DONE 2026-11-09
 - [x] New `InquirySupervisionService`, run every minute, with the pure, clock-explicit `SupervisionRules`. Reminders and escalation are decided from the stage and from who owes the next step, never from "a reply was found".
@@ -204,14 +204,28 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done and verified (note 
   - recorded in history and in the audit log
   - timers continue, because a handover does not reset a deadline
   - later reminders and escalation follow the new owner (`Reassign_…` test)
-- [ ] CMS button. See Phase 8.
+- [x] CMS: "Reassign to…" on the inquiry panel
 
 ### Phase 8: Management visibility (G9)
 - [x] API `GET /api/v1/inquiries/overview`, with counts per agent and stage, overdue and escalated (`Overview_…` test)
 - [x] API `GET /api/v1/inquiries?bucket=…`
 - [x] API `GET /api/v1/inquiries/{id}`: the full conversation in both directions, with agent text decrypted. Supervisor or above only, and every view is written to the audit log.
-- [ ] CMS page "Inquiry Supervision": dashboard by agent, lists by bucket, and an inquiry view with the conversation and confirm / reject / reassign
-- [ ] Windows Agent: "Confirm resolved" / "Not resolved yet" buttons, and the new notification types
+- [x] CMS page **Case Management → Inquiry Supervision** (`web-cms/src/pages/inquiry-supervision/`):
+  - an agent × stage table, refreshed every 60 s, with overdue and escalated counts in red
+  - click any number to list those inquiries
+  - an inquiry panel with the stage, timers, AI check, and the full conversation (customer, agent, internal)
+  - Confirm resolved / Not resolved yet / Reassign
+  - "Check now" for admins
+
+  Verified: `npm run build` and `oxlint` are clean.
+- [x] CMS labels for the new Case statuses and history events, and for the 3 new notification types
+- [x] Windows Agent:
+  - "Confirm Resolved" button
+  - "Not Resolved Yet" button, shown only when the inquiry is potentially resolved
+  - a "Looks resolved - please confirm" status
+  - potentially resolved inquiries stay in the agent's action list (server `AgentSyncService`)
+
+  Verified: compiles with `EnableWindowsTargeting`. **Not yet clicked through on Windows.**
 
 ### Phase 9: Verification: the 10 required scenarios
 Automated end-to-end tests: `server/tests/Iemas.Tests/Inquiries/InquiryLifecycleEndToEndTests.cs`. Each test runs the real pipeline:

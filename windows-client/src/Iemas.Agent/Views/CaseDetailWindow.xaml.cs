@@ -16,6 +16,8 @@ public partial class CaseDetailWindow : Window
 
     private static readonly (CaseActionType Type, string Label)[] Actions =
     {
+        (CaseActionType.ConfirmResolved, "Confirm Resolved"),
+        (CaseActionType.RejectResolution, "Not Resolved Yet"),
         (CaseActionType.Acknowledged, "Acknowledge"),
         (CaseActionType.WillHandle, "I'll Handle This"),
         (CaseActionType.AlreadyReplied, "Already Replied"),
@@ -41,6 +43,9 @@ public partial class CaseDetailWindow : Window
 
         foreach (var (type, label) in Actions)
         {
+            // "Not resolved yet" only makes sense when the inquiry was marked potentially resolved.
+            if (type == CaseActionType.RejectResolution && theCase.WorkStatus != CaseWorkStatus.PotentiallyResolved) continue;
+
             var button = new Button { Content = label, Tag = type, Margin = new Thickness(0, 0, 6, 6), Padding = new Thickness(8, 5, 8, 5) };
             button.Click += ActionButton_Click;
             ActionsPanel.Children.Add(button);

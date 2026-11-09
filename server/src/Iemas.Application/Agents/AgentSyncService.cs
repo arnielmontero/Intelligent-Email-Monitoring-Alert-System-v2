@@ -29,7 +29,8 @@ public class AgentSyncService
     {
         // Everything the employee still has to act on: new, not started, being worked on ("I'll Handle This"),
         // overdue or escalated — so a Case never disappears from the Agent while it still needs a reply.
-        var openStatuses = new[] { CaseWorkStatus.New, CaseWorkStatus.ActionRequired, CaseWorkStatus.InProgress, CaseWorkStatus.Overdue, CaseWorkStatus.Escalated };
+        // Potentially resolved inquiries wait for the agent's confirmation, so they stay in the action list.
+        var openStatuses = new[] { CaseWorkStatus.New, CaseWorkStatus.ActionRequired, CaseWorkStatus.InProgress, CaseWorkStatus.Overdue, CaseWorkStatus.Escalated, CaseWorkStatus.PotentiallyResolved };
         var actionRequired = new List<CaseDto>();
         foreach (var status in openStatuses)
         {
