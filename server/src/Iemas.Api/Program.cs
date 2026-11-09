@@ -374,10 +374,12 @@ if (builder.Configuration.GetValue("CaseWorkflow:Enabled", true))
 // anything about a partially-completed previous attempt.
 if (builder.Configuration.GetValue("ReplyVerification:Enabled", true))
 {
-    RecurringJob.AddOrUpdate<ReplyVerificationService>(
+    // Inquiry supervision: reads the agent's side of every open conversation (falls back to the
+    // older first-reply check when supervision is switched off). Every 2 minutes.
+    RecurringJob.AddOrUpdate<RecurringJobGuards>(
         "reply-verification-poll-awaiting-reply-cases",
-        service => service.RunAsync(builder.Configuration.GetValue("ReplyVerification:BatchSize", 100), CancellationToken.None),
-        builder.Configuration["ReplyVerification:CronSchedule"] ?? "*/5 * * * *");
+        guards => guards.RunConversationSyncAsync(builder.Configuration.GetValue("ReplyVerification:BatchSize", 200), CancellationToken.None),
+        builder.Configuration["ReplyVerification:CronSchedule"] ?? "*/2 * * * *");
 }
 
 // Requirements §54 (Reminder Engine), §55 (Reminder Recheck Rule — re-checked inside
@@ -410,6 +412,16 @@ if (builder.Configuration.GetValue("ReminderEngine:Enabled", true))
 // reason as the Reminder job above — Escalation's own idempotency check (querying for an existing
 // Executed row) has a narrower TOCTOU gap under real concurrent execution than Reminder's unique-
 // index claim, making the job-level lock more load-bearing here, not just extra safety.
+// Inquiry supervision engine (inquiry-supervision/PROGRESS.md): every minute it applies whatever
+// supervision step is due for each open inquiry. Does nothing when inquiry.supervision_enabled is off.
+if (builder.Configuration.GetValue("InquirySupervision:Enabled", true))
+{
+    RecurringJob.AddOrUpdate<RecurringJobGuards>(
+        "inquiry-supervision",
+        guards => guards.RunInquirySupervisionAsync(builder.Configuration.GetValue("InquirySupervision:BatchSize", 1000), CancellationToken.None),
+        builder.Configuration["InquirySupervision:CronSchedule"] ?? "* * * * *");
+}
+
 if (builder.Configuration.GetValue("EscalationEngine:Enabled", true))
 {
     RecurringJob.AddOrUpdate<RecurringJobGuards>(

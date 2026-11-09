@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Iemas.Application.Cases.Dtos;
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Inquiries;
 using Iemas.Application.Notifications;
 using Iemas.Application.Operations;
 using Iemas.Application.Reminders;
@@ -63,17 +64,20 @@ public class CaseWorkflowService
     private readonly CaseMatchingService _matchingService;
     private readonly ReminderSchedulingService _reminderSchedulingService;
     private readonly NotificationService? _notificationService;
+    private readonly InquiryConversationService? _conversation;
 
     public CaseWorkflowService(
         IAppDbContext db,
         CaseMatchingService matchingService,
         ReminderSchedulingService reminderSchedulingService,
-        NotificationService? notificationService = null)
+        NotificationService? notificationService = null,
+        InquiryConversationService? conversation = null)
     {
         _db = db;
         _matchingService = matchingService;
         _reminderSchedulingService = reminderSchedulingService;
         _notificationService = notificationService;
+        _conversation = conversation;
     }
 
     public async Task<CaseRunResult> RunAsync(int batchSize, CancellationToken cancellationToken)
@@ -282,7 +286,14 @@ public class CaseWorkflowService
             return CaseProcessOutcome.Skipped;
         }
 
-        if ((await IgnoredSenderList.LoadAsync(_db, cancellationToken)).Matches(message.FromAddress))
+        // Inquiry supervision (Q3): an ignored or internal sender never starts an inquiry, but a message
+        // that belongs to an existing inquiry's conversation stays linked to it.
+        var supervised = _conversation is not null && await _conversation.IsSupervisionEnabledAsync(cancellationToken);
+        var threadCase = supervised
+            ? await ConversationThreadMatcher.FindCaseAsync(_db, message.EmailAccountId, message.ThreadId, message.InReplyTo, message.References, cancellationToken)
+            : null;
+
+        if (threadCase is null && (await IgnoredSenderList.LoadAsync(_db, cancellationToken)).Matches(message.FromAddress))
         {
             return CaseProcessOutcome.Skipped;
         }
@@ -294,7 +305,15 @@ public class CaseWorkflowService
             return CaseProcessOutcome.Skipped;
         }
 
+        var role = supervised ? await _conversation!.InboundRoleAsync(message.FromAddress, cancellationToken) : ConversationRole.Customer;
         var matchResult = await _matchingService.FindMatchingCaseAsync(message, cancellationToken);
+        if (role == ConversationRole.Internal && (matchResult.ExistingCase is null || !IsThreadSignal(matchResult.Signal)))
+        {
+            // Internal email only ever joins an inquiry through the conversation thread itself.
+            if (threadCase is null) return CaseProcessOutcome.Skipped;
+            matchResult = new CaseMatchResult(threadCase, CaseMatchSignal.References, "Same conversation thread");
+        }
+
         var outcome = CaseProcessOutcome.Updated;
 
         Case targetCase;
@@ -302,6 +321,17 @@ public class CaseWorkflowService
         {
             targetCase = await CreateCaseAsync(message, cancellationToken);
             outcome = CaseProcessOutcome.Created;
+            if (supervised) _conversation!.OnCaseCreated(targetCase, message);
+        }
+        else if (supervised)
+        {
+            targetCase = matchResult.ExistingCase;
+            if (await _conversation!.OnInboundAttachedAsync(targetCase, message, role, cancellationToken))
+            {
+                outcome = CaseProcessOutcome.Reopened;
+            }
+            targetCase.UpdatedAt = DateTimeOffset.UtcNow;
+            targetCase.LastActivityAt = message.ReceivedAt > targetCase.LastActivityAt ? message.ReceivedAt : targetCase.LastActivityAt;
         }
         else
         {
@@ -353,6 +383,7 @@ public class CaseWorkflowService
             EmailMessageId = message.Id,
             MatchSignal = matchResult.Signal,
             MatchDetail = matchResult.Detail,
+            Role = role,
         });
 
         message.CaseId = targetCase.Id;
@@ -362,9 +393,9 @@ public class CaseWorkflowService
         {
             CaseId = targetCase.Id,
             EventType = CaseEventType.EmailReceived,
-            Detail = outcome == CaseProcessOutcome.Created
-                ? $"Email received from {message.FromAddress}: \"{message.Subject}\"."
-                : $"Email received from {message.FromAddress}: \"{message.Subject}\" (matched to this Case via {matchResult.Signal}: {matchResult.Detail}).",
+            Detail = (role == ConversationRole.Internal ? "Internal email" : "Email") + (outcome == CaseProcessOutcome.Created
+                ? $" received from {message.FromAddress}: \"{message.Subject}\"."
+                : $" received from {message.FromAddress}: \"{message.Subject}\" (matched to this Case via {matchResult.Signal}: {matchResult.Detail})."),
             OccurredAt = message.ReceivedAt,
         });
 
@@ -388,13 +419,22 @@ public class CaseWorkflowService
         // safe to call unconditionally here rather than threading extra outcome-specific logic
         // through this method — same "let the specialist service decide" separation used
         // throughout (matching, verification, etc. never re-derived by their callers).
-        await _reminderSchedulingService.ScheduleInitialReminderAsync(targetCase.Id, cancellationToken);
+        // With inquiry supervision on, the supervision engine owns every automatic reminder; the
+        // older reminder cycle (which stops at the first reply) is not started.
+        if (!supervised)
+        {
+            await _reminderSchedulingService.ScheduleInitialReminderAsync(targetCase.Id, cancellationToken);
+        }
 
         // §72/§109 step 7 "Agent receives notification" — a brand-new Case, or one just reopened
         // by a new related customer email, is exactly the "New Email"/action-required moment §51-52
         // describes. Fires only after the above SaveChangesAsync already committed (§76 ordering);
         // best-effort, never blocks/fails this already-successful Case creation/update.
-        if ((outcome == CaseProcessOutcome.Created || outcome == CaseProcessOutcome.Reopened) && _notificationService is not null)
+        // Under supervision a customer follow-up that hands the next step back to the agent is just as
+        // much "a new email that needs you" as a new inquiry.
+        var followUpNeedsAgent = supervised && outcome == CaseProcessOutcome.Updated && role == ConversationRole.Customer
+            && targetCase.Stage == InquiryStage.CustomerFollowUpReceived && targetCase.StageChangedAt == message.ReceivedAt;
+        if ((outcome == CaseProcessOutcome.Created || outcome == CaseProcessOutcome.Reopened || followUpNeedsAgent) && _notificationService is not null)
         {
             await _notificationService.SendForCaseAsync(
                 NotificationType.NewEmail, targetCase, AgentPushCommandType.ShowCase, null, cancellationToken);
@@ -402,6 +442,9 @@ public class CaseWorkflowService
 
         return outcome;
     }
+
+    private static bool IsThreadSignal(CaseMatchSignal signal) =>
+        signal is CaseMatchSignal.ThreadId or CaseMatchSignal.InReplyTo or CaseMatchSignal.References or CaseMatchSignal.MessageIdRelationship;
 
     private async Task<Case> CreateCaseAsync(EmailMessage message, CancellationToken cancellationToken)
     {
@@ -486,6 +529,13 @@ public class CaseWorkflowService
         targetCase.CompletionComment = request.Comment;
         targetCase.CompletedAt = DateTimeOffset.UtcNow;
         targetCase.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // Inquiry supervision: completing is the agent's confirmation (or a stated closing reason);
+        // it ends supervision and its pending reminders.
+        if (_conversation is not null)
+        {
+            await _conversation.OnCompletedAsync(targetCase, request.Reason, targetCase.CompletedAt.Value, cancellationToken);
+        }
 
         _db.CaseEvents.Add(new CaseEvent
         {

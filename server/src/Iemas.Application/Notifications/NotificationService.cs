@@ -40,7 +40,13 @@ public static class NotificationTemplateDefaults
         NotificationType.EscalationWarning => Create(type, "Escalation Warning",
             "Hey {{employee_name}}, \"{{email_subject}}\" ({{case_id}}) is still unresolved after {{reminder_count}} reminder(s). It will be escalated if it remains unresolved."),
         NotificationType.Escalation => Create(type, "Escalated",
-            "\"{{email_subject}}\" ({{case_id}}) has been escalated after {{reminder_count}} reminder(s) without a verified reply."),
+            "\"{{email_subject}}\" ({{case_id}}) from {{sender_email}} has been escalated to management because it still needs your attention."),
+        NotificationType.CustomerFollowUpDue => Create(type, "Follow-up may be needed",
+            "Hey {{employee_name}}, {{sender_email}} has not replied to you about \"{{email_subject}}\" ({{case_id}}) for {{elapsed_time}}. Please follow up, or close the inquiry if it is settled."),
+        NotificationType.ConfirmResolution => Create(type, "Please confirm: resolved?",
+            "Hey {{employee_name}}, \"{{email_subject}}\" ({{case_id}}) from {{sender_email}} looks resolved. Please confirm it is resolved, or reject so monitoring continues."),
+        NotificationType.UpdateRequested => Create(type, "Update needed",
+            "Hey {{employee_name}}, \"{{email_subject}}\" ({{case_id}}) from {{sender_email}} has had no progress for {{elapsed_time}}. Please reply to the customer or update the inquiry."),
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 

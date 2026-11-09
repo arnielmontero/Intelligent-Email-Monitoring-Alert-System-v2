@@ -72,4 +72,24 @@ public enum ReminderTrigger
 
     /// <summary>§56 "Remind me at 3:00 PM" — an employee-requested one-off reminder via the Windows Agent RemindLater action.</summary>
     EmployeeRequested = 2,
+
+    // Inquiry supervision engine - every automatic reminder records which timer caused it.
+
+    /// <summary>The initial-response or follow-up deadline passed and the agent still owes a reply.</summary>
+    ResponseOverdue = 3,
+
+    /// <summary>The conversation is idle while the agent owes the next step.</summary>
+    ConversationIdle = 4,
+
+    /// <summary>The customer has not replied within the waiting period; a follow-up may be needed.</summary>
+    CustomerSilent = 5,
+
+    /// <summary>The internal wait expired; the agent is asked for an update.</summary>
+    InternalWaitExpired = 6,
+
+    /// <summary>The inquiry looks resolved; the agent is asked to confirm.</summary>
+    ConfirmResolution = 7,
+
+    /// <summary>The overall resolution target was missed.</summary>
+    ResolutionOverdue = 8,
 }

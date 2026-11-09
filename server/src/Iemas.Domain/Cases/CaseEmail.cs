@@ -20,4 +20,7 @@ public class CaseEmail : Entity
     /// <summary>Requirements §34/§89 — which signal associated this specific message with this Case.</summary>
     public CaseMatchSignal MatchSignal { get; set; }
     public string? MatchDetail { get; set; }
+
+    /// <summary>Who wrote this message within the inquiry's conversation.</summary>
+    public ConversationRole Role { get; set; } = ConversationRole.Customer;
 }

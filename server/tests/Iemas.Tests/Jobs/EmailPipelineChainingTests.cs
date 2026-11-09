@@ -64,6 +64,13 @@ public class EmailPipelineChainingTests
             new EmailIntakeService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter ?? new FakeEmailProviderAdapter()), NullLogger<EmailIntakeService>.Instance),
             new EmailClassificationService(db, provider, new NoOpRetryDelay(), new AiCircuitBreakerStore(TimeProvider.System), NullLogger<EmailClassificationService>.Instance),
             new CaseWorkflowService(db, new CaseMatchingService(db), new ReminderSchedulingService(db)),
+            new Iemas.Application.Inquiries.InquirySupervisionService(db, new EscalationService(db)),
+            new Iemas.Application.Inquiries.ConversationSyncService(db, new PassThroughEncryptionService(),
+                new FakeEmailProviderAdapterResolver(adapter ?? new FakeEmailProviderAdapter()),
+                new Iemas.Application.Inquiries.InquiryConversationService(db),
+                new Iemas.Application.Inquiries.AgentReplyProtector(new PassThroughEncryptionService())),
+            new ReplyVerificationService(db, new PassThroughEncryptionService(), new FakeEmailProviderAdapterResolver(adapter ?? new FakeEmailProviderAdapter())),
+            new Iemas.Application.Inquiries.InquiryConversationService(db),
             jobs,
             new ConfigurationBuilder().Build(),
             NullLogger<RecurringJobGuards>.Instance);

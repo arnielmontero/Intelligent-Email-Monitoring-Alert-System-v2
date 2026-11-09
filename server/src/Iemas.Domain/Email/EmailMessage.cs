@@ -55,5 +55,15 @@ public class EmailMessage : Entity
     public string? AiModel { get; set; }
     public Guid? CaseId { get; set; }
 
+    /// <summary>Inbound (read from the Inbox) or Outbound (an agent message read from the Sent folder).</summary>
+    public MessageDirection Direction { get; set; } = MessageDirection.Inbound;
+
+    /// <summary>
+    /// Q4 - the text of an agent's outbound message, sensitive strings masked, encrypted with
+    /// AES-GCM (format "keyId:nonce:tag:cipher", base64 parts). BodyText/BodyHtml stay null for
+    /// outbound messages. Erased after the retention period once the inquiry is closed.
+    /// </summary>
+    public string? BodyTextEncrypted { get; set; }
+
     public ICollection<EmailAttachmentMetadata> Attachments { get; set; } = new List<EmailAttachmentMetadata>();
 }

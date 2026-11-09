@@ -136,7 +136,7 @@ public class ReminderExecutionService
 
         // §55 Reminder Recheck Rule — every condition it lists, checked fresh right now, not
         // trusted from whatever was true when this reminder was originally scheduled.
-        var cancelReason = DetermineCancelReason(targetCase)
+        var cancelReason = DetermineCancelReason(targetCase, reminder.Trigger)
             ?? ((await IgnoredSenderList.LoadAsync(_db, cancellationToken)).Matches(targetCase?.CustomerEmailAddress)
                 ? ReminderCancelReason.SenderIgnored
                 : null);
@@ -263,9 +263,22 @@ public class ReminderExecutionService
     }
 
     /// <summary>§55 — every recheck condition it lists, in the order given. Returns null when the Case is still legitimately eligible.</summary>
-    private static ReminderCancelReason? DetermineCancelReason(Case? targetCase)
+    private static ReminderCancelReason? DetermineCancelReason(Case? targetCase, ReminderTrigger trigger)
     {
         if (targetCase is null) return ReminderCancelReason.CaseNotFound;
+
+        // An agent's own "Remind me later" belongs to the agent, not to the reply check: a reply
+        // mid-conversation does not make it obsolete. Only a closed inquiry cancels it.
+        if (trigger == ReminderTrigger.EmployeeRequested)
+        {
+            return targetCase.WorkStatus switch
+            {
+                CaseWorkStatus.Completed => ReminderCancelReason.CaseCompleted,
+                CaseWorkStatus.Cancelled => ReminderCancelReason.CaseCancelled,
+                _ => null,
+            };
+        }
+
         if (targetCase.ReplyStatus == CaseReplyStatus.Replied) return ReminderCancelReason.ReplyVerified;
         if (targetCase.WorkStatus == CaseWorkStatus.Completed) return ReminderCancelReason.CaseCompleted;
         if (targetCase.WorkStatus == CaseWorkStatus.Cancelled) return ReminderCancelReason.CaseCancelled;

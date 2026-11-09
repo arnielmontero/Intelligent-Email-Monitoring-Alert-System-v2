@@ -188,7 +188,7 @@ public class NotificationTests
 
         Assert.Equal(new[] { "NOTIFICATION_TEMPLATE_UPDATED", "NOTIFICATION_TEMPLATE_RESET" }, audit.Entries.Select(e => e.Action));
         var templates = await admin.GetTemplatesAsync(CancellationToken.None);
-        Assert.Equal(6, templates.Templates.Count);
+        Assert.Equal(9, templates.Templates.Count); // 6 original + CustomerFollowUpDue, ConfirmResolution, UpdateRequested (inquiry supervision)
     }
 
     /// <summary>§52 — the reminder that reaches the escalation policy's trigger count warns the employee instead of a plain reminder.</summary>

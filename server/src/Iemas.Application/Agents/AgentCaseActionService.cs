@@ -33,12 +33,15 @@ public class AgentCaseActionService
     private readonly IAppDbContext _db;
     private readonly CaseWorkflowService _caseWorkflowService;
     private readonly ReminderSchedulingService _reminderSchedulingService;
+    private readonly Inquiries.InquiryConversationService? _conversation;
 
-    public AgentCaseActionService(IAppDbContext db, CaseWorkflowService caseWorkflowService, ReminderSchedulingService reminderSchedulingService)
+    public AgentCaseActionService(IAppDbContext db, CaseWorkflowService caseWorkflowService, ReminderSchedulingService reminderSchedulingService,
+        Inquiries.InquiryConversationService? conversation = null)
     {
         _db = db;
         _caseWorkflowService = caseWorkflowService;
         _reminderSchedulingService = reminderSchedulingService;
+        _conversation = conversation;
     }
 
     public async Task<Result<CaseActionResultDto>> SubmitActionAsync(
@@ -87,8 +90,22 @@ public class AgentCaseActionService
             ClientTimestamp = request.ClientTimestamp,
         };
 
+        // Q2 - confirming or rejecting a resolution goes through the supervision lifecycle, which owns
+        // ending (or continuing) supervision.
+        // The agent's own action time (an offline Agent queues actions), never later than now.
+        var actedAt = request.ClientTimestamp > DateTimeOffset.UtcNow || request.ClientTimestamp == default ? DateTimeOffset.UtcNow : request.ClientTimestamp;
+        if (request.ActionType is CaseActionType.ConfirmResolved or CaseActionType.RejectResolution)
+        {
+            if (_conversation is null) return Result<CaseActionResultDto>.Failure("Inquiry supervision is not available.");
+            var outcome = request.ActionType == CaseActionType.ConfirmResolved
+                ? await _conversation.ConfirmResolvedAsync(targetCase.Id, employeeId, request.Comment, cancellationToken, actedAt)
+                : await _conversation.RejectResolutionAsync(targetCase.Id, employeeId, request.Comment, cancellationToken, actedAt);
+            if (!outcome.Succeeded) return Result<CaseActionResultDto>.Failure(outcome.Error ?? "The action could not be applied.");
+        }
+
         var detail = BuildActionDetail(request.ActionType, request.Comment);
         ApplyAction(targetCase, request.ActionType);
+        if (_conversation is not null) await ApplyToLifecycleAsync(targetCase, request.ActionType, actedAt, cancellationToken);
         targetCase.UpdatedAt = DateTimeOffset.UtcNow;
 
         var caseEvent = new CaseEvent
@@ -335,6 +352,26 @@ public class AgentCaseActionService
         }
     }
 
+    /// <summary>Inquiry supervision: the actions that change who owes the next step move the lifecycle stage too.</summary>
+    private async Task ApplyToLifecycleAsync(Case targetCase, CaseActionType actionType, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        switch (actionType)
+        {
+            case CaseActionType.WaitingForCustomer:
+                _conversation!.OnAgentMarkedWaitingForCustomer(targetCase, now);
+                break;
+            case CaseActionType.WaitingForInternal:
+                _conversation!.OnAgentMarkedWaitingForInternal(targetCase, now);
+                break;
+            case CaseActionType.Cancel when targetCase.WorkStatus == CaseWorkStatus.Cancelled:
+                await _conversation!.OnCompletedAsync(targetCase, CaseCompletionReason.CancelledByEmployee, now, cancellationToken);
+                break;
+            case CaseActionType.Reopen:
+                _conversation!.OnReopenedByHand(targetCase, now);
+                break;
+        }
+    }
+
     private static string BuildActionDetail(CaseActionType actionType, string? comment)
     {
         var baseDetail = actionType switch
@@ -343,6 +380,8 @@ public class AgentCaseActionService
             CaseActionType.WillHandle => "Employee indicated they will handle this Case.",
             CaseActionType.AlreadyReplied => "Employee claims to have already replied. This is a claim, not a verified fact — see Reply Verification history for the actual mailbox-checked outcome.",
             CaseActionType.WaitingForCustomer => "Employee marked the Case as waiting for the customer.",
+            CaseActionType.ConfirmResolved => "Employee confirmed the inquiry is resolved.",
+            CaseActionType.RejectResolution => "Employee said the inquiry is not resolved yet.",
             CaseActionType.WaitingForInternal => "Employee marked the Case as waiting on an internal party.",
             CaseActionType.RemindLater => "Employee requested a later reminder.",
             CaseActionType.MarkCompleted => "Employee requested completion (use the Complete Case action with a reason to actually complete).",

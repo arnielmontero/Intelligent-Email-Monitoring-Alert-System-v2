@@ -58,6 +58,10 @@ public static class DependencyInjection
             sp.GetRequiredService<OpenRouterClassificationProvider>(),
             sp.GetRequiredService<Iemas.Application.AiUsage.IAiUsageRecorder>()));
         services.AddMemoryCache();
+
+        // Inquiry supervision: AI resolution assessment and management escalation email.
+        services.AddHttpClient<Iemas.Application.Common.Ai.IAiResolutionAssessor, Iemas.Infrastructure.Ai.OpenRouterResolutionAssessor>();
+        services.AddScoped<IEscalationEmailSender, Iemas.Infrastructure.Email.SmtpEscalationEmailSender>();
         services.AddHttpClient<Iemas.Application.AiModels.IAiProviderAdminClient, OpenRouterAdminClient>(client =>
             client.Timeout = TimeSpan.FromSeconds(20));
 

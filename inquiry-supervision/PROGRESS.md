@@ -116,56 +116,135 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done and verified (note 
 
   Full suite: 510 passed. The baseline was 496.
 
-### Phase 2: Full conversation tracking (G4, G5)
-- [ ] An inbound message that matches an **open** Case by thread headers joins that Case whatever its classification. The classification is still recorded.
-- [ ] Store the agent's matching Sent messages as outbound conversation messages on the Case, with direction, time and sender
-- [ ] Case fields: `LastCustomerMessageAt`, `LastAgentMessageAt`, `AwaitingSide` (Agent / Customer / Internal / None)
-- [ ] Never create a duplicate Case for replies in the same conversation (regression test)
+### Phase 2: Full conversation tracking (G4, G5). SERVER DONE 2026-11-09
+- [x] A message in the thread of an existing inquiry is linked to it whatever it says. The match uses thread id, In-Reply-To or References, never subject. It is never re-screened, so a NotImportant verdict can't lose it.
+  - Code: `ConversationThreadMatcher`. It is used in classification, in Case creation, and in intake, so an Ignored or internal sender inside a thread still reaches its inquiry.
+  - Test: `S6_CustomerFollowUp_JoinsTheSameInquiry…`
+- [x] The agent's Sent messages for every open inquiry are stored as outbound conversation messages (`ConversationSyncService`):
+  - direction `Outbound`, status `Outbound`
+  - role `Agent`, or `Internal` for internal-only forwards
+  - body masked and encrypted (Q4)
+  - unrelated sent mail is never stored
 
-### Phase 3: Inquiry lifecycle states (G6)
-- [ ] Map the required states onto the Case: Awaiting agent response · Agent responded / Awaiting customer · Ongoing · Awaiting internal action · **Potentially resolved** (new) · Confirmed resolved (Completed + reason) · Overdue · Escalated
-- [ ] A state-transition table in code with a single place that decides transitions, and tests for each transition
-- [ ] CMS and Windows Agent show the new state
+  This replaces the old first-reply-only check while supervision is on. Tests: S5, S10, Q3.
+- [x] New Case fields:
+  - `LastCustomerMessageAt`, `LastAgentMessageAt`, `LastInternalActivityAt`, `FirstAgentResponseAt`
+  - `CaseEmail.Role` (Customer / Agent / Internal)
 
-### Phase 4: Supervise after the first reply (G2, G3)
-- [ ] Reminder and escalation rules are driven by the lifecycle state and the side expected to act next, not by `ReplyStatus == Replied`
-- [ ] Three separate time limits per policy: **first-response**, **idle** (no progress while the agent is expected to act), **resolution** (total open age)
-- [ ] Waiting-for-customer and waiting-for-internal periods get a maximum. After it expires, the agent is asked for an update. Escalation follows only if the agent still does nothing.
-- [ ] A customer reply returns the Case to "awaiting agent" and restarts the response timer
-- [ ] Reminders and escalation stop when their trigger no longer applies, as checked on every run
+  Who owes the next step is derived from the stage: `InquiryLifecycle.AgentOwesNextStep` / `CustomerOwesNextStep`.
+- [x] No duplicate Case for replies in the same conversation. Asserted in S6, S9c and Q3.
+- [x] A customer's reply to the *agent's* message joins the inquiry, because outbound Message-IDs are now known.
 
-### Phase 5: AI resolution assessment (Module 8)
-- [ ] When the conversation changes, an optional AI call assesses the thread: Acknowledged only / In progress / Appears resolved, with confidence and a reason
-- [ ] The AI can only move a Case to **Potentially resolved**. It can never complete it.
-- [ ] The agent confirms or rejects in the Windows Agent or CMS. Rejection returns the Case to active.
-- [ ] Optional business rule (needs a decision, see Q2): auto-confirm after N days of customer silence while the Case is potentially resolved
+### Phase 3: Inquiry lifecycle states (G6). SERVER DONE 2026-11-09
+- [x] `InquiryStage` holds the required states:
+  - Awaiting initial response
+  - Initial response sent
+  - Customer follow-up received
+  - Agent follow-up sent
+  - Awaiting customer
+  - Awaiting internal action
+  - Conversation inactive
+  - **Potentially resolved**
+  - Resolved
+  - Closed
 
-### Phase 6: Escalation content (G8)
-- [ ] Check the escalation email and add any missing required fields
-- [ ] Each escalation states which time limit was breached and by how much
+  Overdue and Escalated are flags shown alongside any stage: `OverdueSince` and `EpisodeEscalations`.
+- [x] `InquiryLifecycle` is the single place that decides transitions. Every change is recorded on the Case timeline as `StageChanged`.
+  - A message older than the current stage never rewinds it.
+  - Only Resolved and Closed are terminal.
+- [x] `CaseWorkStatus` is projected from the stage, so the existing CMS and Windows Agent keep working. `CaseWorkStatus.PotentiallyResolved` was added.
+- [ ] CMS and Windows Agent show the new stage and the confirm/reject buttons. See Phase 8 and the Windows Agent task below.
 
-### Phase 7: Reassignment (G7)
-- [ ] Reassign a Case to another employee from the CMS. Recorded in history. Pending reminders move to the new owner. Escalation goes to the new owner's chain.
+### Phase 4: Supervise after the first reply (G2, G3). DONE 2026-11-09
+- [x] New `InquirySupervisionService`, run every minute, with the pure, clock-explicit `SupervisionRules`. Reminders and escalation are decided from the stage and from who owes the next step, never from "a reply was found".
+- [x] Separate timers, all configurable (System Settings → "Inquiry supervision"):
+  - initial response: 4 business h
+  - customer follow-up and inactive: 1 business day
+  - customer wait: 3 calendar days
+  - internal wait: 1 business day
+  - resolution target: 5 business days
+  - reminder interval: 2 business h, with 2 reminders before escalation
+  - next escalation level: 1 business day later
+- [x] Business time skips weekends and holidays, using the calendar of the default Reminder Policy (`BusinessCalendar`). Covered by `BusinessCalendarTests`.
+- [x] When a wait expires, the agent is notified and the inquiry becomes Inactive. Escalation follows only if the agent still does nothing. Silence from the customer alone is never escalated (S7, S7b).
+- [x] A customer reply returns the inquiry to the agent and restarts that timer (S6). Every stage change restarts the counters for the new stage.
+- [x] Reminders and escalation stop as soon as their trigger no longer applies (S5, S9, S10). Pending older-engine reminders are cancelled on a stage change.
+- [x] The resolution target marks the inquiry overdue and notifies the agent. Management is escalated for overdue only while the agent owes the next step (`ResolutionTarget_…` test).
+- [x] The older reminder and escalation engines stay in the code. They run only when `inquiry.supervision_enabled` is off (`SupervisionOff_…` test). An agent's "Remind me later" still works after a reply; before, it was cancelled.
+
+### Phase 5: AI resolution assessment (Module 8). SERVER DONE 2026-11-09
+- [x] `ResolutionAssessmentService` + `OpenRouterResolutionAssessor`:
+  - runs when an inquiry's conversation changes
+  - verdicts: Acknowledged only / In progress / Customer waiting / Appears resolved, with a confidence and a reason
+  - the prompt treats the conversation as untrusted data
+  - each call is recorded under AI usage purpose `ResolutionAssessment`
+- [x] The AI can only move an inquiry to **Potentially resolved**, at or above 75 % confidence (configurable), and the agent is asked to confirm. It never closes an inquiry (S9).
+- [x] The agent confirms or rejects through the Windows Agent actions `ConfirmResolved` / `RejectResolution` or the CMS API. Rejecting returns the inquiry to its previous stage (S9b). A customer writing after resolution reopens it (S9c).
+- [x] Auto-close is **not** implemented, per Q2. After 3 days of customer silence the agent is asked to review and confirm. Gentle reminders follow, with no escalation.
+
+### Phase 6: Escalation content and delivery (G8, G10). DONE 2026-11-09
+- [x] Management escalation emails are actually sent through the active Outbound (SMTP) account (`SmtpEscalationEmailSender`). Failed sends are retried up to 3 times. Delivery result and failure reason are stored on `EscalationEvent`.
+- [x] Email content (`EscalationEmailComposer`):
+  - customer
+  - original subject and date
+  - assigned agent
+  - current status
+  - whether the agent has replied
+  - last activity, and by whom
+  - how long it has been inactive and how long open
+  - resolution target
+  - previous reminders, with times
+  - the reason, naming the timer that was breached
+
+  The S4/S8 test asserts every field.
+- [x] Each further escalation of the same inquiry goes one level higher, for example supervisor first, then director. Ownership never changes.
+
+### Phase 7: Reassignment (G7). SERVER DONE 2026-11-09
+- [x] `InquiryOverviewService.ReassignAsync` + `POST /api/v1/inquiries/{id}/reassign`:
+  - recorded in history and in the audit log
+  - timers continue, because a handover does not reset a deadline
+  - later reminders and escalation follow the new owner (`Reassign_…` test)
+- [ ] CMS button. See Phase 8.
 
 ### Phase 8: Management visibility (G9)
-- [ ] Dashboard by agent: unanswered · awaiting customer · idle · potentially resolved · overdue · escalated · resolved
-- [ ] Case timeline shows inbound and outbound messages, reminders, escalations and state changes in one view
+- [x] API `GET /api/v1/inquiries/overview`, with counts per agent and stage, overdue and escalated (`Overview_…` test)
+- [x] API `GET /api/v1/inquiries?bucket=…`
+- [x] API `GET /api/v1/inquiries/{id}`: the full conversation in both directions, with agent text decrypted. Supervisor or above only, and every view is written to the audit log.
+- [ ] CMS page "Inquiry Supervision": dashboard by agent, lists by bucket, and an inquiry view with the conversation and confirm / reject / reassign
+- [ ] Windows Agent: "Confirm resolved" / "Not resolved yet" buttons, and the new notification types
 
 ### Phase 9: Verification: the 10 required scenarios
-Each scenario gets an automated test and a live run on the separate stack.
+Automated end-to-end tests: `server/tests/Iemas.Tests/Inquiries/InquiryLifecycleEndToEndTests.cs`. Each test runs the real pipeline:
+
+intake → Zettelkasten/AI → Case → Sent-folder sync → supervision engine
+
+It uses fake mailboxes and an explicit clock (Mon–Fri 08–17).
 
 | # | Scenario | Test | Live |
 |---|---|---|---|
-| 1 | Legitimate inquiry → Case, owner, notification | [ ] | [ ] |
-| 2 | Non-inquiry email → no Case | [ ] | [ ] |
-| 3 | Uncertain email → AI → classified | [ ] | [ ] |
-| 4 | Agent never replies → reminder after the time limit | [ ] | [ ] |
-| 5 | Agent acknowledges only → Case stays open and supervised | [ ] | [ ] |
-| 6 | Customer follow-up → joins the same Case | [ ] | [ ] |
-| 7 | Conversation goes idle → idle reminder | [ ] | [ ] |
-| 8 | Escalation threshold exceeded → manager email with full context | [ ] | [ ] |
-| 9 | Resolved → reminders and escalation stop | [ ] | [ ] |
-| 10 | Several agents at once → ownership never crosses | [ ] | [ ] |
+| 1 | Legitimate inquiry → Case, owner, notification | [x] `S1_…` | [ ] |
+| 2 | Non-inquiry email → no Case | [x] `S2_…` | [ ] |
+| 3 | Uncertain email → AI → classified | [x] `S3_…` | [ ] |
+| 4 | Agent never replies → reminders after the time limit | [x] `S4_S8_…` | [ ] |
+| 5 | Agent acknowledges only → stays open and supervised | [x] `S5_…` | [ ] |
+| 6 | Customer follow-up → joins the same inquiry | [x] `S6_…` | [ ] |
+| 7 | Conversation goes idle → notice, update request, escalation if ignored | [x] `S7_…`, `S7b_…` | [ ] |
+| 8 | Escalation threshold exceeded → manager email with full context | [x] `S4_S8_…` | [ ] |
+| 9 | Resolved → reminders and escalation stop | [x] `S9_…`, `S9b_…`, `S9c_…` | [ ] |
+| 10 | Several agents at once → ownership never crosses | [x] `S10_…` | [ ] |
+
+Additional tests:
+- Q3 internal forward and colleague reply
+- waiting for internal action
+- overdue without escalation while the customer owes the reply
+- calendar
+- reply safeguards
+- supervision off
+- remind-later after a reply
+- reassignment
+- overview
+
+Full suite: **537 passed, 0 failed.**
 
 ---
 

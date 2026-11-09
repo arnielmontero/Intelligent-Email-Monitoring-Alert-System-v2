@@ -23,6 +23,7 @@ public static class AiUsagePurpose
     public const string EmailClassification = "EmailClassification";
     public const string ModelTest = "ModelTest";
     public const string ProfileTest = "ProfileTest";
+    public const string ResolutionAssessment = "ResolutionAssessment";
 }
 
 /// <summary>Token usage and cost for one provider call, as reported by the provider.</summary>

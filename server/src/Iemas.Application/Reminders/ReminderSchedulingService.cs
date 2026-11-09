@@ -107,7 +107,8 @@ public class ReminderSchedulingService
         {
             return Result<Reminder>.Failure("Case not found.");
         }
-        if (!IsReminderEligible(targetCase))
+        // The agent asked for this reminder; only a closed inquiry makes it pointless (a reply does not).
+        if (targetCase.WorkStatus is CaseWorkStatus.Completed or CaseWorkStatus.Cancelled)
         {
             return Result<Reminder>.Failure("Case is no longer eligible for reminders (already resolved).");
         }

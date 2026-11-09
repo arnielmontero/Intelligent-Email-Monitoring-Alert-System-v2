@@ -58,6 +58,12 @@ public enum CaseActionType
     Cancel = 7,
     Reopen = 8,
     RequestEscalation = 9,
+
+    /// <summary>The agent confirms the inquiry is resolved (final authority, Q2). Ends supervision.</summary>
+    ConfirmResolved = 10,
+
+    /// <summary>The agent rejects the AI's "potentially resolved" suggestion; supervision continues.</summary>
+    RejectResolution = 11,
 }
 
 /// <summary>Requirements §67 "Technical Agent Log" — connect/disconnect/heartbeat/auth-failure/sync/version/error/reconnect, kept separate from Case History and the admin-facing AuditLog.</summary>

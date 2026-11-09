@@ -32,4 +32,13 @@ public enum EmailProcessingStatus
 
     /// <summary>Sender is on the "Ignored senders" system setting: stored, never classified, never a Case or notification.</summary>
     Ignored = 5,
+
+    /// <summary>An agent's message read from the Sent folder and linked to an inquiry. Never classified.</summary>
+    Outbound = 6,
+}
+
+public enum MessageDirection
+{
+    Inbound = 0,
+    Outbound = 1,
 }

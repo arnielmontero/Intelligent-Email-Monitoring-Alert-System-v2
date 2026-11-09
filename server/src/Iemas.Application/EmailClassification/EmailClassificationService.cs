@@ -113,6 +113,19 @@ public class EmailClassificationService
             ? await _db.ClassificationProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Name == profileName && p.Enabled, cancellationToken)
             : null;
 
+        // Module 7 / G4 - a message in the thread of an existing inquiry belongs to that inquiry, whatever
+        // it says ("any update?", "thanks, but it still fails", an internal forward). It is linked
+        // without screening so it can never be lost by a NotImportant verdict.
+        if (await SystemSettingsService.GetBoolAsync(_db, SystemSettingKeys.SupervisionEnabled, cancellationToken))
+        {
+            var threadCase = await Inquiries.ConversationThreadMatcher.FindCaseAsync(
+                _db, message.EmailAccountId, message.ThreadId, message.InReplyTo, message.References, cancellationToken);
+            if (threadCase is not null)
+            {
+                return await PersistConversationMemberAsync(message, profile, threadCase.CaseNumber, stopwatch, cancellationToken);
+            }
+        }
+
         // Module 3 - the Zettelkasten screening stage. Only an Uncertain verdict reaches the AI.
         var zettelkasten = await EvaluateZettelkastenAsync(message, profile, cancellationToken);
         var filterResult = new DeterministicFilterResult(zettelkasten.Verdict == InquiryFilterVerdict.Uncertain, zettelkasten.Describe());
@@ -285,6 +298,12 @@ public class EmailClassificationService
         return ImportanceDecision.NotImportant;
     }
 
+    private Task<ImportanceDecision> PersistConversationMemberAsync(
+        EmailMessage message, ClassificationProfile? profile, string caseNumber, Stopwatch stopwatch, CancellationToken cancellationToken) =>
+        PersistDeterministicInquiryAsync(message, profile,
+            new DeterministicFilterResult(false, $"Part of the existing conversation of {caseNumber}; linked to that inquiry without screening."),
+            stopwatch, cancellationToken, category: "Conversation");
+
     private async Task<InquiryFilterResult> EvaluateZettelkastenAsync(EmailMessage message, ClassificationProfile? profile, CancellationToken cancellationToken)
     {
         var settings = await InquiryFilterSettings.LoadAsync(_db, cancellationToken);
@@ -305,14 +324,14 @@ public class EmailClassificationService
     /// </summary>
     private async Task<ImportanceDecision> PersistDeterministicInquiryAsync(
         EmailMessage message, ClassificationProfile? profile, DeterministicFilterResult filterResult,
-        Stopwatch stopwatch, CancellationToken cancellationToken)
+        Stopwatch stopwatch, CancellationToken cancellationToken, string category = "Inquiry")
     {
         var classification = await GetOrCreateClassificationAsync(message.Id, cancellationToken);
         classification.ClassificationProfileId = profile?.Id;
         classification.DeterministicFilterMatched = true;
         classification.DeterministicFilterReason = filterResult.Reason;
         classification.Relevance = ClassificationRelevance.Relevant;
-        classification.Category = "Inquiry";
+        classification.Category = category;
         classification.ActionRequired = true;
         classification.ResponseExpected = true;
         classification.Legitimate = true;
@@ -326,7 +345,7 @@ public class EmailClassificationService
         classification.ClassifiedAt = DateTimeOffset.UtcNow;
 
         message.ProcessingStatus = EmailProcessingStatus.Processed;
-        message.Classification = "Inquiry";
+        message.Classification = category;
         message.ProcessingError = null;
 
         _db.AiClassificationLogs.Add(new AiClassificationLog

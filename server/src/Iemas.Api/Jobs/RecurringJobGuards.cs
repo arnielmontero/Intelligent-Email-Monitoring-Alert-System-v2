@@ -52,6 +52,10 @@ public class RecurringJobGuards
     private readonly EmailIntakeService _emailIntakeService;
     private readonly EmailClassificationService _emailClassificationService;
     private readonly CaseWorkflowService _caseWorkflowService;
+    private readonly Iemas.Application.Inquiries.InquirySupervisionService _supervision;
+    private readonly Iemas.Application.Inquiries.ConversationSyncService _conversationSync;
+    private readonly ReplyVerificationService _replyVerification;
+    private readonly Iemas.Application.Inquiries.InquiryConversationService _conversation;
     private readonly IBackgroundJobClient _jobs;
     private readonly IConfiguration _configuration;
     private readonly ILogger<RecurringJobGuards> _logger;
@@ -62,6 +66,10 @@ public class RecurringJobGuards
         EmailIntakeService emailIntakeService,
         EmailClassificationService emailClassificationService,
         CaseWorkflowService caseWorkflowService,
+        Iemas.Application.Inquiries.InquirySupervisionService supervision,
+        Iemas.Application.Inquiries.ConversationSyncService conversationSync,
+        ReplyVerificationService replyVerification,
+        Iemas.Application.Inquiries.InquiryConversationService conversation,
         IBackgroundJobClient jobs,
         IConfiguration configuration,
         ILogger<RecurringJobGuards> logger)
@@ -71,6 +79,10 @@ public class RecurringJobGuards
         _emailIntakeService = emailIntakeService;
         _emailClassificationService = emailClassificationService;
         _caseWorkflowService = caseWorkflowService;
+        _supervision = supervision;
+        _conversationSync = conversationSync;
+        _replyVerification = replyVerification;
+        _conversation = conversation;
         _jobs = jobs;
         _configuration = configuration;
         _logger = logger;
@@ -80,9 +92,37 @@ public class RecurringJobGuards
     public Task RunRemindersAsync(int batchSize, CancellationToken cancellationToken) =>
         RunJobAsync("reminders", () => _reminderExecutionService.RunAsync(batchSize, cancellationToken));
 
+    /// <summary>The older escalation engine stops at the first reply; with inquiry supervision on, the supervision engine escalates instead.</summary>
     [DisableConcurrentExecution(timeoutInSeconds: 60)]
     public Task RunEscalationsAsync(int batchSize, CancellationToken cancellationToken) =>
-        RunJobAsync("escalations", () => _escalationService.RunAsync(batchSize, cancellationToken));
+        RunJobAsync("escalations", async () =>
+        {
+            if (await _conversation.IsSupervisionEnabledAsync(cancellationToken)) return;
+            await _escalationService.RunAsync(batchSize, cancellationToken);
+        });
+
+    /// <summary>Inquiry supervision: timers, reminders, wait notices, overdue marking, escalation, AI resolution checks.</summary>
+    [DisableConcurrentExecution(timeoutInSeconds: 120)]
+    public Task RunInquirySupervisionAsync(int batchSize, CancellationToken cancellationToken) =>
+        RunJobAsync("inquiry-supervision", async () =>
+        {
+            var result = await _supervision.RunAsync(batchSize, cancellationToken);
+            foreach (var action in result.Actions) _logger.LogInformation("Supervision: {Action}", action);
+        });
+
+    /// <summary>
+    /// The agent's side of each conversation. With supervision on, every open inquiry's Sent folder is
+    /// read and each agent message stored; otherwise the older reply check runs (first reply only).
+    /// </summary>
+    [DisableConcurrentExecution(timeoutInSeconds: 120)]
+    public Task RunConversationSyncAsync(int batchSize, CancellationToken cancellationToken) =>
+        RunJobAsync("conversation-sync", async () =>
+        {
+            if (await _conversation.IsSupervisionEnabledAsync(cancellationToken))
+                await _conversationSync.RunAsync(batchSize, cancellationToken);
+            else
+                await _replyVerification.RunAsync(batchSize, cancellationToken);
+        });
 
     [DisableConcurrentExecution(timeoutInSeconds: 60)]
     public Task RunEmailIntakeAsync(CancellationToken cancellationToken) =>

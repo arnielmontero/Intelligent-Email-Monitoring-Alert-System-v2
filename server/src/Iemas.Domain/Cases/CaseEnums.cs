@@ -15,6 +15,9 @@ public enum CaseWorkStatus
     Cancelled = 9,
     Expired = 10,
     ReviewRequired = 11,
+
+    /// <summary>The AI believes the customer's concern was addressed; waiting for the agent to confirm. Never closes by itself.</summary>
+    PotentiallyResolved = 12,
 }
 
 /// <summary>
@@ -113,4 +116,22 @@ public enum CaseEventType
 
     /// <summary>§63 — an escalation attempt occurred (executed, skipped, or failed to resolve a recipient). Detail distinguishes which; the full record lives in EscalationEvent.</summary>
     EscalationEvent = 11,
+
+    /// <summary>Inquiry supervision: the lifecycle stage changed (Detail says from/to and why).</summary>
+    StageChanged = 12,
+
+    /// <summary>An agent message to the customer was found in the Sent folder and added to the conversation.</summary>
+    AgentMessage = 13,
+
+    /// <summary>Internal activity linked to the inquiry (a forward to another department, a colleague's note).</summary>
+    InternalActivity = 14,
+
+    /// <summary>The AI assessed whether the conversation looks resolved.</summary>
+    ResolutionAssessment = 15,
+
+    /// <summary>The inquiry was reassigned to another agent.</summary>
+    Reassigned = 16,
+
+    /// <summary>A supervision deadline or wait limit was reached (deadline missed, customer silent, overdue, ...).</summary>
+    SupervisionNotice = 17,
 }

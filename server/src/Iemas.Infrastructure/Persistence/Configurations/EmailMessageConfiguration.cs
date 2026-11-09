@@ -26,6 +26,7 @@ public class EmailMessageConfiguration : IEntityTypeConfiguration<EmailMessage>
         builder.HasIndex(m => m.InReplyTo);
         builder.HasIndex(m => m.ReceivedAt);
         builder.HasIndex(m => m.ProcessingStatus);
+        builder.HasIndex(m => m.Direction);
 
         builder.HasOne(m => m.EmailAccount)
             .WithMany()

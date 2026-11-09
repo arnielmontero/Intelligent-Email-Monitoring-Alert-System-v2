@@ -13,6 +13,15 @@ public enum NotificationType
     Overdue = 3,
     EscalationWarning = 4,
     Escalation = 5,
+
+    /// <summary>The customer has been silent for the waiting period; the agent may need to follow up.</summary>
+    CustomerFollowUpDue = 6,
+
+    /// <summary>The AI thinks the inquiry is resolved; the agent is asked to confirm or reject.</summary>
+    ConfirmResolution = 7,
+
+    /// <summary>The internal wait expired or the conversation stalled; the agent is asked for an update.</summary>
+    UpdateRequested = 8,
 }
 
 /// <summary>Requirements §104 — notification delivery lifecycle. Not every channel supports every state.</summary>

@@ -61,6 +61,14 @@ public static class DependencyInjection
         services.AddScoped<SystemSettingsService>();
         services.AddScoped<UserManagementService>();
         services.AddScoped<EmployeeActivityQueryService>();
+
+        // Inquiry supervision (inquiry-supervision/PROGRESS.md)
+        services.AddScoped<Iemas.Application.Inquiries.InquiryConversationService>();
+        services.AddScoped<Iemas.Application.Inquiries.AgentReplyProtector>();
+        services.AddScoped<Iemas.Application.Inquiries.ConversationSyncService>();
+        services.AddScoped<Iemas.Application.Inquiries.ResolutionAssessmentService>();
+        services.AddScoped<Iemas.Application.Inquiries.InquirySupervisionService>();
+        services.AddScoped<Iemas.Application.Inquiries.InquiryOverviewService>();
         return services;
     }
 }

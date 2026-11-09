@@ -26,6 +26,10 @@ public class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.HasIndex(c => c.OwnerEmployeeId);
         builder.HasIndex(c => new { c.EmailAccountId, c.CustomerEmailAddress });
 
+        // Inquiry supervision: the engine scans non-terminal stages every minute.
+        builder.HasIndex(c => c.Stage);
+        builder.Property(c => c.ResolutionReason).HasMaxLength(1000);
+
         builder.HasOne(c => c.EmailAccount)
             .WithMany()
             .HasForeignKey(c => c.EmailAccountId)

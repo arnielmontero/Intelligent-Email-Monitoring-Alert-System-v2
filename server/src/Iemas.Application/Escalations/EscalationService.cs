@@ -31,11 +31,162 @@ public class EscalationService
 {
     private readonly IAppDbContext _db;
     private readonly NotificationService? _notificationService;
+    private readonly IEscalationEmailSender? _emailSender;
 
-    public EscalationService(IAppDbContext db, NotificationService? notificationService = null)
+    public EscalationService(IAppDbContext db, NotificationService? notificationService = null, IEscalationEmailSender? emailSender = null)
     {
         _db = db;
         _notificationService = notificationService;
+        _emailSender = emailSender;
+    }
+
+    public sealed record SupervisionEscalationResult(EscalationOutcome Outcome, string Detail, bool RetryLater = false);
+
+    /// <summary>
+    /// Inquiry supervision (Module 11) - escalates an inquiry the supervision engine found neglected.
+    /// Unlike <see cref="EvaluateCaseAsync"/> this is not gated on reminder counts or "a reply was
+    /// found": the engine already decided, from the inquiry's stage and timers, that management must
+    /// know. Uses the applicable Escalation Policy for recipients; each escalation of the same inquiry
+    /// goes one level higher, staying at the top level once reached. Sends the management email
+    /// (G10) and tells the agent. Ownership never changes (§64).
+    /// </summary>
+    public async Task<SupervisionEscalationResult> EscalateForSupervisionAsync(Case targetCase, string reason, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (await _db.IsPausedAsync(PauseControl.Escalations, cancellationToken))
+        {
+            return new SupervisionEscalationResult(EscalationOutcome.Skipped, "Escalations are paused (Emergency Pause).", RetryLater: true);
+        }
+
+        if ((await IgnoredSenderList.LoadAsync(_db, cancellationToken)).Matches(targetCase.CustomerEmailAddress))
+        {
+            await RecordSkipAsync(targetCase.Id, null, null, EscalationSkipReason.SenderIgnored, "The customer is on the Ignored senders list.", cancellationToken);
+            return new SupervisionEscalationResult(EscalationOutcome.Skipped, "The customer is on the Ignored senders list.");
+        }
+
+        var policy = await ResolvePolicyAsync(_db, targetCase, cancellationToken);
+        if (policy is null)
+        {
+            await RecordSkipAsync(targetCase.Id, null, null, EscalationSkipReason.NoApplicablePolicy, "No enabled Escalation Policy applies to this Case.", cancellationToken);
+            return new SupervisionEscalationResult(EscalationOutcome.Skipped, "No enabled Escalation Policy applies, so nobody could be told.");
+        }
+
+        var highest = await _db.EscalationEvents
+            .Where(e => e.CaseId == targetCase.Id && e.Outcome == EscalationOutcome.Executed)
+            .Select(e => (int?)e.Level).MaxAsync(cancellationToken) ?? 0;
+        var levels = await _db.EscalationLevels
+            .Include(l => l.SpecificEmployee)
+            .Include(l => l.SpecificGroup!).ThenInclude(g => g.Members).ThenInclude(m => m.Employee)
+            .Where(l => l.EscalationPolicyId == policy.Id && l.Level <= policy.MaximumLevel)
+            .OrderBy(l => l.Level)
+            .ToListAsync(cancellationToken);
+        var level = levels.FirstOrDefault(l => l.Level > highest) ?? levels.LastOrDefault();
+        if (level is null)
+        {
+            await RecordSkipAsync(targetCase.Id, policy.Id, null, EscalationSkipReason.MaximumLevelReached, "The policy has no escalation levels.", cancellationToken);
+            return new SupervisionEscalationResult(EscalationOutcome.Skipped, "The escalation policy has no levels configured.");
+        }
+
+        var recipients = await ResolveRecipientListAsync(targetCase, level, cancellationToken);
+        if (recipients.Count == 0)
+        {
+            await RecordEventAsync(targetCase, policy, level, EscalationOutcome.RecipientUnresolved, null,
+                $"Recipient of type {level.RecipientType} could not be resolved. Reason for escalation: {reason}", cancellationToken, trigger: reason);
+            return new SupervisionEscalationResult(EscalationOutcome.RecipientUnresolved, $"Level {level.Level} recipient ({level.RecipientType}) could not be resolved.");
+        }
+
+        var owner = targetCase.OwnerEmployeeId is Guid ownerId
+            ? await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == ownerId, cancellationToken)
+            : null;
+        var reminders = await _db.Reminders.AsNoTracking()
+            .Where(r => r.CaseId == targetCase.Id && r.Status == ReminderStatus.Sent && r.ExecutedAtUtc != null)
+            .OrderBy(r => r.ExecutedAtUtc).Select(r => r.ExecutedAtUtc!.Value).ToListAsync(cancellationToken);
+        var zone = await SystemSettingsService.GetDefaultTimeZoneAsync(_db, cancellationToken);
+        var email = EscalationEmailComposer.Compose(
+            new EscalationEmailContext(targetCase, owner?.FullName, owner?.Email, level.Level, reason, reminders, zone, now),
+            recipients.Select(r => new EmailRecipient(r.Name, r.Email)).ToList());
+
+        var delivery = _emailSender is null
+            ? new OutboundEmailResult(false, null, "No escalation email sender is configured.")
+            : await _emailSender.SendAsync(email, cancellationToken);
+
+        var display = string.Join("; ", recipients.Select(r => $"{r.Name} <{r.Email}>"));
+        _db.EscalationEvents.Add(new EscalationEvent
+        {
+            CaseId = targetCase.Id,
+            EscalationPolicyId = policy.Id,
+            Level = level.Level,
+            Trigger = reason,
+            RecipientType = level.RecipientType,
+            RecipientDisplay = display,
+            RecipientEmployeeId = level.RecipientType == EscalationRecipientType.SpecificEmployee ? level.SpecificEmployeeId : null,
+            Channel = policy.Channel,
+            Outcome = EscalationOutcome.Executed,
+            Detail = reason,
+            EmailMessageId = delivery.MessageId,
+            DeliveryResult = delivery.Sent ? "Sent" : "Failed",
+            FailureReason = delivery.Error,
+            OccurredAt = now,
+        });
+        _db.CaseEvents.Add(new CaseEvent
+        {
+            CaseId = targetCase.Id,
+            EventType = CaseEventType.EscalationEvent,
+            OccurredAt = now,
+            Detail = $"Escalated to management, level {level.Level} ({level.RecipientType}): {display}. Reason: {reason} "
+                + (delivery.Sent ? "Escalation email sent." : $"Escalation email NOT sent: {delivery.Error}"),
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+
+        if (_notificationService is not null)
+        {
+            await _notificationService.SendForCaseAsync(NotificationType.Escalation, targetCase, AgentPushCommandType.ShowNotification, null, cancellationToken);
+        }
+
+        return new SupervisionEscalationResult(EscalationOutcome.Executed,
+            $"Level {level.Level} → {display}" + (delivery.Sent ? "" : $" (email not sent: {delivery.Error})"));
+    }
+
+    /// <summary>Re-sends escalation emails that failed (e.g. the SMTP server was down), up to 3 attempts each.</summary>
+    public async Task<int> RetryFailedEscalationEmailsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (_emailSender is null) return 0;
+        var failed = await _db.EscalationEvents
+            .Where(e => e.Outcome == EscalationOutcome.Executed && e.DeliveryResult == "Failed" && e.RetryCount < 3 && e.OccurredAt > now.AddDays(-2))
+            .OrderBy(e => e.OccurredAt).Take(20).ToListAsync(cancellationToken);
+        var resent = 0;
+        foreach (var e in failed)
+        {
+            var targetCase = await _db.Cases.FirstOrDefaultAsync(c => c.Id == e.CaseId, cancellationToken);
+            var level = await _db.EscalationLevels
+                .Include(l => l.SpecificEmployee)
+                .Include(l => l.SpecificGroup!).ThenInclude(g => g.Members).ThenInclude(m => m.Employee)
+                .FirstOrDefaultAsync(l => l.EscalationPolicyId == e.EscalationPolicyId && l.Level == e.Level, cancellationToken);
+            e.RetryCount++;
+            if (targetCase is null || level is null) { e.FailureReason = "Case or escalation level no longer exists."; continue; }
+
+            var recipients = await ResolveRecipientListAsync(targetCase, level, cancellationToken);
+            var owner = targetCase.OwnerEmployeeId is Guid ownerId ? await _db.Employees.AsNoTracking().FirstOrDefaultAsync(x => x.Id == ownerId, cancellationToken) : null;
+            var reminders = await _db.Reminders.AsNoTracking()
+                .Where(r => r.CaseId == targetCase.Id && r.Status == ReminderStatus.Sent && r.ExecutedAtUtc != null)
+                .OrderBy(r => r.ExecutedAtUtc).Select(r => r.ExecutedAtUtc!.Value).ToListAsync(cancellationToken);
+            var zone = await SystemSettingsService.GetDefaultTimeZoneAsync(_db, cancellationToken);
+            var result = await _emailSender.SendAsync(EscalationEmailComposer.Compose(
+                new EscalationEmailContext(targetCase, owner?.FullName, owner?.Email, e.Level, e.Trigger, reminders, zone, now),
+                recipients.Select(r => new EmailRecipient(r.Name, r.Email)).ToList()), cancellationToken);
+            if (result.Sent)
+            {
+                e.DeliveryResult = "Sent";
+                e.EmailMessageId = result.MessageId;
+                e.FailureReason = null;
+                resent++;
+            }
+            else
+            {
+                e.FailureReason = result.Error;
+            }
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+        return resent;
     }
 
     /// <summary>
@@ -277,6 +428,42 @@ public class EscalationService
     /// </summary>
     private static bool IsWithinGracePeriod(Case targetCase, EscalationPolicy policy) =>
         DateTimeOffset.UtcNow - targetCase.FirstEmailReceivedAt < policy.GracePeriod;
+
+    /// <summary>§59 recipients as name/email pairs (for the escalation email). Empty when unresolvable.</summary>
+    private async Task<List<(string Name, string Email)>> ResolveRecipientListAsync(Case targetCase, EscalationLevel level, CancellationToken cancellationToken)
+    {
+        var list = new List<(string Name, string Email)>();
+        Guid? ownerId = targetCase.OwnerEmployeeId;
+        switch (level.RecipientType)
+        {
+            case EscalationRecipientType.Employee:
+                if (ownerId is Guid o1 && await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == o1 && e.IsActive, cancellationToken) is { } owner)
+                    list.Add((owner.FullName, owner.Email));
+                break;
+            case EscalationRecipientType.EmployeeSupervisor:
+                if (ownerId is Guid o2 && (await _db.Employees.AsNoTracking().Include(e => e.SupervisorEmployee).FirstOrDefaultAsync(e => e.Id == o2, cancellationToken))?.SupervisorEmployee is { IsActive: true } supervisor)
+                    list.Add((supervisor.FullName, supervisor.Email));
+                break;
+            case EscalationRecipientType.DepartmentManager:
+                if (ownerId is Guid o3 && (await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == o3, cancellationToken))?.DepartmentId is Guid deptId
+                    && (await _db.Departments.AsNoTracking().Include(d => d.ManagerEmployee).FirstOrDefaultAsync(d => d.Id == deptId, cancellationToken))?.ManagerEmployee is { IsActive: true } manager)
+                    list.Add((manager.FullName, manager.Email));
+                break;
+            case EscalationRecipientType.SpecificEmployee:
+                if (level.SpecificEmployeeId is Guid empId && (level.SpecificEmployee ?? await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empId, cancellationToken)) is { IsActive: true } specific)
+                    list.Add((specific.FullName, specific.Email));
+                break;
+            case EscalationRecipientType.SpecificGroup:
+                if (level.SpecificGroupId is Guid groupId)
+                {
+                    var group = level.SpecificGroup ?? await _db.EscalationGroups.AsNoTracking().Include(g => g.Members).ThenInclude(m => m.Employee)
+                        .FirstOrDefaultAsync(g => g.Id == groupId, cancellationToken);
+                    if (group is not null) list.AddRange(group.Members.Where(m => m.Employee.IsActive).Select(m => (m.Employee.FullName, m.Employee.Email)));
+                }
+                break;
+        }
+        return list.Where(r => !string.IsNullOrWhiteSpace(r.Email)).ToList();
+    }
 
     /// <summary>§59 — recipient resolution, using organizational data where possible. Returns a display string, or null if unresolvable (§60.10).</summary>
     private async Task<string?> ResolveRecipientAsync(Case targetCase, EscalationLevel level, CancellationToken cancellationToken)

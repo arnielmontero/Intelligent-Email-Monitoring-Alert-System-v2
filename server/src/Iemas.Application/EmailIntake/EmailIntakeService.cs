@@ -214,6 +214,13 @@ public class EmailIntakeService
             return PersistOutcome.Duplicate;
         }
 
+        // Q3 - an ignored/internal sender never starts an inquiry, but a reply inside an existing
+        // inquiry's conversation must stay linked to it, so it is classified (and linked) instead of ignored.
+        var ignored = ignoredSenders.Matches(message.FromAddress)
+            && !(await SystemSettingsService.GetBoolAsync(_db, SystemSettingKeys.SupervisionEnabled, cancellationToken)
+                 && await Inquiries.ConversationThreadMatcher.FindCaseAsync(_db, emailAccountId, message.ThreadId, message.InReplyTo,
+                        message.References.Count > 0 ? string.Join(' ', message.References) : null, cancellationToken) is not null);
+
         var entity = new EmailMessage
         {
             EmailAccountId = emailAccountId,
@@ -232,7 +239,7 @@ public class EmailIntakeService
             BodyHtml = message.BodyHtml,
             ReceivedAt = message.ReceivedAt,
             AttachmentCount = message.Attachments.Count,
-            ProcessingStatus = ignoredSenders.Matches(message.FromAddress)
+            ProcessingStatus = ignored
                 ? EmailProcessingStatus.Ignored
                 : processEmailsReceivedAfter is DateTimeOffset cutoff && message.ReceivedAt < cutoff
                     ? EmailProcessingStatus.Historical

@@ -692,6 +692,9 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                     b.Property<int?>("CompletionReason")
                         .HasColumnType("integer");
 
+                    b.Property<DateTimeOffset?>("ConversationSyncedThrough")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -706,10 +709,40 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("EmailAccountId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("EpisodeDeadlineMissedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("EpisodeEscalations")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("EpisodeLastEscalatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("EpisodeLastReminderAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("EpisodeRemindersSent")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("EpisodeWaitNoticeAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("FirstAgentResponseAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("FirstEmailReceivedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("LastActivityAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastAgentMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastCustomerMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastInternalActivityAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("NormalizedSubject")
@@ -718,6 +751,12 @@ namespace Iemas.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("NotificationStatus")
                         .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("OverdueEscalatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("OverdueSince")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("OwnerEmployeeId")
                         .HasColumnType("uuid");
@@ -731,9 +770,40 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                     b.Property<int>("ReplyStatus")
                         .HasColumnType("integer");
 
+                    b.Property<DateTimeOffset?>("ResolutionAssessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ResolutionAssessedMessageCount")
+                        .HasColumnType("integer");
+
+                    b.Property<double?>("ResolutionConfidence")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTimeOffset?>("ResolutionDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResolutionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int?>("ResolutionVerdict")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Stage")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("StageBeforePotentiallyResolved")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("StageChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Subject")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("SupervisionCycleStartedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -751,6 +821,8 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                     b.HasIndex("NormalizedSubject");
 
                     b.HasIndex("OwnerEmployeeId");
+
+                    b.HasIndex("Stage");
 
                     b.HasIndex("WorkStatus");
 
@@ -778,6 +850,9 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                         .HasColumnType("text");
 
                     b.Property<int>("MatchSignal")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Role")
                         .HasColumnType("integer");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
@@ -1092,6 +1167,9 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                     b.Property<string>("BodyText")
                         .HasColumnType("text");
 
+                    b.Property<string>("BodyTextEncrypted")
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("CaseId")
                         .HasColumnType("uuid");
 
@@ -1103,6 +1181,9 @@ namespace Iemas.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Direction")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("EmailAccountId")
                         .HasColumnType("uuid");
@@ -1156,6 +1237,8 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Direction");
 
                     b.HasIndex("InReplyTo");
 
