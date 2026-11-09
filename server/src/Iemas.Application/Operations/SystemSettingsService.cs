@@ -57,10 +57,54 @@ public static class SystemSettingKeys
     public const string ResponseRules = "ai.response_rules";
     public const string NoResponseRules = "ai.no_response_rules";
     public const string RequireResponseForCase = "ai.require_response_for_case";
+
+    // Inquiry detection (Zettelkasten filter) - see inquiry-supervision/PROGRESS.md Phase 1.
+    public const string InternalDomains = "inquiry.internal_domains";
+    public const string InquiryPhrases = "inquiry.inquiry_phrases";
+    public const string NotInquiryPhrases = "inquiry.not_inquiry_phrases";
+    public const string AutomatedSenderPatterns = "inquiry.automated_sender_patterns";
+    public const string InquiryScoreThreshold = "inquiry.inquiry_score_threshold";
+    public const string NotInquiryScoreThreshold = "inquiry.not_inquiry_score_threshold";
+
+    // Inquiry supervision timers - Q1 decisions (inquiry-supervision/PROGRESS.md section 5).
+    public const string SupervisionEnabled = "inquiry.supervision_enabled";
+    public const string FirstResponseBusinessHours = "inquiry.first_response_business_hours";
+    public const string ReminderIntervalBusinessHours = "inquiry.reminder_interval_business_hours";
+    public const string RemindersBeforeEscalation = "inquiry.reminders_before_escalation";
+    public const string IdleBusinessDays = "inquiry.idle_business_days";
+    public const string CustomerWaitCalendarDays = "inquiry.customer_wait_calendar_days";
+    public const string InternalWaitBusinessDays = "inquiry.internal_wait_business_days";
+    public const string ResolutionTargetBusinessDays = "inquiry.resolution_target_business_days";
+    public const string EscalationRepeatBusinessDays = "inquiry.escalation_repeat_business_days";
+
+    // AI resolution assessment - Q2 decisions.
+    public const string AiResolutionEnabled = "inquiry.ai_resolution_enabled";
+    public const string AiResolutionMinConfidence = "inquiry.ai_resolution_min_confidence_percent";
+
+    // Stored agent replies - Q4 decisions.
+    public const string AgentReplyRetentionDays = "inquiry.agent_reply_retention_days";
 }
 
 public static class SystemSettingDefaults
 {
+    public static readonly string InquiryPhrases = string.Join('\n',
+        "request a quotation", "request for quotation", "request a quote", "quotation for", "quote for",
+        "price list", "pricing", "how much", "what is the price", "interested in your", "interested in buying",
+        "would like to inquire", "would like to enquire", "inquiry about", "enquiry about", "would like to order",
+        "place an order", "availability of", "do you have", "can you provide", "could you send",
+        "more information about", "product catalog", "brochure", "become a distributor", "become a dealer",
+        "discuss a possible project", "help us with", "can you help");
+
+    public static readonly string NotInquiryPhrases = string.Join('\n',
+        "unsubscribe", "view this email in your browser", "this is an automated message", "do not reply to this email",
+        "this email was sent automatically", "payment received", "payment confirmation", "your order has shipped",
+        "delivery status notification", "out of office", "automatic reply", "auto-reply", "password reset",
+        "verify your email", "webinar", "newsletter", "you are receiving this email because");
+
+    public static readonly string AutomatedSenderPatterns = string.Join('\n',
+        "noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon", "postmaster", "bounce",
+        "notifications@", "notification@", "newsletter", "alerts@", "marketing@");
+
     public static readonly string LegitimacyRules = string.Join('\n',
         "Written by a real person or company that does business with us (customer, supplier, partner or colleague)",
         "About a real business matter: orders, quotes, products, deliveries, payments, support or complaints");
@@ -117,6 +161,45 @@ public class SystemSettingsService
             + "Their email is stored but never classified, never becomes a Case and never notifies anyone; "
             + "reminders and escalations stop for their existing Cases.",
             SettingValueType.SenderList, "", 0, 4000),
+        new(SystemSettingKeys.InternalDomains, "Inquiry detection", "Internal company domains",
+            "One per line: a domain (sawo.com) or a full address. Email from these senders never starts a new customer inquiry, "
+            + "but stays linked to an existing inquiry when it belongs to that conversation (for example an internal forward).",
+            SettingValueType.SenderList, "sawo.com", 0, 4000),
+        new(SystemSettingKeys.InquiryPhrases, "Inquiry detection", "Inquiry phrases",
+            "Phrases that suggest a customer inquiry. Each distinct match adds 2 points.", SettingValueType.RuleList, SystemSettingDefaults.InquiryPhrases, 0, 9000),
+        new(SystemSettingKeys.NotInquiryPhrases, "Inquiry detection", "Not-an-inquiry phrases",
+            "Phrases typical of newsletters, notices and auto-replies. Each distinct match removes 3 points.", SettingValueType.RuleList, SystemSettingDefaults.NotInquiryPhrases, 0, 9000),
+        new(SystemSettingKeys.AutomatedSenderPatterns, "Inquiry detection", "Automated sender patterns",
+            "Text found in automated sender addresses (noreply, notifications@ ...). A match removes 4 points.", SettingValueType.RuleList, SystemSettingDefaults.AutomatedSenderPatterns, 0, 9000),
+        new(SystemSettingKeys.InquiryScoreThreshold, "Inquiry detection", "Score to accept as an inquiry without AI",
+            "At or above this score, with no negative signal, the email is treated as an inquiry without calling the AI.", SettingValueType.Integer, "5", 1, 50),
+        new(SystemSettingKeys.NotInquiryScoreThreshold, "Inquiry detection", "Score to reject without AI",
+            "At or below minus this score the email is treated as not an inquiry without calling the AI. Anything in between goes to the AI.", SettingValueType.Integer, "3", 1, 50),
+        new(SystemSettingKeys.SupervisionEnabled, "Inquiry supervision", "Supervise inquiries until resolved",
+            "On: inquiries are followed through every stage until the agent confirms they are resolved, with reminders and management escalation. "
+            + "Off: the older reminder and escalation engines are used, which stop at the first reply.", SettingValueType.Boolean, "true"),
+        new(SystemSettingKeys.FirstResponseBusinessHours, "Inquiry supervision", "Initial response time (business hours)",
+            "How long the agent has to send a first reply to a new inquiry.", SettingValueType.Integer, "4", 1, 240),
+        new(SystemSettingKeys.ReminderIntervalBusinessHours, "Inquiry supervision", "Reminder interval (business hours)",
+            "Time from a missed deadline to the first reminder, between reminders, and from the last reminder to escalation.", SettingValueType.Integer, "2", 1, 240),
+        new(SystemSettingKeys.RemindersBeforeEscalation, "Inquiry supervision", "Reminders before management escalation",
+            "How many reminders the agent gets before management is told.", SettingValueType.Integer, "2", 0, 10),
+        new(SystemSettingKeys.IdleBusinessDays, "Inquiry supervision", "Conversation idle after (business days)",
+            "When the agent owes the next step (for example after a customer follow-up) and nothing happens for this long, the inquiry is idle.", SettingValueType.Integer, "1", 1, 30),
+        new(SystemSettingKeys.CustomerWaitCalendarDays, "Inquiry supervision", "Waiting for customer (calendar days)",
+            "After this long without a customer reply the agent is told a follow-up may be needed. Never closes the inquiry.", SettingValueType.Integer, "3", 1, 60),
+        new(SystemSettingKeys.InternalWaitBusinessDays, "Inquiry supervision", "Waiting for internal action (business days)",
+            "After this long waiting on another department with no activity, the agent is asked for an update.", SettingValueType.Integer, "1", 1, 60),
+        new(SystemSettingKeys.ResolutionTargetBusinessDays, "Inquiry supervision", "Resolution target (business days)",
+            "An inquiry still unresolved after this long is marked overdue. A target only: it never closes the inquiry.", SettingValueType.Integer, "5", 1, 120),
+        new(SystemSettingKeys.EscalationRepeatBusinessDays, "Inquiry supervision", "Escalate to the next level after (business days)",
+            "If an escalated inquiry is still neglected after this long, the next escalation level is notified.", SettingValueType.Integer, "1", 1, 60),
+        new(SystemSettingKeys.AiResolutionEnabled, "Inquiry supervision", "AI checks whether inquiries look resolved",
+            "The AI reads the conversation and may mark an inquiry Potentially resolved. Only the agent can confirm it resolved.", SettingValueType.Boolean, "true"),
+        new(SystemSettingKeys.AiResolutionMinConfidence, "Inquiry supervision", "AI confidence needed for Potentially resolved (%)",
+            "The AI must be at least this confident before an inquiry is marked Potentially resolved.", SettingValueType.Integer, "75", 50, 100),
+        new(SystemSettingKeys.AgentReplyRetentionDays, "Inquiry supervision", "Keep stored agent replies for (days)",
+            "The encrypted text of agent replies is erased this many days after the inquiry is closed. 0 keeps it.", SettingValueType.Integer, "365", 0, 36500),
         new(SystemSettingKeys.PasswordMinLength, "Security", "Minimum password length",
             "Enforced when creating users and changing or resetting passwords.", SettingValueType.Integer, "10", 8, 128),
         new("retention.raw_email_content", "Retention", "Raw email content", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),

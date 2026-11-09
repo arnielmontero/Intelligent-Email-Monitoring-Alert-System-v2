@@ -78,6 +78,7 @@ docker compose -f inquiry-supervision/docker-compose.yml --env-file inquiry-supe
 | **G6** | No "potentially resolved" state and no assessment of whether the inquiry is resolved. Completion is manual only. Nothing proposes "this looks resolved, please confirm". | `CaseEnums.cs` | Module 8 |
 | **G7** | No reassignment of a Case to another agent. Ownership is fixed at creation. | no reassign path in `Application/` | Instruction 14 |
 | **G8** | Escalation email content has not yet been checked against the required fields: customer, subject, date, agent, status, replied?, last activity, idle duration, prior reminders, reason. | to verify | Module 11 |
+| **G10** | **Escalations never email management.** `EscalationService` records an `EscalationEvent` and sends the *agent* a pop-up. Nothing sends an email to the supervisor or manager. `SmtpEmailProviderAdapter` can only test a connection. | `EscalationService.cs` class doc, `SmtpEmailProviderAdapter.cs` | Module 11 |
 | **G9** | Management view: `DashboardService` / `CaseWorkflowOverviewDto` count by work status. There is no per-agent breakdown by unanswered / idle / awaiting customer / potentially resolved. | `CaseWorkflowService.cs:147-158` | Section 7 |
 
 ---
@@ -91,12 +92,29 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done and verified (note 
 - [x] Create the `inquiry-supervision/` folder, this log, a separate `docker-compose.yml`, `.env.example` and pgAdmin registration (2026-11-09)
 - [ ] First build and run of the separate stack. Confirm it starts next to the current stack with no port, container or volume clashes.
 
-### Phase 1: Zettelkasten filter v2 (G1)
-- [ ] Three-way result: **Inquiry** (confident, no AI) / **NotInquiry** (confident, no AI) / **Uncertain** (send to AI)
-- [ ] Weighted signals: inquiry phrases ("request a quotation", "interested in", "how much", "price", …), exclude phrases, automated-sender patterns (no-reply, newsletters, payment notices), and internal company domains (sawo.com = not a new customer inquiry)
-- [ ] Store the score, the matched terms and the decision on the classification record, so every decision can be explained
-- [ ] Learn from history: senders and phrases from confirmed inquiries raise the score
-- [ ] Tests: clear inquiry skips the AI, newsletter skips the AI, ambiguous email goes to the AI
+### Phase 1: Zettelkasten filter v2 (G1). DONE 2026-11-09
+- [x] Three-way result: **Inquiry** (confident, no AI) / **NotInquiry** (confident, no AI) / **Uncertain** (send to AI). See `ZettelkastenFilter.cs`. Verified by `ZettelkastenFilterTests`.
+- [x] Weighted signals:
+  - inquiry phrases +2 each, capped at +6
+  - a question mark +1
+  - a known customer +2
+  - profile include terms +1 each, capped at +2
+  - not-inquiry phrases −3 each
+  - automated sender −4
+  - a profile exclude rule is still decisive, as before
+  - an internal domain or one of our own mailboxes is always NotInquiry (Q3)
+- [x] A confident Inquiry needs score ≥ 5 **and** no negative signal. Mixed signals always go to the AI, because context matters.
+- [x] Every phrase list, the internal domains (default `sawo.com`) and both thresholds are CMS settings (System Settings → "Inquiry detection")
+- [x] The score, matched signals and verdict are written to `EmailClassification.DeterministicFilterReason` and to the AI classification log
+- [x] Learn from history: "sender has made inquiries before" adds +2. Cases closed as *Incorrect classification* are excluded.
+- [x] Tests:
+  - a clear inquiry skips the AI
+  - a newsletter or payment notice skips the AI
+  - an ambiguous email goes to the AI
+  - internal and own-mailbox senders never start an inquiry
+  - the internal domain list is configurable
+
+  Full suite: 510 passed. The baseline was 496.
 
 ### Phase 2: Full conversation tracking (G4, G5)
 - [ ] An inbound message that matches an **open** Case by thread headers joins that Case whatever its classification. The classification is still recorded.
@@ -151,12 +169,42 @@ Each scenario gets an automated test and a live run on the separate stack.
 
 ---
 
-## 5. Open questions (answers needed before the related phase)
+## 5. Answered questions (decided by the product owner, 2026-11-09)
 
-- **Q1 (Phase 4): Default time limits.** Proposed: first response 4 business hours, reminder every 2 h, escalate after 2 reminders. Idle 1 business day. Maximum wait for the customer 3 days. Resolution 5 business days.
-- **Q2 (Phase 5): What confirms a resolution?** Proposed: the agent confirms. Optionally, a Case that is potentially resolved auto-closes after 3 days of customer silence.
-- **Q3 (Phase 1): Internal domains.** Is `sawo.com` the only one? Should internal senders be ignored entirely, or only never start a *new* inquiry, while still counting inside an existing thread?
-- **Q4 (Phase 2): Storing outbound mail.** Is it acceptable to store the agent's reply bodies in the database for the conversation view and AI assessment, or only the headers and timestamps?
+**Overriding rule:** the first agent reply must **never** end supervision. An inquiry stops being supervised only in a legitimate terminal state: confirmed resolved, or closed for a stated reason.
+
+### Q1: Time limits (all configurable, none hardcoded)
+| Timer | Default | Clock |
+|---|---|---|
+| Initial agent response | 4 h | business hours |
+| 1st reminder | 2 h after the response deadline passes | business hours |
+| 2nd reminder | 2 h after the 1st reminder | business hours |
+| Management escalation | after the 2nd reminder, if still unanswered | business hours |
+| Conversation idle | 1 business day without meaningful progress | business hours |
+| Waiting for customer | 3 days, then notify the agent that a follow-up may be needed | calendar days |
+| Resolution target | 5 business days. It marks the inquiry **overdue**. It never closes it. | business days |
+
+- Business time skips weekends and configured holidays.
+- The four timers are separate: initial response, inactivity, customer wait, and overall resolution.
+- The first reply stops only the initial-response timer.
+
+### Q2: Resolution confirmation (hybrid, agent is the final authority)
+- The AI reads the whole conversation. It can only set **Potentially resolved**. It never closes an inquiry.
+- The agent explicitly confirms, which sets **Resolved** and stops all reminders and escalation. The agent can also reject, which returns the inquiry to active supervision.
+- **No auto-close** by default. If the customer is silent for 3 calendar days while the inquiry is potentially resolved, the agent is notified that a follow-up may be appropriate.
+
+### Q3: Internal domains
+- A configurable list, defaulting to `sawo.com`.
+- Internal email never *starts* a new inquiry.
+- Internal email that belongs to an existing inquiry stays linked to it, for example an agent forwarding the concern to another department. It never interrupts monitoring.
+- Outgoing agent replies are never excluded because the agent's domain is internal.
+
+### Q4: Full agent reply text is stored, with safeguards
+- Agent replies are stored with their full text, encrypted at rest (AES-GCM, same key as mailbox credentials).
+- Access is restricted to roles that may view Cases.
+- A retention period applies. After it, the stored text is erased once the inquiry has been closed for that long.
+- Card-number-like and password-like strings are masked before storage.
+- Attachments are recorded only as a count. Their content is never stored.
 
 ---
 
@@ -165,6 +213,13 @@ Each scenario gets an automated test and a live run on the separate stack.
 | Date | Decision | Why |
 |---|---|---|
 | 2026-11-09 | Extend IEMAS on a branch and run it as a separate Compose project. Do not write a new codebase. | The requirements say to work with the existing project. Most modules already exist. A separate project name, ports and volumes keep the current system running and untouched. |
+| 2026-11-09 | Q1–Q4 answered as recorded in §5. | Product owner decision. |
+| 2026-11-09 | One new **Inquiry Supervision engine** owns automatic reminders and escalation for inquiries. It decides from the inquiry's lifecycle stage. It no longer uses "has a reply been found". | The old reminder and escalation engines stop at the first reply (G2). Patching their guards would leave two engines making overlapping decisions. The old engines stay in the code behind the `inquiry.supervision_enabled` setting. Employee "Remind me later" reminders still run through the existing reminder engine. |
+| 2026-11-09 | Stage changes are timestamped with the time of the email that caused them, not the processing time. | Deadlines must reflect when the customer wrote or the agent replied, even if a job runs late. This also makes the whole lifecycle testable with an explicit clock. |
+| 2026-11-09 | Escalation after the 2nd reminder fires one reminder interval (2 business hours) after that reminder. It does not fire at the same moment. | Escalating together with the 2nd reminder would give the agent no chance to act on it. The interval is configurable. |
+| 2026-11-09 | Missing an overall resolution target marks the inquiry **overdue** and notifies the agent. Management is escalated for overdue only while the **agent** owes the next action. | Business rule: "A case should not be unnecessarily escalated simply because the customer has not replied." |
+| 2026-11-09 | Business calendar (time zone, business hours, weekends, holidays) comes from the **default Reminder Policy**. | Holidays and business hours are already managed there in the CMS. A second calendar would drift from it. |
+| 2026-11-09 | Management escalation emails are actually sent through the configured Outbound email account (new). | Found during this session: `EscalationService` only recorded the escalation and pinged the agent. No email ever reached management (G10). |
 
 ---
 

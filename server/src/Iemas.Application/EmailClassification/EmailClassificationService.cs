@@ -113,11 +113,18 @@ public class EmailClassificationService
             ? await _db.ClassificationProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Name == profileName && p.Enabled, cancellationToken)
             : null;
 
-        var filterResult = DeterministicEmailFilter.Evaluate(message.Subject, message.BodyText, profile);
+        // Module 3 - the Zettelkasten screening stage. Only an Uncertain verdict reaches the AI.
+        var zettelkasten = await EvaluateZettelkastenAsync(message, profile, cancellationToken);
+        var filterResult = new DeterministicFilterResult(zettelkasten.Verdict == InquiryFilterVerdict.Uncertain, zettelkasten.Describe());
 
-        if (!filterResult.ShouldSendToAi)
+        if (zettelkasten.Verdict == InquiryFilterVerdict.NotInquiry)
         {
             return await PersistDeterministicOnlyAsync(message, profile, filterResult, stopwatch, cancellationToken);
+        }
+
+        if (zettelkasten.Verdict == InquiryFilterVerdict.Inquiry)
+        {
+            return await PersistDeterministicInquiryAsync(message, profile, filterResult, stopwatch, cancellationToken);
         }
 
         var models = await _db.AiModelConfigs
@@ -259,7 +266,7 @@ public class EmailClassificationService
         classification.DeterministicFilterMatched = false;
         classification.DeterministicFilterReason = filterResult.Reason;
         classification.Decision = ImportanceDecision.NotImportant;
-        classification.DecisionReason = $"Deterministic filter: {filterResult.Reason}";
+        classification.DecisionReason = filterResult.Reason;
         classification.ClassifiedAt = DateTimeOffset.UtcNow;
 
         message.ProcessingStatus = EmailProcessingStatus.Processed;
@@ -276,6 +283,62 @@ public class EmailClassificationService
 
         await _db.SaveChangesAsync(cancellationToken);
         return ImportanceDecision.NotImportant;
+    }
+
+    private async Task<InquiryFilterResult> EvaluateZettelkastenAsync(EmailMessage message, ClassificationProfile? profile, CancellationToken cancellationToken)
+    {
+        var settings = await InquiryFilterSettings.LoadAsync(_db, cancellationToken);
+        var from = message.FromAddress.ToLower();
+        var knownCustomer = await _db.Cases.AnyAsync(c => c.CustomerEmailAddress.ToLower() == from
+            && (c.CompletionReason == null || c.CompletionReason != Domain.Cases.CaseCompletionReason.IncorrectClassification), cancellationToken);
+        var monitoredMailbox = await _db.EmailAccounts.AnyAsync(a => a.EmailAddress.ToLower() == from, cancellationToken);
+
+        return ZettelkastenFilter.Evaluate(
+            new InquiryFilterInput(message.Subject, message.BodyText, message.FromAddress, knownCustomer, monitoredMailbox),
+            settings, profile);
+    }
+
+    /// <summary>
+    /// Module 3 - the Zettelkasten stage was confident this is a customer inquiry, so no AI call is
+    /// made. Recorded with the same fields an AI result would fill, so Case creation, reminders and
+    /// the CMS treat it exactly like an AI-confirmed inquiry, and the reason says which rules fired.
+    /// </summary>
+    private async Task<ImportanceDecision> PersistDeterministicInquiryAsync(
+        EmailMessage message, ClassificationProfile? profile, DeterministicFilterResult filterResult,
+        Stopwatch stopwatch, CancellationToken cancellationToken)
+    {
+        var classification = await GetOrCreateClassificationAsync(message.Id, cancellationToken);
+        classification.ClassificationProfileId = profile?.Id;
+        classification.DeterministicFilterMatched = true;
+        classification.DeterministicFilterReason = filterResult.Reason;
+        classification.Relevance = ClassificationRelevance.Relevant;
+        classification.Category = "Inquiry";
+        classification.ActionRequired = true;
+        classification.ResponseExpected = true;
+        classification.Legitimate = true;
+        classification.Priority = ClassificationPriority.Medium;
+        classification.ConfidenceBand = ConfidenceBand.High;
+        classification.Decision = ImportanceDecision.Important;
+        classification.DecisionReason = filterResult.Reason;
+        classification.AiProvider = null;
+        classification.AiModel = null;
+        classification.ProcessingError = null;
+        classification.ClassifiedAt = DateTimeOffset.UtcNow;
+
+        message.ProcessingStatus = EmailProcessingStatus.Processed;
+        message.Classification = "Inquiry";
+        message.ProcessingError = null;
+
+        _db.AiClassificationLogs.Add(new AiClassificationLog
+        {
+            EmailMessageId = message.Id,
+            Outcome = AiClassificationOutcome.SkippedByDeterministicFilter,
+            Detail = filterResult.Reason,
+            DurationMs = stopwatch.ElapsedMilliseconds,
+        });
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return ImportanceDecision.Important;
     }
 
     private async Task<ImportanceDecision> PersistSuccessAsync(
