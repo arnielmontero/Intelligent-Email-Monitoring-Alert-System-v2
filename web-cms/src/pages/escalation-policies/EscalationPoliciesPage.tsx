@@ -14,16 +14,29 @@ import type {
 import { CLASSIFICATION_PRIORITY_LABELS, ESCALATION_RECIPIENT_TYPE_LABELS } from "../../api/types";
 
 function timeSpanToHours(ts: string): number {
-  const parts = ts.split(":");
+  // .NET serializes TimeSpan as "d.hh:mm:ss" for durations >= 1 day, "hh:mm:ss" otherwise.
+  let days = 0;
+  let timeStr = ts;
+  const dotIdx = ts.indexOf(".");
+  if (dotIdx !== -1 && dotIdx < ts.indexOf(":")) {
+    days = Number(ts.substring(0, dotIdx));
+    timeStr = ts.substring(dotIdx + 1);
+  }
+  const parts = timeStr.split(":");
   const hours = Number(parts[0] ?? 0);
   const minutes = Number(parts[1] ?? 0);
-  return hours + minutes / 60;
+  return days * 24 + hours + minutes / 60;
 }
 
 function hoursToTimeSpan(hours: number): string {
   const totalMinutes = Math.round(hours * 60);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const remainingMinutes = totalMinutes % (60 * 24);
+  const h = Math.floor(remainingMinutes / 60);
+  const m = remainingMinutes % 60;
+  if (days > 0) {
+    return `${days}.${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+  }
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
 }
 

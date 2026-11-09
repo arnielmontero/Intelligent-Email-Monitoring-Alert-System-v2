@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "IEMAS",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "iemas",
+      "Username": "iemas",
+      "SSLMode": "prefer"
+    }
+  }
+}

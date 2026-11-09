@@ -44,5 +44,24 @@ services:
     ports:
       - "${API_PORT:-8090}:8080"
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: iemas-pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@iemas.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?PGADMIN_PASSWORD must be set}
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+    # Pre-registers the IEMAS database; you are asked for the Postgres password on first connect.
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - ./deploy/pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - iemas_pgadmin:/var/lib/pgadmin
+
 volumes:
   iemas_pgdata:
+  iemas_pgadmin:
