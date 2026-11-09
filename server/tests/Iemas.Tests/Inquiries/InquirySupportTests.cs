@@ -37,6 +37,17 @@ public class BusinessCalendarTests
     [Fact]
     public void FiveBusinessDayTarget_FromMondayMorning_IsNextMonday() =>
         Assert.Equal(Day(8, 9), Calendar.AddBusinessDays(Day(0, 9), 5)); // the Wednesday holiday pushes it to Tuesday
+
+    [Fact]
+    public void FastTestClock_HoursBecomeMinutes_RoundTheClock_IncludingWeekends()
+    {
+        var fast = BusinessCalendar.FastTestClock();
+        var saturdayNight = Day(5, 23);
+        Assert.Equal(saturdayNight.AddMinutes(4), fast.AddBusinessHours(saturdayNight, 4));
+        Assert.Equal(saturdayNight.AddMinutes(24), fast.AddBusinessDays(saturdayNight, 1));
+        Assert.Equal(saturdayNight.AddMinutes(72), fast.AddCalendarDays(saturdayNight, 3));
+        Assert.Equal(Day(0, 9).AddDays(3), Calendar.AddCalendarDays(Day(0, 9), 3)); // normal calendar unchanged
+    }
 }
 
 public class AgentReplyProtectorTests

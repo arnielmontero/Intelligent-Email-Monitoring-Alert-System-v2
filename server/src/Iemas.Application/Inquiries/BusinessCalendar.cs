@@ -22,6 +22,7 @@ public sealed class BusinessCalendar
     private readonly TimeSpan _end;
     private readonly bool _excludeWeekends;
     private readonly HashSet<DateOnly> _holidays;
+    private readonly double _scale = 1.0;
 
     public BusinessCalendar(TimeZoneInfo zone, TimeSpan start, TimeSpan end, bool excludeWeekends, IEnumerable<DateOnly> holidays)
     {
@@ -34,6 +35,16 @@ public sealed class BusinessCalendar
 
     /// <summary>Length of one business day, e.g. 9 hours for 08:00-17:00. "1 business day" means this much business time.</summary>
     public TimeSpan BusinessDayLength => _end - _start;
+
+    /// <summary>
+    /// Test mode only: round the clock, every day, and 60 times faster (1 hour of configured time = 1 minute,
+    /// 1 business day = 24 minutes). Lets a person see reminders and escalation within minutes.
+    /// </summary>
+    public static BusinessCalendar FastTestClock() =>
+        new(TimeZoneInfo.Utc, TimeSpan.Zero, TimeSpan.FromHours(24), false, Array.Empty<DateOnly>(), 1.0 / 60);
+
+    private BusinessCalendar(TimeZoneInfo zone, TimeSpan start, TimeSpan end, bool excludeWeekends, IEnumerable<DateOnly> holidays, double scale)
+        : this(zone, start, end, excludeWeekends, holidays) => _scale = scale;
 
     public static readonly BusinessCalendar Default = new(TimeZoneInfo.Utc, TimeSpan.FromHours(8), TimeSpan.FromHours(17), true, Array.Empty<DateOnly>());
 
@@ -62,6 +73,7 @@ public sealed class BusinessCalendar
     public DateTimeOffset AddBusinessTime(DateTimeOffset fromUtc, TimeSpan amount)
     {
         if (amount <= TimeSpan.Zero) return fromUtc;
+        amount = TimeSpan.FromTicks((long)(amount.Ticks * _scale));
 
         var local = TimeZoneInfo.ConvertTime(fromUtc, _zone);
         var date = DateOnly.FromDateTime(local.DateTime);
@@ -97,6 +109,10 @@ public sealed class BusinessCalendar
     public DateTimeOffset AddBusinessHours(DateTimeOffset fromUtc, double hours) =>
         AddBusinessTime(fromUtc, TimeSpan.FromHours(hours));
 
+    /// <summary>Plain calendar days (customer waits). Only shortened in test mode.</summary>
+    public DateTimeOffset AddCalendarDays(DateTimeOffset fromUtc, int days) =>
+        fromUtc + TimeSpan.FromTicks((long)(TimeSpan.FromDays(days).Ticks * _scale));
+
     private DateTimeOffset ToUtc(DateOnly date, TimeSpan timeOfDay)
     {
         var unspecified = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue) + timeOfDay, DateTimeKind.Unspecified);
@@ -117,7 +133,8 @@ public sealed record SupervisionSettings(
     int EscalationRepeatBusinessDays,
     bool AiResolutionEnabled,
     int AiResolutionMinConfidencePercent,
-    int AgentReplyRetentionDays)
+    int AgentReplyRetentionDays,
+    bool TestClockMinutes = false)
 {
     /// <summary>The product owner's Q1/Q2 defaults - also what an empty settings table yields.</summary>
     public static readonly SupervisionSettings Defaults = new(true, 4, 2, 2, 1, 3, 1, 5, 1, true, 75, 365);
@@ -137,6 +154,7 @@ public sealed record SupervisionSettings(
             await Int(SystemSettingKeys.EscalationRepeatBusinessDays),
             await SystemSettingsService.GetBoolAsync(db, SystemSettingKeys.AiResolutionEnabled, cancellationToken),
             await Int(SystemSettingKeys.AiResolutionMinConfidence),
-            await Int(SystemSettingKeys.AgentReplyRetentionDays));
+            await Int(SystemSettingKeys.AgentReplyRetentionDays),
+            await SystemSettingsService.GetBoolAsync(db, SystemSettingKeys.TestClockMinutes, cancellationToken));
     }
 }

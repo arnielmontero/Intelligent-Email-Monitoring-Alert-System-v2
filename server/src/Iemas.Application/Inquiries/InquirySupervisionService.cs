@@ -57,7 +57,7 @@ public class InquirySupervisionService
         var paused = await _db.IsPausedAsync(PauseControl.Reminders, cancellationToken)
             || await _db.IsPausedAsync(PauseControl.AgentNotifications, cancellationToken);
 
-        var calendar = await BusinessCalendar.LoadAsync(_db, cancellationToken);
+        var calendar = settings.TestClockMinutes ? BusinessCalendar.FastTestClock() : await BusinessCalendar.LoadAsync(_db, cancellationToken);
         var caseIds = await _db.Cases
             .Where(c => c.Stage != InquiryStage.Resolved && c.Stage != InquiryStage.Closed)
             .OrderBy(c => c.StageChangedAt)

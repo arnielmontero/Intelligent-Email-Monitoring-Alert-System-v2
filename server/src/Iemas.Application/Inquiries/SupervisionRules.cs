@@ -95,7 +95,7 @@ public static class SupervisionRules
                 ReminderTrigger.ConversationIdle, escalate: true, firstReminderType: NotificationType.UpdateRequested, laterType: NotificationType.UpdateRequested),
 
             InquiryStage.InitialResponseReceived or InquiryStage.AgentFollowUpSent or InquiryStage.AwaitingCustomer =>
-                now >= c.StageChangedAt.AddDays(s.CustomerWaitCalendarDays)
+                now >= cal.AddCalendarDays(c.StageChangedAt, s.CustomerWaitCalendarDays)
                     ? new SupervisionAction(SupervisionActionKind.WaitExpired,
                         $"The customer has not replied for {s.CustomerWaitCalendarDays} calendar day(s); a follow-up may be needed.",
                         ReminderTrigger.CustomerSilent, NotificationType.CustomerFollowUpDue)
@@ -172,7 +172,7 @@ public static class SupervisionRules
     {
         if (c.EpisodeWaitNoticeAt is null)
         {
-            return now >= c.StageChangedAt.AddDays(s.CustomerWaitCalendarDays)
+            return now >= cal.AddCalendarDays(c.StageChangedAt, s.CustomerWaitCalendarDays)
                 ? new SupervisionAction(SupervisionActionKind.ConfirmationFollowUp,
                     $"The customer has not replied for {s.CustomerWaitCalendarDays} calendar day(s) while the inquiry looks resolved. "
                     + "A follow-up may be appropriate; please review and confirm whether it can be closed.",

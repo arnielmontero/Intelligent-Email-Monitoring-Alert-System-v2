@@ -56,7 +56,7 @@ public partial class App : Application
     {
         _notifyIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = LoadAppIcon(),
             Visible = true,
             Text = "IEMAS Agent - Disconnected",
         };
@@ -71,6 +71,21 @@ public partial class App : Application
         _notifyIcon.ContextMenuStrip = menu;
 
         _notifyIcon.DoubleClick += (_, _) => ShowMainWindow();
+    }
+
+    /// <summary>The IEMAS logo (blue envelope with an orange dot) so the tray icon is easy to spot; falls back to the default icon.</summary>
+    private static Icon LoadAppIcon()
+    {
+        try
+        {
+            var stream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/IemasAgent;component/Assets/iemas.ico"))?.Stream;
+            if (stream is not null) return new Icon(stream, SystemInformation.SmallIconSize);
+        }
+        catch
+        {
+            // fall through to the default icon
+        }
+        return SystemIcons.Application;
     }
 
     /// <summary>Every alert from the server is shown in the Agent's own always-on-top pop-up.</summary>

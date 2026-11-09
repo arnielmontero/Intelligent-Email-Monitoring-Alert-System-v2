@@ -79,6 +79,7 @@ public static class SystemSettingKeys
 
     // AI resolution assessment - Q2 decisions.
     public const string AiResolutionEnabled = "inquiry.ai_resolution_enabled";
+    public const string TestClockMinutes = "inquiry.test_clock_minutes";
     public const string AiResolutionMinConfidence = "inquiry.ai_resolution_min_confidence_percent";
 
     // Stored agent replies - Q4 decisions.
@@ -194,6 +195,9 @@ public class SystemSettingsService
             "An inquiry still unresolved after this long is marked overdue. A target only: it never closes the inquiry.", SettingValueType.Integer, "5", 1, 120),
         new(SystemSettingKeys.EscalationRepeatBusinessDays, "Inquiry supervision", "Escalate to the next level after (business days)",
             "If an escalated inquiry is still neglected after this long, the next escalation level is notified.", SettingValueType.Integer, "1", 1, 60),
+        new(SystemSettingKeys.TestClockMinutes, "Inquiry supervision", "TEST MODE: count hours as minutes",
+            "For trying the system out only. On: every supervision time above runs 60 times faster (1 hour = 1 minute, 1 day = 24 minutes) "
+            + "and business hours, weekends and holidays are ignored. Turn it OFF before real use.", SettingValueType.Boolean, "false"),
         new(SystemSettingKeys.AiResolutionEnabled, "Inquiry supervision", "AI checks whether inquiries look resolved",
             "The AI reads the conversation and may mark an inquiry Potentially resolved. Only the agent can confirm it resolved.", SettingValueType.Boolean, "true"),
         new(SystemSettingKeys.AiResolutionMinConfidence, "Inquiry supervision", "AI confidence needed for Potentially resolved (%)",

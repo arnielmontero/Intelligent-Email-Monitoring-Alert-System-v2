@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Windows;
 using Iemas.Agent.Models;
 using Iemas.Agent.Services;
@@ -130,20 +130,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         public string CustomerDisplay => string.IsNullOrWhiteSpace(Case.CustomerDisplayName) ? Case.CustomerEmailAddress : Case.CustomerDisplayName!;
         public string Subject => Case.Subject;
-        public string ReceivedSummary => $"Received: {Case.FirstEmailReceivedAt.ToLocalTime():t} • {Case.EmailCount} message(s) • {Case.CaseNumber}{StatusSuffix}";
+        public string ReceivedSummary => $"Received {Case.FirstEmailReceivedAt.ToLocalTime():ddd d MMM, h:mm tt}  ·  {Case.EmailCount} email(s)  ·  {Case.CaseNumber}";
 
-        /// <summary>Shown when the Case is more than plainly "action required", e.g. after "I'll Handle This".</summary>
-        private string StatusSuffix => Case.WorkStatus switch
-        {
-            CaseWorkStatus.InProgress => " • In progress",
-            CaseWorkStatus.Overdue => " • Overdue",
-            CaseWorkStatus.Escalated => " • Escalated",
-            CaseWorkStatus.WaitingForCustomer => " • Waiting for customer",
-            CaseWorkStatus.WaitingForInternal => " • Waiting internally",
-            CaseWorkStatus.WaitingForApproval => " • Waiting for approval",
-            CaseWorkStatus.PotentiallyResolved => " • Looks resolved - please confirm",
-            _ => string.Empty,
-        };
+        private Views.CaseStatusInfo Status => Views.CaseStatusText.For(Case);
+        public string StatusLabel => Status.Label;
+        public string StatusForeground => Status.Foreground;
+        public string StatusBackground => Status.Background;
+
     }
 
     // --- Registration ---
