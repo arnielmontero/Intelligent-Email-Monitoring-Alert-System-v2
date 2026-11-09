@@ -236,7 +236,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _currentTab = Tab.ActionRequired;
     }
 
-    private void OpenEmail_Click(object sender, RoutedEventArgs e) => AgentSessionManager.OpenEmailClient();
+    private void OpenEmail_Click(object sender, RoutedEventArgs e)
+    {
+        // User-initiated click, so a message box is fine here; it only appears when nothing could be opened.
+        var result = EmailLauncher.OpenCompose();
+        if (!result.Opened)
+        {
+            System.Windows.MessageBox.Show(this, result.Message, "IEMAS", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
 
     // --- Window chrome: minimize-to-tray instead of exit (§10 System tray) ---
 

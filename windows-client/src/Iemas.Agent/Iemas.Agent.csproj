@@ -10,7 +10,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>IemasAgent</AssemblyName>
     <RootNamespace>Iemas.Agent</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <ApplicationIcon>Assets\iemas.ico</ApplicationIcon>
     <!-- §10 "Version information" — the single source of truth for AgentVersion reported at
          registration/heartbeat, read at runtime via Assembly.GetName().Version. -->

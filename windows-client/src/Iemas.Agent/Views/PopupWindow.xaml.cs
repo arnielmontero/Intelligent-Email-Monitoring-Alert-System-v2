@@ -29,9 +29,36 @@ public partial class PopupWindow : Window
         MessageText.Text = message.Message ?? string.Empty;
         CaseText.Text = message.CaseNumber ?? string.Empty;
         ButtonsPanel.Visibility = _caseId is null ? Visibility.Collapsed : Visibility.Visible;
+        ApplyColours(TitleText.Text);
 
         Loaded += (_, _) => Arrange();
         Closed += (_, _) => { Open.Remove(this); Arrange(); };
+    }
+
+    /// <summary>
+    /// Colour-codes the alert by urgency, using the alert title the server sends:
+    /// red = escalated / overdue, orange = escalation warning, amber = reminder,
+    /// green = looks resolved, purple = follow-up / update needed, blue = new email.
+    /// </summary>
+    private void ApplyColours(string title)
+    {
+        var t = title.ToLowerInvariant();
+        (string Badge, string Accent, string Tint, string Text) style =
+            t.Contains("warning") ? ("ESCALATION WARNING", "#EA580C", "#FFEDD5", "#9A3412")
+            : t.Contains("escalat") ? ("ESCALATED", "#DC2626", "#FEE2E2", "#991B1B")
+            : t.Contains("overdue") ? ("OVERDUE", "#DC2626", "#FEE2E2", "#991B1B")
+            : t.Contains("remind") ? ("REMINDER", "#D97706", "#FEF3C7", "#92400E")
+            : t.Contains("resolved") || t.Contains("confirm") ? ("PLEASE CONFIRM", "#059669", "#D1FAE5", "#065F46")
+            : t.Contains("follow") || t.Contains("update") ? ("FOLLOW UP", "#7C3AED", "#EDE9FE", "#5B21B6")
+            : ("NEW EMAIL", "#2563EB", "#DBEAFE", "#1E40AF");
+
+        var converter = new System.Windows.Media.BrushConverter();
+        System.Windows.Media.Brush Brush(string hex) => (System.Windows.Media.Brush)converter.ConvertFromString(hex)!;
+        AccentBorder.BorderBrush = Brush(style.Accent);
+        BadgeBorder.Background = Brush(style.Tint);
+        BadgeText.Foreground = Brush(style.Text);
+        BadgeText.Text = style.Badge;
+        OpenButton.Background = Brush(style.Accent);
     }
 
     /// <summary>Shows an alert; must be called on the UI thread.</summary>

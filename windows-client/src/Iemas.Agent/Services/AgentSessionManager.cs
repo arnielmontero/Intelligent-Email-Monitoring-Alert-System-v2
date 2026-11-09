@@ -265,13 +265,6 @@ public class AgentSessionManager : IAsyncDisposable
     /// <summary>§8.1 "Report errors" — exposed for the app-wide unhandled-exception handler (see App.xaml.cs), best-effort, never throws.</summary>
     public Task ReportErrorAsync(string detail) => _api.ReportErrorAsync(detail, CancellationToken.None);
 
-    /// <summary>§8.1 "Open the normal email client/webmail when requested" — never IEMAS itself replying, just handing off to the OS default mail handler / the employee's own webmail.</summary>
-    public static void OpenEmailClient(string? webmailUrl = null)
-    {
-        var target = string.IsNullOrWhiteSpace(webmailUrl) ? "mailto:" : webmailUrl;
-        Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-    }
-
     public void ApplyServerUrlChange(string newServerUrl, bool allowInsecureTls)
     {
         _settings.ServerUrl = newServerUrl;

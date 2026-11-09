@@ -57,15 +57,8 @@ public partial class CaseDetailWindow : Window
 
     private void Reply_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            AgentSessionManager.OpenEmailClient();
-            ShowResult("Your email program is opening. Reply to the customer's email from this mailbox; IEMAS will notice the reply by itself.", ok: true);
-        }
-        catch (Exception ex)
-        {
-            ShowResult($"Could not open an email program: {ex.Message}", ok: false);
-        }
+        var result = EmailLauncher.OpenCompose(_case.CustomerEmailAddress, _case.Subject);
+        ShowResult(result.Message, ok: result.Outcome != EmailLaunchOutcome.Failed);
     }
 
     private async void Action_Click(object sender, RoutedEventArgs e)

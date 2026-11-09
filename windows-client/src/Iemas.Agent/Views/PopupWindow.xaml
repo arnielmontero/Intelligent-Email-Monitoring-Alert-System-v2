@@ -7,13 +7,15 @@
         AllowsTransparency="True" Background="Transparent">
     <!-- IEMAS's own alert: always on top in the bottom-right corner, so Windows notification settings or
          Do not disturb can't hide it. Stays until the employee acts on it or dismisses it. -->
-    <Border Background="White" BorderBrush="#2563EB" BorderThickness="0,4,0,0" CornerRadius="6" Margin="8">
+    <Border x:Name="AccentBorder" Background="White" BorderBrush="#2563EB" BorderThickness="6,0,0,0" CornerRadius="6" Margin="8">
         <Border.Effect>
             <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.35"/>
         </Border.Effect>
         <StackPanel Margin="16,12,16,14">
             <Grid>
-                <TextBlock Text="IEMAS" FontWeight="Bold" Foreground="#2563EB" FontSize="11"/>
+                <Border x:Name="BadgeBorder" Background="#DBEAFE" CornerRadius="10" Padding="8,2" HorizontalAlignment="Left">
+                    <TextBlock x:Name="BadgeText" Text="NEW EMAIL" FontWeight="Bold" Foreground="#1E40AF" FontSize="11"/>
+                </Border>
                 <Button Content="✕" HorizontalAlignment="Right" Background="Transparent" BorderThickness="0" Padding="4,0"
                         Cursor="Hand" ToolTip="Dismiss" Click="Dismiss_Click"/>
             </Grid>
@@ -21,7 +23,7 @@
             <TextBlock x:Name="MessageText" Foreground="#374151" TextWrapping="Wrap" MaxHeight="120"/>
             <TextBlock x:Name="CaseText" Foreground="#6B7280" FontSize="11" Margin="0,6,0,0"/>
             <StackPanel x:Name="ButtonsPanel" Orientation="Horizontal" Margin="0,12,0,0">
-                <Button Content="Open Case" Background="#2563EB" Foreground="White" BorderThickness="0" Padding="12,6"
+                <Button x:Name="OpenButton" Content="Open Case" Background="#2563EB" Foreground="White" BorderThickness="0" Padding="12,6"
                         Margin="0,0,8,0" Cursor="Hand" Click="OpenCase_Click"
                         ToolTip="Open this inquiry to see what to do next."/>
                 <Button Content="Acknowledge" Background="#E5E7EB" Foreground="#111827" BorderThickness="0" Padding="12,6"
