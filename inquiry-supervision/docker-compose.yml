@@ -98,6 +98,20 @@ services:
       - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
       - inq_pgadmin:/var/lib/pgadmin
 
+  # ---- Test mail server (only with --profile testmail) ----
+  # A throwaway IMAP/SMTP server for the live end-to-end test (live-test/README.md). It accepts any
+  # login, creates mailboxes on first use, keeps everything in memory and never relays mail to the
+  # internet. Never point real mailboxes at it.
+  testmail:
+    profiles: ["testmail"]
+    image: greenmail/standalone:2.1.2
+    container_name: iemas-inq-testmail
+    environment:
+      GREENMAIL_OPTS: "-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
+    ports:
+      - "${INQ_TESTMAIL_SMTP_PORT:-3025}:3025"
+      - "${INQ_TESTMAIL_IMAP_PORT:-3143}:3143"
+
 volumes:
   inq_pgdata:
   inq_pgadmin:

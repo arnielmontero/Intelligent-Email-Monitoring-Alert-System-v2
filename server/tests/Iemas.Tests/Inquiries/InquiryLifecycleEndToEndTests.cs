@@ -204,6 +204,26 @@ public class InquiryLifecycleEndToEndTests
         Assert.Equal(1, await h.Db.Reminders.CountAsync(r => r.Trigger == ReminderTrigger.ResponseOverdue));
     }
 
+    [Fact]
+    public async Task S6b_FollowUpProcessedBeforeTheAgentReplyIsSynced_AgentStillOwesTheResponse()
+    {
+        using var h = new InquiryHarness(Agent1);
+        var first = h.Receive(Agent1, Customer, "Heater problem", "My heater does not work. Can you help me?", Monday0900);
+        await h.RunAsync(Monday0900.AddMinutes(1));
+
+        // The reply (10:00) and the customer's answer to it (10:30) are both new when the next cycle runs;
+        // intake processes the answer before the Sent-folder sync stores the reply.
+        var reply = h.Send(Agent1, Customer, "Re: Heater problem", "Please reset the breaker.", Day(0, 10), inReplyTo: first);
+        h.Receive(Agent1, Customer, "Re: Heater problem", "Did that, still broken.", Day(0, 10, 30), inReplyTo: reply);
+        await h.RunAsync(Day(0, 10, 35));
+
+        var c = await h.CaseAsync(Agent1, Customer);
+        Assert.Equal(InquiryStage.CustomerFollowUpReceived, c.Stage);
+        Assert.Equal(Day(0, 10, 30), c.StageChangedAt);
+        Assert.Equal(Day(0, 10), c.FirstAgentResponseAt);
+        Assert.Equal(1, await h.Db.Cases.CountAsync());
+    }
+
     // ---------------------------------------------------------------- Scenario 7
 
     [Fact]

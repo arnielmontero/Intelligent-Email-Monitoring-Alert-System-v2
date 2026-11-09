@@ -110,6 +110,14 @@ public static class InquiryLifecycle
         // Waiting on another department is an explicit agent decision; a customer update does not end it.
         if (c.Stage == InquiryStage.AwaitingInternal) return null;
 
+        // The Sent folder is read less often than the Inbox, so the customer's answer to this reply may
+        // already be on record. Then the agent owes the next step again, from the customer's message.
+        if (c.LastCustomerMessageAt is DateTimeOffset customerSince && customerSince > at)
+        {
+            return MoveTo(c, InquiryStage.CustomerFollowUpReceived, customerSince,
+                $"The agent replied ({(first ? "initial response" : "follow-up")}), and the customer has written again since; the agent owes a response.");
+        }
+
         if (c.Stage == InquiryStage.AwaitingInitialResponse || first)
         {
             return MoveTo(c, InquiryStage.InitialResponseReceived, at,

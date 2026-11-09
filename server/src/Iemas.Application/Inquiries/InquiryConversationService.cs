@@ -105,7 +105,8 @@ public class InquiryConversationService
         AddEvent(c, CaseEventType.AgentMessage,
             $"{(first ? "Initial response" : "Agent reply")} sent to {message.ToAddresses}: \"{message.Subject}\".", message.ReceivedAt);
         Record(c, transition);
-        c.ReplyStatus = CaseReplyStatus.Replied;
+        // ReplyStatus = Replied is set by the caller, after the VerifiedReply record is saved: the
+        // database refuses that status without it (claim-vs-verified-fact trigger).
     }
 
     public void OnAgentMarkedWaitingForCustomer(Case c, DateTimeOffset at) => Record(c, InquiryLifecycle.OnAgentMarkedWaitingForCustomer(c, at));

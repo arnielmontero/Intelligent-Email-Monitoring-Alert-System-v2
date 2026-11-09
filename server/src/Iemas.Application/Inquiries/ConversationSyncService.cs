@@ -153,22 +153,25 @@ public class ConversationSyncService
             _db.CaseEmails.Add(new CaseEmail { CaseId = target.Id, EmailMessageId = entity.Id, MatchSignal = signal, MatchDetail = detail, Role = role });
             links.Add(new { CaseId = target.Id, entity.MessageId, entity.ThreadId });
 
-            var wasReplied = target.ReplyStatus == CaseReplyStatus.Replied;
             _conversation.OnOutboundAttached(target, entity, role);
             if (role == ConversationRole.Agent)
             {
                 agentStored++;
-                if (!wasReplied)
+                var caseId = target.Id;
+                if (!await _db.ReplyVerificationAttempts.AnyAsync(a => a.CaseId == caseId && a.Outcome == ReplyVerificationOutcome.VerifiedReply, cancellationToken))
                 {
                     _db.ReplyVerificationAttempts.Add(new ReplyVerificationAttempt
                     {
-                        CaseId = target.Id,
+                        CaseId = caseId,
                         Outcome = ReplyVerificationOutcome.VerifiedReply,
                         MatchedSentMessageId = message.MessageId,
                         MatchSignal = ToReplySignal(signal),
                         MatchDetail = detail,
                     });
+                    // Saved before the status changes: the database trigger requires the record to exist first.
+                    await _db.SaveChangesAsync(cancellationToken);
                 }
+                target.ReplyStatus = CaseReplyStatus.Replied;
             }
             else
             {
