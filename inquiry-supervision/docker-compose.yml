@@ -1,0 +1,103 @@
+# Inquiry Supervision stack: a separate copy of IEMAS built from the
+# feature/inquiry-supervision branch.
+#
+# It runs next to the current system on the same host without touching it:
+#   - its own Compose project name (iemas-inq), so `docker compose down` here never stops the current stack
+#   - its own container names, network, and volumes (the current iemas_pgdata database is not used)
+#   - its own host ports (the current stack uses 5432 / 8090 / 5050 / 8091)
+#
+# Run it from the repository root:
+#   docker compose -f inquiry-supervision/docker-compose.yml --env-file inquiry-supervision/.env up -d --build
+#
+# Then open:
+#   CMS      http://localhost:${INQ_WEB_PORT:-8191}
+#   API      http://localhost:${INQ_API_PORT:-8190}/health
+#   pgAdmin  http://localhost:${INQ_PGADMIN_PORT:-5150}
+#
+# WARNING: both stacks can read the same mailboxes (read-only IMAP is safe), but each stack also
+# sends its own Agent pop-ups and escalation emails. Use test mailboxes and test manager
+# addresses here until this branch replaces the current system.
+
+name: iemas-inq
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: iemas-inq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-iemas_inq}
+      POSTGRES_USER: ${POSTGRES_USER:-iemas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    ports:
+      - "${INQ_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - inq_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iemas} -d ${POSTGRES_DB:-iemas_inq}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    image: iemas-inq-api
+    container_name: iemas-inq-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-iemas_inq};Username=${POSTGRES_USER:-iemas};Password=${POSTGRES_PASSWORD}"
+      Jwt__Issuer: "Iemas"
+      Jwt__Audience: "IemasClients"
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set}
+      AgentJwt__Issuer: "Iemas.Agent"
+      AgentJwt__Audience: "IemasAgents"
+      AgentJwt__Secret: ${AGENT_JWT_SECRET:?AGENT_JWT_SECRET must be set}
+      CredentialEncryption__Key: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY must be set (base64, 32 bytes)}
+      Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN:-http://localhost:8191}
+      AiClassification__Enabled: ${AI_CLASSIFICATION_ENABLED:-true}
+      AiClassification__OpenRouter__ApiKey: ${OPENROUTER_API_KEY:-}
+    ports:
+      - "${INQ_API_PORT:-8190}:8080"
+
+  web:
+    build:
+      context: ../web-cms
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+    image: iemas-inq-web
+    container_name: iemas-inq-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${INQ_WEB_PORT:-8191}:80"
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: iemas-inq-pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@iemas.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?PGADMIN_PASSWORD must be set}
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+    ports:
+      - "${INQ_PGADMIN_PORT:-5150}:80"
+    volumes:
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - inq_pgadmin:/var/lib/pgadmin
+
+volumes:
+  inq_pgdata:
+  inq_pgadmin:

@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "IEMAS Inquiry Supervision",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "iemas_inq",
+      "Username": "iemas",
+      "SSLMode": "prefer"
+    }
+  }
+}
