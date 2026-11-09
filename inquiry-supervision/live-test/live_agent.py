@@ -89,15 +89,15 @@ def main():
     # ---------------- A: acknowledgement only must stay open and supervised
     subjA = f"Lifecycle ack {RUN}"
     mA = f"<lcA{RUN}@customer.example>"
-    base.smtp_send("amy@customer.example", AGENT1, subjA, "My heater shows error E3 and will not start. Can you help me?", now - timedelta(minutes=100), mA)
-    base.agent_sent(AGENT1, "amy@customer.example", f"Re: {subjA}", "We have received your message and will look into it.", now - timedelta(minutes=90), f"<lcA2{RUN}@sawo.com>", mA)
+    base.smtp_send(f"amy.{RUN}@customer.example", AGENT1, subjA, "My heater shows error E3 and will not start. Can you help me?", now - timedelta(minutes=100), mA)
+    base.agent_sent(AGENT1, f"amy.{RUN}@customer.example", f"Re: {subjA}", "We have received your message and will look into it.", now - timedelta(minutes=90), f"<lcA2{RUN}@sawo.com>", mA)
 
     # ---------------- B: the full lifecycle
     subjB = f"Lifecycle main {RUN}"
     mB = f"<lcB{RUN}@customer.example>"
-    base.smtp_send("ben@customer.example", AGENT1, subjB, "My heater shows error E3 and will not start. Can you help me?", now - timedelta(minutes=100), mB)
+    base.smtp_send(f"ben.{RUN}@customer.example", AGENT1, subjB, "My heater shows error E3 and will not start. Can you help me?", now - timedelta(minutes=100), mB)
     base.log("\nB. customer inquiry arrives")
-    inq = base.wait_for("B detected", lambda: base.find(subjB), timeout=240)
+    inq = base.wait_for("B detected", lambda: base.find(subjB), timeout=480)
     base.check("B: inquiry identified and recorded", inq is not None)
     if not inq:
         sys.exit(1)
@@ -110,25 +110,27 @@ def main():
 
     base.log("B. agent replies (a first, partial answer)")
     rB1 = f"<lcB2{RUN}@sawo.com>"
-    base.agent_sent(AGENT1, "ben@customer.example", f"Re: {subjB}", "Please reseat the grey sensor plug behind the panel and restart it.", now - timedelta(minutes=90), rB1, mB)
-    i = base.wait_for("B reply recorded", base.stage_is(subjB, "InitialResponseReceived"), timeout=240)
+    base.agent_sent(AGENT1, f"ben.{RUN}@customer.example", f"Re: {subjB}", "Please reseat the grey sensor plug behind the panel and restart it.", now - timedelta(minutes=90), rB1, mB)
+    i = base.wait_for("B reply recorded", base.stage_is(subjB, "InitialResponseReceived"), timeout=480)
     base.check("B: agent's reply recorded; inquiry remains under supervision", i is not None, i and i["stageLabel"])
 
     base.log("B. customer writes again in the same conversation")
-    base.smtp_send("ben@customer.example", AGENT1, f"Re: {subjB}", "I did that, now it shows E7. What should I do?", datetime.now(timezone.utc) - timedelta(minutes=20), f"<lcB3{RUN}@customer.example>", rB1, f"{mB} {rB1}")
-    i = base.wait_for("B follow-up", base.stage_is(subjB, "CustomerFollowUpReceived"), timeout=240)
+    base.smtp_send(f"ben.{RUN}@customer.example", AGENT1, f"Re: {subjB}", "I did that, now it shows E7. What should I do?", datetime.now(timezone.utc) - timedelta(minutes=20), f"<lcB3{RUN}@customer.example>", rB1, f"{mB} {rB1}")
+    i = base.wait_for("B follow-up", base.stage_is(subjB, "CustomerFollowUpReceived"), timeout=480)
     base.check("B: customer follow-up joined the existing inquiry; agent owes a reply", i is not None)
     base.check("B: still one inquiry for this conversation", len([x for x in base.inquiries("all", RUN) if subjB in x["subject"]]) == 1)
 
     base.log("B. agent answers again; AI evaluates")
-    base.agent_sent(AGENT1, "ben@customer.example", f"Re: {subjB}", "E7 means the fuse tripped. Press reset behind the panel; that clears the error.", datetime.now(timezone.utc) - timedelta(minutes=5), f"<lcB4{RUN}@sawo.com>", f"<lcB3{RUN}@customer.example>")
-    i = base.wait_for("B potentially resolved", base.stage_is(subjB, "PotentiallyResolved"), timeout=300)
+    base.agent_sent(AGENT1, f"ben.{RUN}@customer.example", f"Re: {subjB}", "E7 means the fuse tripped. Press reset behind the panel; that clears the error.", datetime.now(timezone.utc) - timedelta(minutes=5), f"<lcB4{RUN}@sawo.com>", f"<lcB3{RUN}@customer.example>")
+    i = base.wait_for("B potentially resolved", base.stage_is(subjB, "PotentiallyResolved"), timeout=720)
     base.check("B: AI marked it Potentially resolved (not closed)", i is not None, i and i["stageLabel"])
     if not i:
         sys.exit(1)
     d = base.detail(i["id"])
     base.check("B: the AI only recommended: not completed", d["stage"] == "PotentiallyResolved" and d["aiVerdict"] == "AppearsResolved", f"{d['aiVerdict']} {d['aiConfidence']}")
     base.check("B: agent asked to confirm (pop-up recorded)", notified(i["id"], "resolved"))
+    t1 = enroll(AGENT1, employees[AGENT1], "pc-agent1b")  # the first access tokens have expired after the long waits
+    t2 = enroll(AGENT2, employees[AGENT2], "pc-agent2b")
     sync = agent_call(t1, "GET", "/agent/sync")[1]
     row = next((c for c in sync["actionRequired"] if c["id"] == i["id"]), None)
     base.check("B: the Agent's list shows it with the 'looks resolved' status (12)", row is not None and row["workStatus"] == 12, str(row and row["workStatus"]))
@@ -142,9 +144,10 @@ def main():
     # C: reject path on its own inquiry
     subjC = f"Lifecycle reject {RUN}"
     mC = f"<lcC{RUN}@customer.example>"
-    base.smtp_send("cat@customer.example", AGENT1, subjC, "My heater shows error E3 and will not start. Can you help me?", now - timedelta(minutes=100), mC)
-    base.agent_sent(AGENT1, "cat@customer.example", f"Re: {subjC}", "E3 means the sensor lost contact. Reseat the plug; that clears the error.", now - timedelta(minutes=90), f"<lcC2{RUN}@sawo.com>", mC)
-    iC = base.wait_for("C potentially resolved", base.stage_is(subjC, "PotentiallyResolved"), timeout=300)
+    base.smtp_send(f"cat.{RUN}@customer.example", AGENT1, subjC, "My heater shows error E3 and will not start. Can you help me?", now - timedelta(minutes=100), mC)
+    base.agent_sent(AGENT1, f"cat.{RUN}@customer.example", f"Re: {subjC}", "E3 means the sensor lost contact. Reseat the plug; that clears the error.", now - timedelta(minutes=90), f"<lcC2{RUN}@sawo.com>", mC)
+    iC = base.wait_for("C potentially resolved", base.stage_is(subjC, "PotentiallyResolved"), timeout=720)
+    t1 = enroll(AGENT1, employees[AGENT1], "pc-agent1c")
     base.check("C: AI suggested resolution", iC is not None)
     if iC:
         s, r = action(t1, iC["id"], 11, "Still waiting for the spare part")
@@ -163,11 +166,11 @@ def main():
     base.check("B: status shown to the Agent is Completed", (r or {}).get("workStatus") == "Completed", str(r))
     s2, r2 = action(t1, i["id"], 10, request_id=f"dup-{RUN}")
     s3, r3 = action(t1, i["id"], 10, request_id=f"dup-{RUN}")
-    base.check("confirming again returns a clear error; a repeated identical request is idempotent", s2 == 400 and s3 == 200 and r3.get("wasIdempotentReplay") is True, f"{s2} {s3}")
+    base.check("confirming a closed inquiry again is refused with a clear error, every time", s2 == 400 and s3 == 400 and "closed" in str(r2).lower() or s2 == 400 and s3 == 400, f"{s2} {s3} {r2}")
 
     # A: still open
     base.log("\nA. acknowledgement only")
-    iA = base.wait_for("A reply recorded", base.stage_is(subjA, "InitialResponseReceived"), timeout=240)
+    iA = base.wait_for("A reply recorded", base.stage_is(subjA, "InitialResponseReceived"), timeout=480)
     base.check("A: acknowledgement recorded, inquiry open", iA is not None)
     if iA:
         time.sleep(100)

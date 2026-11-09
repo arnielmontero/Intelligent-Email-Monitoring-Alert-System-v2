@@ -56,7 +56,7 @@ def main():
     try:
         agent = "agent2@sawo.com"
         subj = f"Calendar check {base.RUN}"
-        base.smtp_send("hal@customer.example", agent, subj, "I would like to request a quotation for two heaters. How much?", now - timedelta(hours=5), f"<cal{base.RUN}@customer.example>")
+        base.smtp_send(f"hal.{base.RUN}@customer.example", agent, subj, "I would like to request a quotation for two heaters. How much?", now - timedelta(hours=5), f"<cal{base.RUN}@customer.example>")
         i = base.wait_for("inquiry created", lambda: base.find(subj), timeout=240)
         base.check("inquiry created", i is not None)
         if not i:

@@ -324,3 +324,41 @@ Full suite: **537 passed, 0 failed.**
 - Created branch `feature/inquiry-supervision`, folder `inquiry-supervision/`, separate Compose stack `iemas-inq`, `.env.example`, pgAdmin registration.
 - Uncommitted changes from `main` (`.env.example`, `docker-compose.yml`, `EscalationPoliciesPage.tsx`, `deploy/pgadmin/`) were present in the working tree when the branch was created. They were **not** committed to this branch.
 - **Next:** answer Q1–Q4, first build of the separate stack, then start Phase 1.
+
+---
+
+## 9. Verification results (2026-11-09)
+
+Levels: **Impl** = code written · **Auto** = automated tests (540 pass) · **DB** = run against the real PostgreSQL in the live stack · **Mail** = real SMTP/IMAP delivery (GreenMail test server, not a production mailbox) · **Agent** = through the real Windows Agent window · **AI** = real OpenRouter model · **NO** = not verified.
+
+| Area | Impl | Auto | DB | Mail | Agent | AI |
+|---|---|---|---|---|---|---|
+| Detection (Zettelkasten filter, internal-domain rule) | yes | yes | yes | yes | n/a | NO (stand-in only) |
+| Lifecycle: reply keeps supervision, follow-up joins same inquiry | yes | yes | yes | yes | NO | n/a |
+| AI "potentially resolved" (never auto-closes), agent confirm/reject | yes | yes | yes (stage reached) | yes | NO (see below) | NO (stand-in only) |
+| Reminders / escalation timing, no duplicates, none for resolved | yes | yes | yes | yes | NO | n/a |
+| Management escalation email (required fields) | yes | yes | yes | yes (test server) | n/a | n/a |
+| Business hours / weekends / holidays | yes | yes | yes (timeline evidence) | yes | n/a | n/a |
+| Dashboard / config UI in a browser | yes | partly | yes | n/a | n/a | n/a |
+| Windows Agent buttons (Confirm Resolved / Not Resolved Yet) | yes | compile only | server protocol verified | n/a | **NO** | n/a |
+| Real OpenRouter key, 5 situations | yes | yes (stand-in) | n/a | n/a | n/a | **NO: the supplied key was rejected by OpenRouter (invalid or revoked)** |
+
+### Live results
+- `live_e2e.py`: 28/28 passed against the real database and mail server.
+- `live_agent.py` (Agent protocol + lifecycle, stand-in AI): **30/31 passed**, then the last check's expectation was corrected (a rejected request is not stored, so repeating it is refused again; that is correct). Verified: registration, approval, authentication, refusal without a token or with a CMS token, detection, assignment, pop-up, per-agent sync visibility, first reply keeps supervision, follow-up joins the same inquiry, AI proposes "Potentially resolved" (never closes), the Agent's list shows status 12, another agent cannot act on the inquiry, "Not Resolved Yet" returns it to supervision and the AI does not re-propose it, "Confirm Resolved" ends supervision with status Completed, acknowledge-only stays open, nothing further happens after confirmation. Earlier failures were test-tool problems (reused customer addresses, 300 s waits shorter than the 5-minute sync, expired Agent tokens).
+- `browser_check.py`: pages render and a setting edit saves; the last clean full run is pending after selector fixes.
+- `live_calendar.py`: business-hours behaviour confirmed by database timeline; clean rerun pending.
+
+### Defects found by live testing and fixed
+1. Database trigger blocked `ReplyStatus=Replied`; the verified-reply row is now saved first.
+2. A customer message synced before the agent's earlier reply ordered wrongly; fixed in `InquiryLifecycle.OnAgentMessage` (test S6b).
+3. With no API key the AI was retried for every inquiry every minute; added a 10-minute failure backoff.
+4. Test-tool flaws (not product): reused customer addresses made later runs join earlier open inquiries.
+
+### Not verified, and what is needed
+- **Real AI:** the key supplied on 2026-11-09 was rejected by OpenRouter as invalid or revoked; the product reported it cleanly. It was removed from the stack; no key or email text was found in the API logs. Needs a valid key. Enter one in the CMS (AI Models), then run `live-test/live_ai.py`. Also check the API logs contain no key or email text.
+- **Windows Agent buttons:** the WPF app cannot run in the Linux container. Follow `WINDOWS-AGENT-TEST.md`.
+- **Real mailboxes:** only the GreenMail test server was used.
+- **Stack state:** AI provider reset to the default OpenRouter URL with no key; stand-in AI removed; test mail server bound to loopback only.
+
+**Not production-ready until the items above are verified.**

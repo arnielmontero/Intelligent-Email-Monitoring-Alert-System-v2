@@ -109,8 +109,9 @@ services:
     environment:
       GREENMAIL_OPTS: "-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose"
     ports:
-      - "${INQ_TESTMAIL_SMTP_PORT:-3025}:3025"
-      - "${INQ_TESTMAIL_IMAP_PORT:-3143}:3143"
+      # Loopback only: this server accepts any login, so it must not be reachable from the network.
+      - "127.0.0.1:${INQ_TESTMAIL_SMTP_PORT:-3025}:3025"
+      - "127.0.0.1:${INQ_TESTMAIL_IMAP_PORT:-3143}:3143"
 
 volumes:
   inq_pgdata:

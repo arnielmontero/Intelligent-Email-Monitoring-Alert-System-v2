@@ -45,6 +45,19 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):  # no request logging: never log bodies
         pass
 
+    def read_body(self):
+        # .NET's JsonContent is sent chunked, without a Content-Length.
+        if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+            body = b""
+            while True:
+                size = int(self.rfile.readline().strip().split(b";")[0], 16)
+                if size == 0:
+                    self.rfile.readline()
+                    return body
+                body += self.rfile.read(size)
+                self.rfile.readline()
+        return self.rfile.read(int(self.headers.get("Content-Length") or 0))
+
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
@@ -54,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
         STATS["requests"] += 1
         if (self.headers.get("Authorization") or "").startswith("Bearer ") and len(self.headers["Authorization"]) > 10:
             STATS["with_bearer"] += 1
-        payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        payload = json.loads(self.read_body())
         system = payload["messages"][0]["content"]
         user = payload["messages"][1]["content"]
         if "review the email conversation" in system.lower():

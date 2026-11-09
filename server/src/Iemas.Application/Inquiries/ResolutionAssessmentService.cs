@@ -16,6 +16,10 @@ namespace Iemas.Application.Inquiries;
 /// </summary>
 public class ResolutionAssessmentService
 {
+    /// <summary>After a failed AI call an inquiry is left alone this long, so a missing key or an outage is not retried every minute for every inquiry.</summary>
+    private static readonly TimeSpan FailureBackoff = TimeSpan.FromMinutes(10);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTimeOffset> LastFailure = new();
+
     private const int MaxCharsPerTurn = 2500;
     private const int MaxConversationChars = 14000;
 
@@ -48,8 +52,10 @@ public class ResolutionAssessmentService
             .ToListAsync(cancellationToken);
 
         var assessed = 0;
+        var clock = at ?? DateTimeOffset.UtcNow;
         foreach (var caseId in candidates)
         {
+            if (LastFailure.TryGetValue(caseId, out var failedAt) && clock - failedAt < FailureBackoff) continue;
             if (await AssessAsync(caseId, settings, cancellationToken, at)) assessed++;
         }
         return assessed;
@@ -97,8 +103,13 @@ public class ResolutionAssessmentService
             }, CancellationToken.None);
         }
 
-        // A failed call is retried on a later run: the message count is only recorded on success.
-        if (!result.Succeeded || result.Verdict is not ResolutionVerdict verdict) return false;
+        // A failed call is retried later (after the backoff): the message count is only recorded on success.
+        if (!result.Succeeded || result.Verdict is not ResolutionVerdict verdict)
+        {
+            LastFailure[caseId] = now;
+            return false;
+        }
+        LastFailure.TryRemove(caseId, out _);
 
         c.ResolutionVerdict = verdict;
         c.ResolutionConfidence = result.Confidence;
