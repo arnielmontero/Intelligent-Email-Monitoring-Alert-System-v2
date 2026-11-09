@@ -51,7 +51,7 @@ export default function CasesPage() {
   return (
     <div style={{ display: "flex", gap: 24 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <h1>Cases / Work Topics</h1>
+        <h1>Cases</h1>
         <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
           A Case is one piece of customer work, with all the emails that belong to it. Cases are created automatically
           from important email; click a row to see its emails, AI summary and timeline.

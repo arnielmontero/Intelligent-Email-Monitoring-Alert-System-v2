@@ -3,6 +3,9 @@ import type { NavIcon as NavIconName } from "./navigation";
 /** Small line icons for the menu groups (inline SVG, follows the current text colour). */
 const PATHS: Record<NavIconName, string> = {
   dashboard: "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z",
+  inbox: "M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13L22 12v7H2v-7z",
+  monitor: "M3 12h4l3-8 4 16 3-8h4",
+  bell: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0",
   mail: "M3 5h18v14H3zM3 6l9 7 9-7",
   cases: "M4 7h16v13H4zM9 7V4h6v3M4 12h16",
   people: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7M22 21v-1a6 6 0 0 0-4-5.6",

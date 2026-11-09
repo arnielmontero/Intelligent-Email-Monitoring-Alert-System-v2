@@ -41,7 +41,7 @@ export default function NotificationsPage() {
 
   return (
     <div>
-      <h1>Notifications</h1>
+      <h1>Pop-up Messages</h1>
       <p style={mutedStyle}>
         The pop-up messages sent to employees' Windows Agents. When they are sent is set in Reminder and Escalation Policies;
         here you edit the wording and see what was delivered.

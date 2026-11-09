@@ -67,7 +67,7 @@ export default function MaintenancePage() {
 
   return (
     <div>
-      <h1>Maintenance / Emergency Pause</h1>
+      <h1>Emergency Pause &amp; Maintenance</h1>
       <p style={mutedStyle}>
         Each switch stops one engine at its next run. Nothing is deleted: work waits and resumes where it left off.
         {!canEdit && " You have read-only access."}

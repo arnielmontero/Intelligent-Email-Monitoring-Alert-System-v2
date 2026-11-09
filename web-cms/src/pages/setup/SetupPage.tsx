@@ -53,7 +53,7 @@ export default function SetupPage() {
 
   return (
     <div>
-      <h1>Setup &amp; Configuration</h1>
+      <h1>Setup Checklist</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13, maxWidth: 820 }}>
         Everything needed to run inquiry supervision is configured from the screens below - no files to edit. The checklist inspects
         the real configuration right now. Secrets such as the API key and mailbox passwords are stored encrypted and are never shown again after saving.

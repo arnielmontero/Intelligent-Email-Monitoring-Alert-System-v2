@@ -41,7 +41,7 @@ export default function AuditLogPage() {
       <h1>Audit Log</h1>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
         Every change an administrator makes to settings, users, accounts and policies, with who and when.
-        This log can't be edited. What happened to individual Cases is in Case History & Logs.
+        This log can't be edited. What happened to individual Cases is in Case History.
       </p>
 
       {error && <div className="form-error">{error}</div>}

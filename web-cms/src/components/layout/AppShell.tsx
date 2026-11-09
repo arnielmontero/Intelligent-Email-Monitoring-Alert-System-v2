@@ -7,19 +7,21 @@ import { getThemePreference, setThemePreference, type ThemePreference } from "..
 import { NAV_SECTIONS, helpAnchor } from "./navigation";
 import NavIcon from "./NavIcon";
 
-const OPEN_SECTIONS_KEY = "iemas-nav-open";
+const OPEN_SECTION_KEY = "iemas-nav-open-group";
 
-function loadOpenSections(): string[] {
+/** The menu is an accordion: at most one group is expanded (plus the group holding the current page). */
+function loadOpenSection(): string | null {
   try {
-    return JSON.parse(localStorage.getItem(OPEN_SECTIONS_KEY) ?? "[]");
+    return localStorage.getItem(OPEN_SECTION_KEY);
   } catch {
-    return [];
+    return null;
   }
 }
 
-function saveOpenSections(ids: string[]) {
+function saveOpenSection(id: string | null) {
   try {
-    localStorage.setItem(OPEN_SECTIONS_KEY, JSON.stringify(ids));
+    if (id) localStorage.setItem(OPEN_SECTION_KEY, id);
+    else localStorage.removeItem(OPEN_SECTION_KEY);
   } catch {
     // Storage unavailable: the menu still works, it just won't remember.
   }
@@ -36,15 +38,15 @@ export default function AppShell() {
   const [organizationName, setOrganizationName] = useState("IEMAS");
   const [pausedLabels, setPausedLabels] = useState<string[]>([]);
   const [theme, setTheme] = useState<ThemePreference>(getThemePreference());
-  const [openSections, setOpenSections] = useState<string[]>(loadOpenSections);
+  const [openSection, setOpenSection] = useState<string | null>(loadOpenSection);
 
   const activeSection = NAV_SECTIONS.find((section) => section.items.some((item) => isActivePath(item.path, location.pathname)));
   const activeItem = activeSection?.items.find((item) => isActivePath(item.path, location.pathname));
 
   function toggleSection(id: string) {
-    setOpenSections((current) => {
-      const next = current.includes(id) ? current.filter((s) => s !== id) : [...current, id];
-      saveOpenSections(next);
+    setOpenSection((current) => {
+      const next = current === id ? null : id;
+      saveOpenSection(next);
       return next;
     });
   }
@@ -78,19 +80,19 @@ export default function AppShell() {
         </div>
         <nav>
           {NAV_SECTIONS.map((section) => {
-            // A group with a single page (Dashboard, Help) is a plain link.
+            const heading = section.heading && <div key={`${section.id}-heading`} className="nav-heading">{section.heading}</div>;
+            // A group with a single page (Dashboard, Cases, Help) is a plain link.
             if (section.items.length === 1) {
               const item = section.items[0];
-              return (
+              return [heading,
                 <NavLink key={section.id} to={item.path} end={item.path === "/"}
                   className={({ isActive }) => "nav-top" + (isActive ? " active" : "")}>
                   <NavIcon name={section.icon} />
                   <span>{item.label}</span>
-                </NavLink>
-              );
+                </NavLink>];
             }
-            const open = openSections.includes(section.id) || activeSection?.id === section.id;
-            return (
+            const open = openSection === section.id || activeSection?.id === section.id;
+            return [heading,
               <div key={section.id} className="nav-group">
                 <button className={"nav-group-toggle" + (activeSection?.id === section.id ? " has-active" : "")}
                   aria-expanded={open} onClick={() => toggleSection(section.id)}>
@@ -108,8 +110,7 @@ export default function AppShell() {
                     ))}
                   </div>
                 )}
-              </div>
-            );
+              </div>];
           })}
         </nav>
       </aside>

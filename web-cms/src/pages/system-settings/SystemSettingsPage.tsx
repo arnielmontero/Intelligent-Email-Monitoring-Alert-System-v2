@@ -89,7 +89,7 @@ export default function SystemSettingsPage() {
       <h1>System Settings</h1>
       <p style={mutedStyle}>
         Every change is recorded in the Audit Log with the old and new value. Email rules and ignored senders are on the{" "}
-        <a href="/system-configuration">System Configuration</a> page.
+        <a href="/system-configuration">Email Rules</a> page.
       </p>
 
       {error && <div className="form-error">{error}</div>}

@@ -23,8 +23,8 @@ export default function SystemConfigurationPage() {
     apiClient.get<SystemSettingDto[]>("/system-settings")
       .then((r) => apply(r.data))
       .catch((err) => setError(err.response?.status === 403
-        ? "You do not have permission to manage System Configuration (requires Administrator)."
-        : "Failed to load System Configuration."))
+        ? "You do not have permission to manage Email Rules (requires Administrator)."
+        : "Failed to load Email Rules."))
       .finally(() => setLoaded(true));
   }, []);
 
@@ -51,7 +51,7 @@ export default function SystemConfigurationPage() {
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      <h1>System Configuration</h1>
+      <h1>Email Rules</h1>
       <p style={mutedStyle}>
         Decides which emails become work. For every new email the AI judges whether it is <strong>relevant</strong>, a{" "}
         <strong>legitimate</strong> business email, and whether it <strong>needs a response</strong> — using the rules below.

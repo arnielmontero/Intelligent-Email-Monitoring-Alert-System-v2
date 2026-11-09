@@ -78,7 +78,7 @@ export default function CaseHistoryPage() {
   return (
     <div style={{ display: "flex", gap: 24 }}>
     <div style={{ flex: 1, minWidth: 0 }}>
-      <h1>Case History &amp; Logs</h1>
+      <h1>Case History</h1>
       <p style={mutedStyle}>
         Every event across every Case (email received, status changes, employee actions, reminders, escalations, reply
         verification). Append-only. Click a row to see that Case's emails, AI summary and full timeline.
