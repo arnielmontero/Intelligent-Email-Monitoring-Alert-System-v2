@@ -23,7 +23,7 @@ public sealed record InquiryRowDto(
     DateTimeOffset FirstEmailReceivedAt, DateTimeOffset? FirstAgentResponseAt, DateTimeOffset LastActivityAt,
     DateTimeOffset? ResolutionDueAt, bool IsOverdue, int Escalations, string? AiVerdict, double? AiConfidence);
 
-public sealed record ConversationMessageDto(Guid Id, string Role, string Direction, DateTimeOffset At, string From, string To, string Subject, string? Text, int Attachments);
+public sealed record ConversationMessageDto(Guid Id, string Role, string Direction, DateTimeOffset At, string From, string? FromName, string To, string? Cc, string Subject, string? Text, int Attachments);
 
 public sealed record InquirySupervisionDto(
     Guid CaseId, string CaseNumber, string Stage, string StageLabel, DateTimeOffset StageChangedAt,
@@ -221,13 +221,13 @@ public class InquiryOverviewService
             .OrderBy(ce => ce.EmailMessage.ReceivedAt)
             .Select(ce => new
             {
-                ce.EmailMessageId, ce.Role, ce.EmailMessage.Direction, ce.EmailMessage.ReceivedAt, ce.EmailMessage.FromAddress,
+                ce.EmailMessageId, ce.Role, ce.EmailMessage.Direction, ce.EmailMessage.ReceivedAt, ce.EmailMessage.FromAddress, ce.EmailMessage.FromDisplayName, ce.EmailMessage.CcAddresses,
                 ce.EmailMessage.ToAddresses, ce.EmailMessage.Subject, ce.EmailMessage.BodyText, ce.EmailMessage.BodyTextEncrypted, ce.EmailMessage.AttachmentCount,
             })
             .ToListAsync(cancellationToken);
 
         var conversation = messages.Select(m => new ConversationMessageDto(
-            m.EmailMessageId, m.Role.ToString(), m.Direction.ToString(), m.ReceivedAt, m.FromAddress, m.ToAddresses, m.Subject,
+            m.EmailMessageId, m.Role.ToString(), m.Direction.ToString(), m.ReceivedAt, m.FromAddress, m.FromDisplayName, m.ToAddresses, m.CcAddresses, m.Subject,
             m.Direction == MessageDirection.Outbound ? _protector.Reveal(m.BodyTextEncrypted) : m.BodyText,
             m.AttachmentCount)).ToList();
 

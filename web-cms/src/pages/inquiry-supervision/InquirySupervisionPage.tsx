@@ -9,6 +9,7 @@ import type {
   InquirySupervisionDto,
   PagedResult,
 } from "../../api/types";
+import EmailThread from "../../components/EmailThread";
 import Pagination from "../../components/Pagination";
 import StatCard from "../../components/StatCard";
 import { selectedRowStyle } from "../../components/styles";
@@ -314,6 +315,12 @@ function InquiryPanel({ caseId, onClose, onChanged }: { caseId: string; onClose:
             <StagePill stage={data.stage} label={data.stageLabel} /> since {when(data.stageChangedAt)}
             {data.overdueSince && <Pill color="var(--color-danger)">Overdue since {when(data.overdueSince)}</Pill>}
           </p>
+          <h3 style={{ fontSize: 15, marginBottom: 2 }}>Email conversation</h3>
+          <p style={{ color: "var(--color-text-muted)", fontSize: 12, margin: "0 0 10px" }}>
+            The customer's first message, then every reply, oldest first.
+          </p>
+          <EmailThread messages={data.conversation} />
+          <div style={{ height: 16 }} />
           <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 13, margin: "8px 0 16px" }}>
             <dt>First reply</dt><dd style={{ margin: 0 }}>{when(data.firstAgentResponseAt)}</dd>
             <dt>Last customer message</dt><dd style={{ margin: 0 }}>{when(data.lastCustomerMessageAt)}</dd>
@@ -349,27 +356,6 @@ function InquiryPanel({ caseId, onClose, onChanged }: { caseId: string; onClose:
           )}
           {message && <p style={{ fontSize: 13 }}>{message}</p>}
 
-          <h3 style={{ fontSize: 15 }}>Conversation</h3>
-          {data.conversation.map((m) => (
-            <div
-              key={m.id}
-              style={{
-                border: "1px solid var(--color-border)",
-                borderLeft: `4px solid ${m.role === "Agent" ? "var(--color-accent)" : m.role === "Internal" ? "var(--color-pill-neutral)" : "var(--color-success)"}`,
-                borderRadius: 6,
-                padding: "8px 10px",
-                marginBottom: 8,
-                background: m.role === "Agent" ? "var(--color-accent-soft)" : "var(--color-surface-alt)",
-              }}
-            >
-              <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-                <strong>{m.role === "Agent" ? "Agent" : m.role === "Internal" ? "Internal" : "Customer"}</strong> · {m.from} → {m.to} · {when(m.at)}
-                {m.attachments > 0 && ` · ${m.attachments} attachment(s)`}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, margin: "2px 0" }}>{m.subject}</div>
-              <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{m.text ?? <em>(text not stored)</em>}</div>
-            </div>
-          ))}
         </>
       )}
     </aside>

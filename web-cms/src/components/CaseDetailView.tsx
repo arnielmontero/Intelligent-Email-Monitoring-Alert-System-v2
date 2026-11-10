@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
-import type { CaseCompletionReason, CaseDetailDto, CaseEmailDto } from "../api/types";
+import type { CaseCompletionReason, CaseDetailDto, CaseEmailDto, ConversationMessageDto, InquirySupervisionDto } from "../api/types";
 import {
   CASE_COMPLETION_REASONS,
   CASE_EVENT_TYPE_LABELS,
@@ -11,6 +11,7 @@ import {
   REPLY_VERIFICATION_OUTCOME_LABELS,
 } from "../api/types";
 import { useAuthStore } from "../store/authStore";
+import EmailThread from "./EmailThread";
 
 const WORK_STATUS_COLORS: Record<number, string> = {
   1: "#b45309", 2: "#2563eb", 6: "#dc2626", 7: "#dc2626", 8: "#166534", 9: "var(--color-pill-neutral)", 11: "#7c3aed",
@@ -31,6 +32,8 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
   const id = caseId;
   const isAdmin = useAuthStore((s) => s.hasRole("SuperAdministrator", "Administrator"));
   const [detail, setDetail] = useState<CaseDetailDto | null>(null);
+  // The whole back-and-forth (customer emails AND our replies). Only supervisors may read it; for everyone else this stays null.
+  const [conversation, setConversation] = useState<ConversationMessageDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState<CaseCompletionReason>(0);
   const [comment, setComment] = useState("");
@@ -41,6 +44,11 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
       setDetail(res.data);
     } catch (err: any) {
       setError(err.response?.status === 404 ? "Case not found." : "Failed to load the Case.");
+    }
+    try {
+      setConversation((await apiClient.get<InquirySupervisionDto>(`/inquiries/${id}`)).data.conversation);
+    } catch {
+      setConversation(null);
     }
   }
 
@@ -93,8 +101,20 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
         )}
       </div>
 
-      <h2 style={compact ? compactSectionTitle : sectionTitle}>Emails ({detail.emails.length})</h2>
-      {detail.emails.map((e, i) => <EmailCard key={e.emailMessageId} email={e} defaultOpen={i === detail.emails.length - 1} />)}
+      {conversation && (
+        <>
+          <h2 style={{ ...(compact ? compactSectionTitle : sectionTitle), marginBottom: 4 }}>Conversation with the customer</h2>
+          <p style={{ ...hintStyle, margin: "0 0 12px" }}>
+            Every email in this case, oldest first: the customer's first message, then each reply, one after the other.
+          </p>
+          <EmailThread messages={conversation} />
+        </>
+      )}
+
+      <h2 style={compact ? compactSectionTitle : sectionTitle}>
+        {conversation ? `AI analysis of received emails (${detail.emails.length})` : `Emails (${detail.emails.length})`}
+      </h2>
+      {detail.emails.map((e, i) => <EmailCard key={e.emailMessageId} email={e} defaultOpen={!conversation && i === detail.emails.length - 1} />)}
 
       <h2 style={compact ? compactSectionTitle : sectionTitle}>Timeline</h2>
       <ol style={{ listStyle: "none", padding: 0, margin: 0, borderLeft: "2px solid var(--color-border)" }}>

@@ -197,11 +197,50 @@ public class InquiryLifecycleEndToEndTests
         Assert.Equal(3, await h.Db.CaseEmails.CountAsync(ce => ce.CaseId == c.Id)); // inbound, outbound, inbound
         Assert.Equal(aiCallsBefore, h.Ai.CallsByModel.Count);                       // linked by thread, not re-screened
         Assert.Equal(2, h.PopUpTitlesFor(Agent1).Count(t => t == "New Email"));      // new inquiry + follow-up
+        Assert.DoesNotContain(WroteAgainTitle, h.PopUpTitlesFor(Agent1));           // the agent had replied: a normal follow-up
 
         // The follow-up gets its own timer: 1 business day, then reminders.
         await h.RunAsync(Day(1, 11, 0));
         await h.RunAsync(Day(1, 13, 0));
         Assert.Equal(1, await h.Db.Reminders.CountAsync(r => r.Trigger == ReminderTrigger.ResponseOverdue));
+    }
+
+    private const string WroteAgainTitle = "Customer follow-up: still needs your response";
+
+    [Fact]
+    public async Task S6c_CustomerWritesAgainBeforeAnyReply_AgentGetsANeedsResponseAlert_NotANewEmail()
+    {
+        using var h = new InquiryHarness(Agent1);
+        h.Receive(Agent1, Customer, "Hi, can you send me a quotation?", "How much for 10 units? Please send a quote.", Monday0900);
+        await h.RunAsync(Monday0900.AddMinutes(1));
+
+        // Live case 2026-11-10: a new email from the same customer, different subject, no thread headers, nobody has replied yet.
+        h.Receive(Agent1, Customer, "Request for Sauna Product Specifications",
+            "Could you provide details about the heating system and warranty coverage? I would appreciate receiving a brochure.", Day(0, 10));
+        await h.RunAsync(Day(0, 10, 1));
+
+        Assert.Equal(1, await h.Db.Cases.CountAsync());                       // still one inquiry: nothing split or lost
+        var titles = h.PopUpTitlesFor(Agent1);
+        Assert.Equal(1, titles.Count(t => t == "New Email"));                 // only the original inquiry was "new"
+        Assert.Equal(1, titles.Count(t => t == WroteAgainTitle));             // the second email: needs a response, not a new email
+
+        var alert = await h.Db.Notifications.SingleAsync(n => n.Type == Iemas.Domain.Notifications.NotificationType.CustomerWroteAgain);
+        Assert.Contains("2 unanswered email(s)", alert.Message);
+        Assert.Contains("Request for Sauna Product Specifications", alert.Message); // the latest email, not the case subject
+    }
+
+    [Fact]
+    public async Task S6d_CustomerSendsSeveralEmailsInARow_OnlyOneWroteAgainAlert()
+    {
+        using var h = new InquiryHarness(Agent1);
+        h.Receive(Agent1, Customer, "Quote please", "Please send a quote for a 6 kW sauna heater.", Monday0900);
+        await h.RunAsync(Monday0900.AddMinutes(1));
+
+        h.Receive(Agent1, Customer, "Any update?", "Hello? Can you send the price for the 6 kW heater?", Day(0, 10));
+        h.Receive(Agent1, Customer, "Also", "And the price of the control unit please?", Day(0, 10, 5));
+        await h.RunAsync(Day(0, 10, 10));
+
+        Assert.Equal(1, h.PopUpTitlesFor(Agent1).Count(t => t == WroteAgainTitle));
     }
 
     [Fact]

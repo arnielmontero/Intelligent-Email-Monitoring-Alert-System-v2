@@ -13,6 +13,7 @@ const TYPE_LABELS: Record<string, string> = {
   CustomerFollowUpDue: "Follow-up May Be Needed",
   ConfirmResolution: "Confirm Resolution",
   UpdateRequested: "Update Needed",
+  CustomerWroteAgain: "Customer Wrote Again",
 };
 
 const TYPE_TRIGGERS: Record<string, string> = {
@@ -25,6 +26,7 @@ const TYPE_TRIGGERS: Record<string, string> = {
   CustomerFollowUpDue: "The customer has not replied for the waiting period; a follow-up may be needed.",
   ConfirmResolution: "The AI thinks the inquiry is resolved; the agent is asked to confirm or reject.",
   UpdateRequested: "The conversation stalled or an internal wait expired; the agent is asked for an update.",
+  CustomerWroteAgain: "The customer sent another email on an open inquiry that is still waiting for our reply (at most one alert per inquiry every 15 minutes).",
 };
 
 const STATUS_COLORS: Record<string, string> = {

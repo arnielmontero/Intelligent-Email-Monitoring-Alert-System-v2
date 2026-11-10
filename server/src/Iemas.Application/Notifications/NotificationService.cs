@@ -23,7 +23,7 @@ public static class NotificationTemplateDefaults
     public static readonly IReadOnlyList<string> SupportedVariables = new[]
     {
         "employee_name", "email_subject", "sender_name", "sender_email", "received_at",
-        "ai_summary", "elapsed_time", "reminder_count", "case_id",
+        "ai_summary", "elapsed_time", "reminder_count", "case_id", "latest_subject", "unanswered_count",
     };
 
     /// <summary>Requirements §52 example wording.</summary>
@@ -47,6 +47,11 @@ public static class NotificationTemplateDefaults
             "Hey {{employee_name}}, \"{{email_subject}}\" ({{case_id}}) from {{sender_email}} looks resolved. Please confirm it is resolved, or reject so monitoring continues."),
         NotificationType.UpdateRequested => Create(type, "Update needed",
             "Hey {{employee_name}}, \"{{email_subject}}\" ({{case_id}}) from {{sender_email}} has had no progress for {{elapsed_time}}. Please reply to the customer or update the inquiry."),
+        // Title keeps the word "follow-up" so Agents on an older build still show a distinct FOLLOW UP badge
+        // instead of NEW EMAIL; current Agents match "needs your response" and show NEEDS RESPONSE.
+        NotificationType.CustomerWroteAgain => Create(type, "Customer follow-up: still needs your response",
+            "Hey {{employee_name}}, {{sender_name}} wrote again on {{case_id}} and is still waiting for your reply "
+            + "({{unanswered_count}} unanswered email(s), first one {{elapsed_time}} ago). Latest: \"{{latest_subject}}\"."),
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 
@@ -160,7 +165,7 @@ public class NotificationService
         {
             var pushType = notification.Type switch
             {
-                NotificationType.NewEmail => AgentPushCommandType.ShowCase,
+                NotificationType.NewEmail or NotificationType.CustomerWroteAgain => AgentPushCommandType.ShowCase,
                 NotificationType.FirstReminder or NotificationType.Reminder => AgentPushCommandType.ShowReminder,
                 _ => AgentPushCommandType.ShowNotification,
             };
@@ -241,6 +246,15 @@ public class NotificationService
         var count = reminderCount
             ?? await _db.Reminders.CountAsync(r => r.CaseId == targetCase.Id && r.Status == ReminderStatus.Sent, cancellationToken);
 
+        // Customer emails since our last message to them: what the customer is still waiting on.
+        var lastAgentAt = targetCase.LastAgentMessageAt ?? targetCase.FirstAgentResponseAt ?? DateTimeOffset.MinValue;
+        var customerEmails = await _db.CaseEmails.AsNoTracking()
+            .Where(ce => ce.CaseId == targetCase.Id && ce.Role == ConversationRole.Customer)
+            .Select(ce => new { ce.EmailMessage.Subject, ce.EmailMessage.ReceivedAt })
+            .ToListAsync(cancellationToken);
+        var latestSubject = customerEmails.OrderByDescending(e => e.ReceivedAt).Select(e => e.Subject).FirstOrDefault() ?? targetCase.Subject;
+        var unanswered = Math.Max(1, customerEmails.Count(e => e.ReceivedAt > lastAgentAt));
+
         var zone = await SystemSettingsService.GetDefaultTimeZoneAsync(_db, cancellationToken);
         var receivedLocal = TimeZoneInfo.ConvertTime(targetCase.FirstEmailReceivedAt, zone);
 
@@ -255,6 +269,8 @@ public class NotificationService
             ["elapsed_time"] = FormatElapsed(DateTimeOffset.UtcNow - targetCase.FirstEmailReceivedAt),
             ["reminder_count"] = count.ToString(),
             ["case_id"] = targetCase.CaseNumber,
+            ["latest_subject"] = latestSubject,
+            ["unanswered_count"] = unanswered.ToString(),
         };
     }
 }

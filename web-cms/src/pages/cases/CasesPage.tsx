@@ -54,7 +54,7 @@ export default function CasesPage() {
         <h1>Cases</h1>
         <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
           A Case is one piece of customer work, with all the emails that belong to it. Cases are created automatically
-          from important email; click a row to see its emails, AI summary and timeline.
+          from important email; click a row to see the whole conversation: the customer's first message and every reply after it.
         </p>
 
         {error && <div className="form-error">{error}</div>}
@@ -84,7 +84,7 @@ export default function CasesPage() {
               <th style={thStyle}>Owner</th>
               <th style={thStyle}>Work Status</th>
               <th style={thStyle}>Reply Status</th>
-              <th style={thStyle}>Emails</th>
+              <th style={thStyle} title="Number of emails in the conversation">Emails in thread</th>
               <th style={thStyle}>Last Activity</th>
             </tr>
           </thead>

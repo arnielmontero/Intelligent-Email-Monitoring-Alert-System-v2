@@ -316,6 +316,15 @@ public class CaseWorkflowService
 
         var outcome = CaseProcessOutcome.Updated;
 
+        // Captured before this email changes anything: was the customer ALREADY waiting on us when they wrote
+        // again? (Supervised: the stage says the agent owes the next step. Otherwise: no verified reply yet.)
+        var customerWroteAgainWhileWaiting = matchResult.ExistingCase is { } existingCase
+            && role == ConversationRole.Customer
+            && existingCase.WorkStatus is not (CaseWorkStatus.Completed or CaseWorkStatus.Cancelled or CaseWorkStatus.Expired)
+            && (supervised
+                ? InquiryLifecycle.AgentOwesNextStep(existingCase.Stage)
+                : existingCase.ReplyStatus != CaseReplyStatus.Replied);
+
         Case targetCase;
         if (matchResult.ExistingCase is null)
         {
@@ -439,8 +448,25 @@ public class CaseWorkflowService
             await _notificationService.SendForCaseAsync(
                 NotificationType.NewEmail, targetCase, AgentPushCommandType.ShowCase, null, cancellationToken);
         }
+        else if (outcome == CaseProcessOutcome.Updated && customerWroteAgainWhileWaiting && _notificationService is not null
+                 && !await RecentlyAlertedWroteAgainAsync(targetCase.Id, cancellationToken))
+        {
+            // Not a new inquiry, an existing one that still needs a reply - and the customer is chasing it.
+            // Distinct alert ("still needs your response") so the agent doesn't mistake it for a new email.
+            await _notificationService.SendForCaseAsync(
+                NotificationType.CustomerWroteAgain, targetCase, AgentPushCommandType.ShowCase, null, cancellationToken);
+        }
 
         return outcome;
+    }
+
+    /// <summary>A customer sending several emails in a row gets one "wrote again" alert per this window, not one per email.</summary>
+    public static readonly TimeSpan WroteAgainAlertCooldown = TimeSpan.FromMinutes(15);
+
+    private Task<bool> RecentlyAlertedWroteAgainAsync(Guid caseId, CancellationToken cancellationToken)
+    {
+        var since = DateTimeOffset.UtcNow - WroteAgainAlertCooldown;
+        return _db.Notifications.AnyAsync(n => n.CaseId == caseId && n.Type == NotificationType.CustomerWroteAgain && n.CreatedAt >= since, cancellationToken);
     }
 
     private static bool IsThreadSignal(CaseMatchSignal signal) =>

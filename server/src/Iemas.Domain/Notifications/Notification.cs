@@ -22,6 +22,12 @@ public enum NotificationType
 
     /// <summary>The internal wait expired or the conversation stalled; the agent is asked for an update.</summary>
     UpdateRequested = 8,
+
+    /// <summary>
+    /// The customer sent another email on an inquiry that is still waiting for our reply. Not a new inquiry:
+    /// an existing one that now needs a response even more urgently.
+    /// </summary>
+    CustomerWroteAgain = 9,
 }
 
 /// <summary>Requirements §104 — notification delivery lifecycle. Not every channel supports every state.</summary>

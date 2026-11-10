@@ -919,7 +919,9 @@ export interface ConversationMessageDto {
   direction: "Inbound" | "Outbound";
   at: string;
   from: string;
+  fromName: string | null;
   to: string;
+  cc: string | null;
   subject: string;
   text: string | null;
   attachments: number;

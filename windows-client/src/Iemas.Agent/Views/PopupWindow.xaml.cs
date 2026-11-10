@@ -38,13 +38,16 @@ public partial class PopupWindow : Window
     /// <summary>
     /// Colour-codes the alert by urgency, using the alert title the server sends:
     /// red = escalated / overdue, orange = escalation warning, amber = reminder,
-    /// green = looks resolved, purple = follow-up / update needed, blue = new email.
+    /// green = looks resolved, rose = customer wrote again on an unanswered inquiry,
+    /// purple = follow-up / update needed, blue = new email.
     /// </summary>
     private void ApplyColours(string title)
     {
         var t = title.ToLowerInvariant();
         (string Badge, string Accent, string Tint, string Text) style =
-            t.Contains("warning") ? ("ESCALATION WARNING", "#EA580C", "#FFEDD5", "#9A3412")
+            // Checked before "follow": the customer chased an inquiry we still haven't answered. Not a new email.
+            t.Contains("needs your response") || t.Contains("wrote again") ? ("NEEDS RESPONSE", "#E11D48", "#FFE4E6", "#9F1239")
+            : t.Contains("warning") ? ("ESCALATION WARNING", "#EA580C", "#FFEDD5", "#9A3412")
             : t.Contains("escalat") ? ("ESCALATED", "#DC2626", "#FEE2E2", "#991B1B")
             : t.Contains("overdue") ? ("OVERDUE", "#DC2626", "#FEE2E2", "#991B1B")
             : t.Contains("remind") ? ("REMINDER", "#D97706", "#FEF3C7", "#92400E")
