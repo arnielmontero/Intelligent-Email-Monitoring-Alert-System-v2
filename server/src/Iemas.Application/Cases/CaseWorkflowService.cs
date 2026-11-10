@@ -43,7 +43,9 @@ public record CaseWorkflowItemDto(
     Guid? CaseId,
     string? CaseNumber,
     string? Detail,
-    DateTimeOffset? ProcessedAt = null);
+    DateTimeOffset? ProcessedAt = null,
+    /// <summary>What AI spent checking this email; no calls means the built-in filter settled it for free.</summary>
+    Iemas.Application.AiUsage.AiCostDto? AiCost = null);
 
 /// <summary>
 /// Requirements §20 (pipeline: Case Matching/Creation stage, following Phase 4's Classification
@@ -212,12 +214,14 @@ public class CaseWorkflowService
             })
             .ToListAsync(cancellationToken);
 
+        var costs = await Iemas.Application.AiUsage.AiCostLookup.ForEmailsAsync(_db, rows.Select(r => r.EmailMessageId).ToList(), cancellationToken);
         var items = rows.Select(r => new CaseWorkflowItemDto(
             r.EmailMessageId, r.ReceivedAt, r.FromAddress, r.Subject, r.Mailbox,
             r.MatchSignal == CaseMatchSignal.NewCase ? "New Case" : "Added to existing Case",
             r.CaseId, r.CaseNumber,
             r.MatchSignal == CaseMatchSignal.NewCase ? null : $"Matched by {DescribeSignal(r.MatchSignal)}",
-            r.CreatedAt)).ToList();
+            r.CreatedAt,
+            costs.GetValueOrDefault(r.EmailMessageId) ?? Iemas.Application.AiUsage.AiCostLookup.Empty)).ToList();
         return PagedResult<CaseWorkflowItemDto>.Create(items, total, page, pageSize);
     }
 
@@ -240,12 +244,15 @@ public class CaseWorkflowService
             .Select(ce => new { ce.EmailMessageId, ce.CaseId, ce.Case.CaseNumber, ce.MatchSignal })
             .ToListAsync(cancellationToken);
 
+        var costs = await Iemas.Application.AiUsage.AiCostLookup.ForEmailsAsync(_db, messageIds, cancellationToken);
         return messages.Select(m =>
         {
             var link = links.FirstOrDefault(l => l.EmailMessageId == m.Id);
             return new CaseWorkflowItemDto(m.Id, m.ReceivedAt, m.FromAddress, m.Subject, m.Mailbox, string.Empty,
                 link?.CaseId, link?.CaseNumber,
-                link is null || link.MatchSignal == CaseMatchSignal.NewCase ? null : $"Matched by {DescribeSignal(link.MatchSignal)}");
+                link is null || link.MatchSignal == CaseMatchSignal.NewCase ? null : $"Matched by {DescribeSignal(link.MatchSignal)}",
+                null,
+                costs.GetValueOrDefault(m.Id) ?? Iemas.Application.AiUsage.AiCostLookup.Empty);
         }).ToList();
     }
 

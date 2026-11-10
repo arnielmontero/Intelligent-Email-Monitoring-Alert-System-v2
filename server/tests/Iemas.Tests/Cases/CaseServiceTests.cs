@@ -173,4 +173,57 @@ public class CaseServiceTests
         Assert.Equal("Important", email.Classification!.Decision);
         Assert.Equal("Customer wants a quote for 20 units.", email.Classification.Summary);
     }
+
+    /// <summary>Each email shows what AI spent on it (retries and failures included); an email the AI never saw shows zero calls; the inquiry shows the sum plus its resolution checks.</summary>
+    [Fact]
+    public async Task GetDetailAsync_ShowsAiCostPerEmail_AndForTheWholeInquiry()
+    {
+        using var db = TestDbContext.CreateNew();
+        var c = CreateCase("CASE-000201");
+        db.Cases.Add(c);
+        EmailMessage Message(string id, string subject) => new()
+        {
+            EmailAccountId = c.EmailAccountId, ProviderMessageId = id, FromAddress = "maria@customer.example", ToAddresses = "sales@sawo.com",
+            Subject = subject, BodyText = "text", ReceivedAt = DateTimeOffset.UtcNow,
+        };
+        var needsAi = Message("1", "Unclear request");
+        var filterOnly = Message("2", "Quote please");
+        var ourReply = Message("3", "RE: Quote please");
+        db.EmailMessages.AddRange(needsAi, filterOnly, ourReply);
+        db.CaseEmails.AddRange(
+            new CaseEmail { CaseId = c.Id, EmailMessageId = needsAi.Id, MatchSignal = CaseMatchSignal.NewCase },
+            new CaseEmail { CaseId = c.Id, EmailMessageId = filterOnly.Id, MatchSignal = CaseMatchSignal.References },
+            new CaseEmail { CaseId = c.Id, EmailMessageId = ourReply.Id, MatchSignal = CaseMatchSignal.References, Role = ConversationRole.Agent });
+        db.AiUsageRecords.AddRange(
+            // the first attempt failed and was retried: both cost tokens
+            new Iemas.Domain.Ai.AiUsageRecord { Provider = "OpenRouter", ModelIdentifier = "m", Purpose = "EmailClassification", EmailMessageId = needsAi.Id, Succeeded = false, PromptTokens = 300, CompletionTokens = 0, TotalTokens = 300, CostUsd = 0.0001m },
+            new Iemas.Domain.Ai.AiUsageRecord { Provider = "OpenRouter", ModelIdentifier = "m", Purpose = "EmailClassification", EmailMessageId = needsAi.Id, Succeeded = true, PromptTokens = 300, CompletionTokens = 40, TotalTokens = 340, CostUsd = 0.0002m },
+            new Iemas.Domain.Ai.AiUsageRecord { Provider = "OpenRouter", ModelIdentifier = "m", Purpose = "ResolutionAssessment", CaseId = c.Id, Succeeded = true, PromptTokens = 500, CompletionTokens = 60, TotalTokens = 560, CostUsd = 0.0004m },
+            // someone else's call must never leak in
+            new Iemas.Domain.Ai.AiUsageRecord { Provider = "OpenRouter", ModelIdentifier = "m", Purpose = "ResolutionAssessment", CaseId = Guid.NewGuid(), Succeeded = true, PromptTokens = 1, CompletionTokens = 1, TotalTokens = 2, CostUsd = 9m });
+        await db.SaveChangesAsync();
+
+        var detail = await new CaseService(db).GetDetailAsync(c.Id, CancellationToken.None);
+
+        var paid = detail!.Emails.Single(e => e.Subject == "Unclear request").AiCost!;
+        Assert.Equal(2, paid.Calls);
+        Assert.Equal(1, paid.FailedCalls);
+        Assert.Equal(600, paid.PromptTokens);
+        Assert.Equal(40, paid.CompletionTokens);
+        Assert.Equal(0.0003m, paid.CostUsd);
+        var free = detail.Emails.Single(e => e.Subject == "Quote please").AiCost!;
+        Assert.Equal(0, free.Calls);
+        Assert.Equal(0m, free.CostUsd);
+        // Our own reply is never screened by AI: it has no cost line at all (not a misleading "$0 / free").
+        var reply = detail.Emails.Single(e => e.Subject == "RE: Quote please");
+        Assert.Null(reply.AiCost);
+        Assert.Equal("Agent", reply.Role);
+        Assert.Equal("Customer", detail.Emails.Single(e => e.Subject == "Unclear request").Role);
+        var total = detail.AiCost!;
+        Assert.Equal(0.0003m, total.Classification.CostUsd);
+        Assert.Equal(0.0004m, total.ResolutionChecks.CostUsd);
+        Assert.Equal(0.0007m, total.Total.CostUsd);
+        Assert.Equal(3, total.Total.Calls);
+        Assert.Equal(300 + 340 + 560, total.Total.TotalTokens);   // both classification attempts, plus the resolution check
+    }
 }

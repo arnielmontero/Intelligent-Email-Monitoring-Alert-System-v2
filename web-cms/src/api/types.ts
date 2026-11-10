@@ -202,6 +202,27 @@ export interface CaseEmailDto {
   bodyFromHtml: boolean;
   attachmentCount: number;
   classification: CaseEmailClassificationDto | null;
+  /** What AI spent checking this email; zero calls means the built-in filter settled it for free. Null for our own replies. */
+  aiCost?: AiCostDto | null;
+  /** Who wrote it within the inquiry. */
+  role?: "Customer" | "Agent" | "Internal" | null;
+}
+
+/** What AI spent on one email or one inquiry (every call counts, including retries and failures). */
+export interface AiCostDto {
+  calls: number;
+  failedCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  callsWithoutCost: number;
+}
+
+export interface CaseAiCostDto {
+  total: AiCostDto;
+  classification: AiCostDto;
+  resolutionChecks: AiCostDto;
 }
 
 export interface CaseEmailClassificationDto {
@@ -246,6 +267,7 @@ export interface CaseDetailDto {
   history: CaseEventDto[];
   verificationAttempts: ReplyVerificationAttemptDto[];
   notifications: CaseNotificationDto[] | null;
+  aiCost?: CaseAiCostDto | null;
 }
 
 // §71 Agent Registration / Connection status
@@ -519,6 +541,7 @@ export interface CaseWorkflowItemDto {
   caseNumber: string | null;
   detail: string | null;
   processedAt?: string | null;
+  aiCost?: AiCostDto | null;
 }
 
 export interface CaseWorkflowOverviewDto {
@@ -853,6 +876,81 @@ export interface AiUsageCallDto {
   costUsd: number | null;
 }
 
+// AI spend & token analytics (AI Usage & Cost → analytics section).
+export interface AiAnalyticsTotalsDto {
+  calls: number;
+  succeededCalls: number;
+  failedCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  failedCostUsd: number;
+  callsWithoutCost: number;
+  averageCostPerCallUsd: number;
+  averageTokensPerCall: number;
+  averageDurationMs: number;
+}
+
+export interface AiAnalyticsDayDto {
+  date: string;
+  calls: number;
+  failedCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  costUsd: number;
+}
+
+export interface AiAnalyticsModelDto {
+  modelIdentifier: string;
+  calls: number;
+  failedCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  costUsd: number;
+  averageCostPerCallUsd: number;
+  sharePercent: number;
+}
+
+export interface AiAnalyticsPurposeDto {
+  purpose: string;
+  calls: number;
+  tokens: number;
+  costUsd: number;
+  sharePercent: number;
+}
+
+export interface AiAnalyticsEfficiencyDto {
+  emailsClassified: number;
+  emailsWithAi: number;
+  emailsWithoutAi: number;
+  withoutAiPercent: number;
+  costPer1000EmailsUsd: number;
+  costPerAiEmailUsd: number;
+  estimatedSavedUsd: number;
+}
+
+export interface AiAnalyticsForecastDto {
+  monthToDateUsd: number;
+  dailyAverageLast7DaysUsd: number;
+  daysInMonth: number;
+  dayOfMonth: number;
+  projectedMonthUsd: number;
+}
+
+export interface AiAnalyticsDto {
+  days: number;
+  from: string;
+  to: string;
+  timeZone: string;
+  totals: AiAnalyticsTotalsDto;
+  daily: AiAnalyticsDayDto[];
+  byModel: AiAnalyticsModelDto[];
+  byPurpose: AiAnalyticsPurposeDto[];
+  efficiency: AiAnalyticsEfficiencyDto;
+  forecast: AiAnalyticsForecastDto;
+}
+
 export interface PagedResult<T> {
   items: T[];
   totalCount: number;
@@ -925,6 +1023,8 @@ export interface ConversationMessageDto {
   subject: string;
   text: string | null;
   attachments: number;
+  /** AI spend on this email (customer emails only). */
+  aiCost?: AiCostDto | null;
 }
 
 export interface InquirySupervisionDto {

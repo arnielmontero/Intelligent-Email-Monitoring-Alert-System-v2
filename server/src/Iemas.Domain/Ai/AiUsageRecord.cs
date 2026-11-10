@@ -16,6 +16,9 @@ public class AiUsageRecord : Entity
     public string Purpose { get; set; } = string.Empty;
     public Guid? EmailMessageId { get; set; }
 
+    /// <summary>The inquiry this call was made for, when it belongs to one (resolution checks); classification calls are tied to their email instead.</summary>
+    public Guid? CaseId { get; set; }
+
     public bool Succeeded { get; set; }
     public string? ErrorMessage { get; set; }
     public long DurationMs { get; set; }

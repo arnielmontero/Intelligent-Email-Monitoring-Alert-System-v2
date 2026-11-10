@@ -11,6 +11,8 @@ import {
   REPLY_VERIFICATION_OUTCOME_LABELS,
 } from "../api/types";
 import { useAuthStore } from "../store/authStore";
+import { compact as compactNumber, usd } from "../pages/ai-usage/format";
+import AiCost from "./AiCost";
 import EmailThread from "./EmailThread";
 
 const WORK_STATUS_COLORS: Record<number, string> = {
@@ -74,6 +76,8 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
 
   const c = detail.case;
   const isOpen = c.workStatus !== 8 && c.workStatus !== 9;
+  // Only what the customer sent is ever screened; our own replies and internal mail have no analysis.
+  const analysed = detail.emails.filter((e) => e.role !== "Agent" && e.role !== "Internal");
 
   return (
     <div style={{ maxWidth: compact ? undefined : 1100 }}>
@@ -94,6 +98,17 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
         <Info label="Owner" value={c.ownerEmployeeName ?? "Unassigned"} />
         <Info label="First email" value={new Date(c.firstEmailReceivedAt).toLocaleString()} />
         <Info label="Last activity" value={new Date(c.lastActivityAt).toLocaleString()} />
+        {detail.aiCost && (
+          <Info
+            label="AI spent on this case"
+            value={detail.aiCost.total.calls === 0
+              ? "$0"
+              : `${usd(detail.aiCost.total.costUsd, 6)} · ${compactNumber(detail.aiCost.total.totalTokens)} tokens`}
+            hint={detail.aiCost.total.calls === 0
+              ? "No AI was needed: the built-in filter settled every email."
+              : `Checking emails ${usd(detail.aiCost.classification.costUsd, 6)} · resolution checks ${usd(detail.aiCost.resolutionChecks.costUsd, 6)}`}
+          />
+        )}
         {c.completedAt && (
           <Info
             label="Completed"
@@ -108,7 +123,7 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
           {conversation ? `Conversation (${conversation.length})` : `Emails (${detail.emails.length})`}
         </TabButton>
         <TabButton active={tab === "analysis"} onClick={() => setTab("analysis")}>
-          AI analysis ({detail.emails.length})
+          AI analysis ({analysed.length})
         </TabButton>
       </div>
 
@@ -145,7 +160,7 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
               and an AI model was asked.
             </p>
           </div>
-          {detail.emails.map((e) => <EmailCard key={e.emailMessageId} email={e} defaultOpen={false} showAnalysis />)}
+          {analysed.map((e) => <EmailCard key={e.emailMessageId} email={e} defaultOpen={false} showAnalysis />)}
         </>
       )}
 
@@ -255,6 +270,12 @@ function EmailCard({ email, defaultOpen, showAnalysis }: { email: CaseEmailDto; 
         <span style={hintStyle}>{open ? "Hide ▲" : "Show ▼"}</span>
       </div>
 
+      {showAnalysis && email.aiCost && (
+        <div style={{ marginTop: 8 }}>
+          <AiCost cost={email.aiCost} label="AI cost" block />
+        </div>
+      )}
+
       {cls && (
         <div style={{ ...aiBoxStyle }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -293,11 +314,12 @@ function EmailCard({ email, defaultOpen, showAnalysis }: { email: CaseEmailDto; 
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+function Info({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div>
       <div style={hintStyle}>{label}</div>
       <div>{value}</div>
+      {hint && <div style={hintStyle}>{hint}</div>}
     </div>
   );
 }

@@ -96,7 +96,7 @@ public class ResolutionAssessmentService
         {
             await _usage.RecordAsync(new AiUsageRecord
             {
-                Provider = result.Provider, ModelIdentifier = model.ModelIdentifier, Purpose = AiUsagePurpose.ResolutionAssessment,
+                Provider = result.Provider, ModelIdentifier = model.ModelIdentifier, Purpose = AiUsagePurpose.ResolutionAssessment, CaseId = caseId,
                 Succeeded = result.Succeeded, ErrorMessage = result.Error is { Length: > 1000 } e ? e[..1000] : result.Error, DurationMs = result.DurationMs,
                 PromptTokens = result.Usage?.PromptTokens, CompletionTokens = result.Usage?.CompletionTokens, TotalTokens = result.Usage?.TotalTokens,
                 CostUsd = result.Usage?.CostUsd, GenerationId = result.Usage?.GenerationId,

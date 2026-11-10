@@ -76,7 +76,11 @@ public record CaseEmailDto(
     string? Body = null,
     bool BodyFromHtml = false,
     int AttachmentCount = 0,
-    CaseEmailClassificationDto? Classification = null);
+    CaseEmailClassificationDto? Classification = null,
+    /// <summary>What AI spent checking this email (calls, tokens, USD). No calls means the built-in filter settled it for free. Null for our own replies and internal mail, which are never screened.</summary>
+    Iemas.Application.AiUsage.AiCostDto? AiCost = null,
+    /// <summary>Customer, Agent or Internal: who wrote this email within the inquiry.</summary>
+    string? Role = null);
 
 /// <summary>What the AI (and the deterministic filter) concluded about one email — §25/§89 "why was this a Case?".</summary>
 public record CaseEmailClassificationDto(
@@ -107,7 +111,9 @@ public record CaseDetailDto(
     List<CaseEmailDto> Emails,
     List<CaseEventDto> History,
     List<ReplyVerificationAttemptDto> VerificationAttempts,
-    List<CaseNotificationDto>? Notifications = null);
+    List<CaseNotificationDto>? Notifications = null,
+    /// <summary>The inquiry's whole AI spend: checking its emails plus resolution checks.</summary>
+    Iemas.Application.AiUsage.CaseAiCostDto? AiCost = null);
 
 public record CompleteCaseRequest(CaseCompletionReason Reason, string? Comment);
 

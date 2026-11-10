@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiClient } from "../../api/client";
 import type { CaseRunResult, CaseWorkflowItemDto, CaseWorkflowOverviewDto, PagedResult } from "../../api/types";
+import AiCost from "../../components/AiCost";
 import Pagination from "../../components/Pagination";
 import StatCard, { Badge, type Tone } from "../../components/StatCard";
 
@@ -216,6 +217,7 @@ function EmailTable({ items, empty, sort }: { items: CaseWorkflowItemDto[]; empt
           {header("Mailbox", "mailbox")}
           {header("Case", "case")}
           {header("Processed", "processed")}
+          <th style={thStyle} title="What AI spent checking this email. The built-in filter is free, so many emails show $0.">AI cost</th>
         </tr>
       </thead>
       <tbody>
@@ -231,9 +233,10 @@ function EmailTable({ items, empty, sort }: { items: CaseWorkflowItemDto[]; empt
               {i.detail && <div style={hintStyle}>{i.detail}</div>}
             </td>
             <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{i.processedAt ? new Date(i.processedAt).toLocaleString() : "—"}</td>
+            <td style={{ ...tdStyle, whiteSpace: "nowrap" }}><AiCost cost={i.aiCost} /></td>
           </tr>
         ))}
-        {items.length === 0 && <tr><td style={tdStyle} colSpan={6}>{empty}</td></tr>}
+        {items.length === 0 && <tr><td style={tdStyle} colSpan={7}>{empty}</td></tr>}
       </tbody>
     </table>
   );

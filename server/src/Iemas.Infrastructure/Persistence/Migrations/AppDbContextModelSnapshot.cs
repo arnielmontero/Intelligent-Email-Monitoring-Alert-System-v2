@@ -409,6 +409,9 @@ namespace Iemas.Infrastructure.Persistence.Migrations
                     b.Property<int?>("CompletionTokens")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("CaseId")
+                        .HasColumnType("uuid");
+
                     b.Property<decimal?>("CostUsd")
                         .HasPrecision(18, 8)
                         .HasColumnType("numeric(18,8)");
@@ -459,7 +462,11 @@ namespace Iemas.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CaseId");
+
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("EmailMessageId");
 
                     b.HasIndex("ModelIdentifier", "CreatedAt");
 

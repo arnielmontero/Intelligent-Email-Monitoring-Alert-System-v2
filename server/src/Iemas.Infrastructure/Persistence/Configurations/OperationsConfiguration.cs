@@ -100,5 +100,7 @@ public class AiUsageRecordConfiguration : IEntityTypeConfiguration<AiUsageRecord
         builder.Property(r => r.CostUsd).HasPrecision(18, 8);
         builder.HasIndex(r => r.CreatedAt);
         builder.HasIndex(r => new { r.ModelIdentifier, r.CreatedAt });
+        builder.HasIndex(r => r.EmailMessageId);
+        builder.HasIndex(r => r.CaseId);
     }
 }

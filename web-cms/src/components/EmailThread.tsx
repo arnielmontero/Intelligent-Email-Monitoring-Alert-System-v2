@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ConversationMessageDto } from "../api/types";
+import AiCost from "./AiCost";
 
 /**
  * Shows an inquiry's emails the way a mail program shows a thread: one card per email, oldest first,
@@ -102,6 +103,8 @@ function EmailCard({ message: m, number, title, showSubject, isLatest }: {
             Latest
           </span>
         )}
+        {/* What AI spent checking this customer email (our replies and internal mail cost nothing, so they show none). */}
+        {m.aiCost && <span style={{ marginLeft: "auto" }}><AiCost cost={m.aiCost} /></span>}
       </div>
 
       <div style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "6px 0 0", lineHeight: 1.6 }}>

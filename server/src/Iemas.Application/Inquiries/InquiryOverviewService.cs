@@ -23,7 +23,9 @@ public sealed record InquiryRowDto(
     DateTimeOffset FirstEmailReceivedAt, DateTimeOffset? FirstAgentResponseAt, DateTimeOffset LastActivityAt,
     DateTimeOffset? ResolutionDueAt, bool IsOverdue, int Escalations, string? AiVerdict, double? AiConfidence);
 
-public sealed record ConversationMessageDto(Guid Id, string Role, string Direction, DateTimeOffset At, string From, string? FromName, string To, string? Cc, string Subject, string? Text, int Attachments);
+/// <param name="AiCost">What AI spent checking this email (customer emails only; null for our replies and internal mail). No calls means the built-in filter settled it for free.</param>
+public sealed record ConversationMessageDto(Guid Id, string Role, string Direction, DateTimeOffset At, string From, string? FromName, string To, string? Cc, string Subject, string? Text, int Attachments,
+    Iemas.Application.AiUsage.AiCostDto? AiCost = null);
 
 public sealed record InquirySupervisionDto(
     Guid CaseId, string CaseNumber, string Stage, string StageLabel, DateTimeOffset StageChangedAt,
@@ -226,10 +228,12 @@ public class InquiryOverviewService
             })
             .ToListAsync(cancellationToken);
 
+        var costs = await Iemas.Application.AiUsage.AiCostLookup.ForEmailsAsync(_db, messages.Select(m => m.EmailMessageId).ToList(), cancellationToken);
         var conversation = messages.Select(m => new ConversationMessageDto(
             m.EmailMessageId, m.Role.ToString(), m.Direction.ToString(), m.ReceivedAt, m.FromAddress, m.FromDisplayName, m.ToAddresses, m.CcAddresses, m.Subject,
             m.Direction == MessageDirection.Outbound ? _protector.Reveal(m.BodyTextEncrypted) : m.BodyText,
-            m.AttachmentCount)).ToList();
+            m.AttachmentCount,
+            m.Role == ConversationRole.Customer ? costs.GetValueOrDefault(m.EmailMessageId) ?? Iemas.Application.AiUsage.AiCostLookup.Empty : null)).ToList();
 
         return new InquirySupervisionDto(c.Id, c.CaseNumber, c.Stage.ToString(), InquiryLifecycle.Label(c.Stage), c.StageChangedAt,
             c.FirstAgentResponseAt, c.LastCustomerMessageAt, c.LastAgentMessageAt, c.LastInternalActivityAt,

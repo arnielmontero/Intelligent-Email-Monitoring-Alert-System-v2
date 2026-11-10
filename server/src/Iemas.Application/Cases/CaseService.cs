@@ -1,3 +1,4 @@
+using Iemas.Application.AiUsage;
 using Iemas.Application.Cases.Dtos;
 using Iemas.Application.Common;
 using Iemas.Application.Common.Interfaces;
@@ -59,7 +60,7 @@ public class CaseService
             .OrderBy(ce => ce.EmailMessage.ReceivedAt)
             .Select(ce => new
             {
-                ce.EmailMessageId, ce.EmailMessage.Subject, ce.EmailMessage.FromAddress, ce.EmailMessage.ReceivedAt, ce.MatchSignal, ce.MatchDetail,
+                ce.EmailMessageId, ce.Role, ce.EmailMessage.Subject, ce.EmailMessage.FromAddress, ce.EmailMessage.ReceivedAt, ce.MatchSignal, ce.MatchDetail,
                 ce.EmailMessage.FromDisplayName, ce.EmailMessage.ToAddresses, ce.EmailMessage.CcAddresses,
                 ce.EmailMessage.BodyText, ce.EmailMessage.BodyHtml, ce.EmailMessage.AttachmentCount,
             })
@@ -69,6 +70,8 @@ public class CaseService
         var classifications = await _db.EmailClassifications.AsNoTracking()
             .Where(c => messageIds.Contains(c.EmailMessageId))
             .ToListAsync(cancellationToken);
+
+        var emailCosts = await AiCostLookup.ForEmailsAsync(_db, messageIds, cancellationToken);
 
         var emails = emailRows.Select(e =>
         {
@@ -80,8 +83,11 @@ public class CaseService
                 fromHtml ? HtmlToText(e.BodyHtml!) : e.BodyText, fromHtml, e.AttachmentCount,
                 c is null ? null : new CaseEmailClassificationDto(
                     c.Decision.ToString(), c.Category, c.Priority?.ToString(), c.AiConfidence, c.Summary, c.ActionRequired, c.AiModel,
-                    c.Legitimate, c.ResponseExpected, c.DecisionReason));
+                    c.Legitimate, c.ResponseExpected, c.DecisionReason),
+                e.Role == ConversationRole.Customer ? emailCosts.GetValueOrDefault(e.EmailMessageId) ?? AiCostLookup.Empty : null,
+                e.Role.ToString());
         }).ToList();
+        var caseCost = await AiCostLookup.ForCaseAsync(_db, id, emailCosts, cancellationToken);
 
         // Requirements §66/§89 — append-only, chronological investigation timeline.
         var history = await _db.CaseEvents.AsNoTracking()
@@ -106,7 +112,8 @@ public class CaseService
 
         return new CaseDetailDto(caseDto, emails, history, verificationAttempts,
             notifications.Select(n => new CaseNotificationDto(n.Id, n.CreatedAt, n.Type.ToString(), n.Status.ToString(), n.Title, n.Message,
-                n.EmployeeName, n.DeliveredAgentCount, n.AcknowledgedAt)).ToList());
+                n.EmployeeName, n.DeliveredAgentCount, n.AcknowledgedAt)).ToList(),
+            caseCost);
     }
 
     /// <summary>

@@ -25,6 +25,11 @@ public class AiUsageController : ControllerBase
     public async Task<ActionResult<AiUsageSummaryDto>> Summary(CancellationToken cancellationToken) =>
         Ok(await _queryService.GetSummaryAsync(cancellationToken));
 
+    /// <summary>Spend and token analytics over the last N days (1-365): daily trend, by model, by purpose, no-AI savings, month-end projection.</summary>
+    [HttpGet("analytics")]
+    public async Task<ActionResult<AiAnalyticsDto>> Analytics([FromQuery] int? days, CancellationToken cancellationToken) =>
+        Ok(await _queryService.GetAnalyticsAsync(days ?? 30, cancellationToken));
+
     [HttpGet("calls")]
     public async Task<ActionResult<PagedResult<AiUsageCallDto>>> Calls(
         [FromQuery] int? page,

@@ -3,24 +3,10 @@ import { apiClient } from "../../api/client";
 import type { AiProviderKeyCheck, AiUsageCallDto, AiUsageSummaryDto, PagedResult } from "../../api/types";
 import Pagination from "../../components/Pagination";
 import { Badge } from "../../components/StatCard";
+import AiSpendAnalytics from "./AiSpendAnalytics";
+import { PURPOSE_LABELS, number, usd } from "./format";
 
 const PAGE_SIZE = 10;
-
-const PURPOSE_LABELS: Record<string, string> = {
-  EmailClassification: "Email classification",
-  ModelTest: "Model test",
-  ProfileTest: "Profile test",
-};
-
-function usd(value: number | null | undefined, digits = 4) {
-  if (value === null || value === undefined) return "—";
-  if (value === 0) return "$0";
-  return value < 0.0001 ? `$${value.toFixed(6)}` : `$${value.toFixed(digits)}`;
-}
-
-function number(value: number | null | undefined) {
-  return value === null || value === undefined ? "—" : value.toLocaleString();
-}
 
 export default function AiUsagePage() {
   const [summary, setSummary] = useState<AiUsageSummaryDto | null>(null);
@@ -100,34 +86,7 @@ export default function AiUsagePage() {
         </div>
       </div>
 
-      <h2 style={sectionTitle}>Cost by model (last 30 days)</h2>
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Model</th>
-            <th style={thRight}>Calls</th>
-            <th style={thRight}>Failed</th>
-            <th style={thRight}>Tokens</th>
-            <th style={thRight}>Cost</th>
-            <th style={thRight}>Avg / call</th>
-          </tr>
-        </thead>
-        <tbody>
-          {summary?.byModelLast30Days.map((m) => (
-            <tr key={m.modelIdentifier}>
-              <td style={tdStyle}>{m.modelIdentifier}</td>
-              <td style={tdRight}>{number(m.calls)}</td>
-              <td style={tdRight}>{m.failedCalls > 0 ? <span style={{ color: "var(--color-danger)" }}>{m.failedCalls}</span> : 0}</td>
-              <td style={tdRight}>{number(m.tokens)}</td>
-              <td style={tdRight}>{usd(m.costUsd)}</td>
-              <td style={tdRight}>{usd(m.averageCostPerCall, 6)}</td>
-            </tr>
-          ))}
-          {summary && summary.byModelLast30Days.length === 0 && (
-            <tr><td style={tdStyle} colSpan={6}>No AI calls in the last 30 days.</td></tr>
-          )}
-        </tbody>
-      </table>
+      <AiSpendAnalytics />
 
       <h2 style={sectionTitle}>Calls</h2>
       <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap", marginBottom: 12 }}>
