@@ -756,6 +756,8 @@ export interface SystemSettingDto {
   max: number | null;
   updatedByEmail: string | null;
   updatedAt: string | null;
+  /** What a number setting counts, e.g. "business hours", "calendar days", "%", "points". */
+  unit?: string | null;
 }
 
 export interface PauseControlDto {

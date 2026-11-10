@@ -26,7 +26,9 @@ public record SettingDefinition(
     SettingValueType Type,
     string DefaultValue,
     int? Min = null,
-    int? Max = null);
+    int? Max = null,
+    /// <summary>What the number counts, shown beside the input: "business hours", "calendar days", "%", "points", ...</summary>
+    string? Unit = null);
 
 public record SystemSettingDto(
     string Key,
@@ -40,7 +42,8 @@ public record SystemSettingDto(
     int? Min,
     int? Max,
     string? UpdatedByEmail,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    string? Unit = null);
 
 public record UpdateSystemSettingsRequest(Dictionary<string, string> Values);
 
@@ -276,48 +279,48 @@ public class SystemSettingsService
             "Weak signs of a request (need, looking for, please, möchte ...). Each distinct match adds 1 point (max 2).",
             SettingValueType.RuleList, SystemSettingDefaults.RequestCues, 0, 9000),
         new(SystemSettingKeys.InquiryScoreThreshold, "Inquiry detection", "Score to accept as an inquiry without AI",
-            "At or above this score, with no negative signal, the email is treated as an inquiry without calling the AI.", SettingValueType.Integer, "5", 1, 50),
+            "At or above this score, with no negative signal, the email is treated as an inquiry without calling the AI.", SettingValueType.Integer, "5", 1, 50, Unit: "points"),
         new(SystemSettingKeys.NotInquiryScoreThreshold, "Inquiry detection", "Score to reject without AI",
-            "At or below minus this score the email is treated as not an inquiry without calling the AI. Anything in between goes to the AI.", SettingValueType.Integer, "3", 1, 50),
+            "At or below minus this score the email is treated as not an inquiry without calling the AI. Anything in between goes to the AI.", SettingValueType.Integer, "3", 1, 50, Unit: "points"),
         new(SystemSettingKeys.SupervisionEnabled, "Inquiry supervision", "Supervise inquiries until resolved",
             "On: inquiries are followed through every stage until the agent confirms they are resolved, with reminders and management escalation. "
             + "Off: the older reminder and escalation engines are used, which stop at the first reply.", SettingValueType.Boolean, "true"),
-        new(SystemSettingKeys.FirstResponseBusinessHours, "Inquiry supervision", "Initial response time (business hours)",
-            "How long the agent has to send a first reply to a new inquiry.", SettingValueType.Integer, "4", 1, 240),
-        new(SystemSettingKeys.ReminderIntervalBusinessHours, "Inquiry supervision", "Reminder interval (business hours)",
-            "Time from a missed deadline to the first reminder, between reminders, and from the last reminder to escalation.", SettingValueType.Integer, "2", 1, 240),
-        new(SystemSettingKeys.RemindersBeforeEscalation, "Inquiry supervision", "Reminders before management escalation",
-            "How many reminders the agent gets before management is told.", SettingValueType.Integer, "2", 0, 10),
-        new(SystemSettingKeys.IdleBusinessDays, "Inquiry supervision", "Conversation idle after (business days)",
-            "When the agent owes the next step (for example after a customer follow-up) and nothing happens for this long, the inquiry is idle.", SettingValueType.Integer, "1", 1, 30),
-        new(SystemSettingKeys.CustomerWaitCalendarDays, "Inquiry supervision", "Waiting for customer (calendar days)",
-            "After this long without a customer reply the agent is told a follow-up may be needed. Never closes the inquiry.", SettingValueType.Integer, "3", 1, 60),
-        new(SystemSettingKeys.InternalWaitBusinessDays, "Inquiry supervision", "Waiting for internal action (business days)",
-            "After this long waiting on another department with no activity, the agent is asked for an update.", SettingValueType.Integer, "1", 1, 60),
-        new(SystemSettingKeys.ResolutionTargetBusinessDays, "Inquiry supervision", "Resolution target (business days)",
-            "An inquiry still unresolved after this long is marked overdue. A target only: it never closes the inquiry.", SettingValueType.Integer, "5", 1, 120),
-        new(SystemSettingKeys.EscalationRepeatBusinessDays, "Inquiry supervision", "Escalate to the next level after (business days)",
-            "If an escalated inquiry is still neglected after this long, the next escalation level is notified.", SettingValueType.Integer, "1", 1, 60),
+        new(SystemSettingKeys.FirstResponseBusinessHours, "Inquiry supervision", "Time allowed for the first reply",
+            "From the moment a customer's email arrives, how long the agent has to send the first reply before the reminders start.", SettingValueType.Integer, "4", 1, 240, Unit: "business hours"),
+        new(SystemSettingKeys.ReminderIntervalBusinessHours, "Inquiry supervision", "Time between reminders",
+            "The gap between the missed deadline and reminder 1, between each reminder, and between the last reminder and the management escalation.", SettingValueType.Integer, "2", 1, 240, Unit: "business hours"),
+        new(SystemSettingKeys.RemindersBeforeEscalation, "Inquiry supervision", "Reminders before management is told",
+            "How many reminders the agent gets first. 0 means no reminders: management is told one reminder interval after the deadline.", SettingValueType.Integer, "2", 0, 10, Unit: "reminders"),
+        new(SystemSettingKeys.IdleBusinessDays, "Inquiry supervision", "Time allowed to answer a customer follow-up",
+            "When the customer writes again, or a conversation stalls while the agent owes the next step, and nothing happens for this long, the same reminder and escalation steps start.", SettingValueType.Integer, "1", 1, 30, Unit: "business days"),
+        new(SystemSettingKeys.CustomerWaitCalendarDays, "Inquiry supervision", "Wait for the customer's reply",
+            "After the agent has replied, how long without an answer from the customer before the agent is told a follow-up may be needed. This never closes the inquiry.", SettingValueType.Integer, "3", 1, 60, Unit: "calendar days"),
+        new(SystemSettingKeys.InternalWaitBusinessDays, "Inquiry supervision", "Wait for another department",
+            "When the agent is waiting on a colleague or department and nothing happens for this long, the agent is asked for an update.", SettingValueType.Integer, "1", 1, 60, Unit: "business days"),
+        new(SystemSettingKeys.ResolutionTargetBusinessDays, "Inquiry supervision", "Resolution target",
+            "An inquiry still unresolved after this long is marked overdue. It is only a target: it never closes the inquiry.", SettingValueType.Integer, "5", 1, 120, Unit: "business days"),
+        new(SystemSettingKeys.EscalationRepeatBusinessDays, "Inquiry supervision", "Move to the next escalation level after",
+            "If management has been told and the inquiry is still neglected after this long, the next escalation level is notified.", SettingValueType.Integer, "1", 1, 60, Unit: "business days"),
         new(SystemSettingKeys.TestClockMinutes, "Inquiry supervision", "TEST MODE: count hours as minutes",
             "For trying the system out only. On: every supervision time above runs 60 times faster (1 hour = 1 minute, 1 day = 24 minutes) "
             + "and business hours, weekends and holidays are ignored. Turn it OFF before real use.", SettingValueType.Boolean, "false"),
         new(SystemSettingKeys.AiResolutionEnabled, "Inquiry supervision", "AI checks whether inquiries look resolved",
             "The AI reads the conversation and may mark an inquiry Potentially resolved. Only the agent can confirm it resolved.", SettingValueType.Boolean, "true"),
-        new(SystemSettingKeys.AiResolutionMinConfidence, "Inquiry supervision", "AI confidence needed for Potentially resolved (%)",
-            "The AI must be at least this confident before an inquiry is marked Potentially resolved.", SettingValueType.Integer, "75", 50, 100),
-        new(SystemSettingKeys.AgentReplyRetentionDays, "Inquiry supervision", "Keep stored agent replies for (days)",
-            "The encrypted text of agent replies is erased this many days after the inquiry is closed. 0 keeps it.", SettingValueType.Integer, "365", 0, 36500),
+        new(SystemSettingKeys.AiResolutionMinConfidence, "Inquiry supervision", "AI confidence needed to suggest \"resolved\"",
+            "The AI must be at least this confident before an inquiry is marked Potentially resolved.", SettingValueType.Integer, "75", 50, 100, Unit: "%"),
+        new(SystemSettingKeys.AgentReplyRetentionDays, "Inquiry supervision", "Keep stored agent replies for",
+            "The encrypted text of agent replies is erased this many days after the inquiry is closed. 0 keeps it.", SettingValueType.Integer, "365", 0, 36500, Unit: "days"),
         new(SystemSettingKeys.PasswordMinLength, "Security", "Minimum password length",
-            "Enforced when creating users and changing or resetting passwords.", SettingValueType.Integer, "10", 8, 128),
-        new("retention.raw_email_content", "Retention", "Raw email content", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),
-        new("retention.email_metadata", "Retention", "Email metadata", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),
-        new("retention.cases", "Retention", "Cases", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),
-        new("retention.case_history", "Retention", "Case History", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),
-        new("retention.ai_results", "Retention", "AI results", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),
-        new("retention.employee_activity", "Retention", "Employee Activity", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),
-        new("retention.audit_logs", "Retention", "Audit Logs", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),
-        new("retention.agent_logs", "Retention", "Agent technical logs", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),
-        new("retention.outbound_email_logs", "Retention", "Outbound email logs", RetentionDescription, SettingValueType.Integer, "0", 0, 36500),
+            "Enforced when creating users and changing or resetting passwords.", SettingValueType.Integer, "10", 8, 128, Unit: "characters"),
+        new("retention.raw_email_content", "Retention", "Raw email content", RetentionDescription, SettingValueType.Integer, "0", 0, 36500, Unit: "days"),
+        new("retention.email_metadata", "Retention", "Email metadata", RetentionDescription, SettingValueType.Integer, "0", 0, 36500, Unit: "days"),
+        new("retention.cases", "Retention", "Cases", RetentionDescription, SettingValueType.Integer, "0", 0, 36500, Unit: "days"),
+        new("retention.case_history", "Retention", "Case History", RetentionDescription, SettingValueType.Integer, "0", 0, 36500, Unit: "days"),
+        new("retention.ai_results", "Retention", "AI results", RetentionDescription, SettingValueType.Integer, "0", 0, 36500, Unit: "days"),
+        new("retention.employee_activity", "Retention", "Employee Activity", RetentionDescription, SettingValueType.Integer, "0", 0, 36500, Unit: "days"),
+        new("retention.audit_logs", "Retention", "Audit Logs", RetentionDescription, SettingValueType.Integer, "0", 0, 36500, Unit: "days"),
+        new("retention.agent_logs", "Retention", "Agent technical logs", RetentionDescription, SettingValueType.Integer, "0", 0, 36500, Unit: "days"),
+        new("retention.outbound_email_logs", "Retention", "Outbound email logs", RetentionDescription, SettingValueType.Integer, "0", 0, 36500, Unit: "days"),
     };
 
     private readonly IAppDbContext _db;
@@ -362,7 +365,7 @@ public class SystemSettingsService
             return new SystemSettingDto(
                 d.Key, d.Group, d.Label, d.Description, d.Type.ToString(),
                 row?.Value ?? d.DefaultValue, d.DefaultValue, row is not null,
-                d.Min, d.Max, row?.UpdatedByEmail, row?.UpdatedAt ?? row?.CreatedAt);
+                d.Min, d.Max, row?.UpdatedByEmail, row?.UpdatedAt ?? row?.CreatedAt, d.Unit);
         }).ToList();
     }
 
