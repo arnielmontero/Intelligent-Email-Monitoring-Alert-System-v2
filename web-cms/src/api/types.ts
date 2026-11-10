@@ -775,6 +775,42 @@ export interface AiCatalogModel {
   completionPricePerMillion: number | null;
 }
 
+/** A model in the AI Models dropdown: live price plus measured benchmark accuracy. */
+export interface AiModelRecommendation {
+  modelIdentifier: string;
+  name: string;
+  note: string;
+  inCatalog: boolean;
+  promptPricePerMillion: number | null;
+  completionPricePerMillion: number | null;
+  costPer1000EmailsUsd: number | null;
+  costIsMeasured: boolean;
+  accuracyPercent: number | null;
+  averageLatencyMs: number | null;
+  measuredAt: string | null;
+  costTier: string;
+  effectivenessTier: string;
+  isBestValue: boolean;
+  isMostAccurate: boolean;
+  isCheapest: boolean;
+}
+
+export interface AiModelBenchmarkResult {
+  modelIdentifier: string;
+  samples: number;
+  correct: number;
+  sentToReview: number;
+  failed: number;
+  accuracyPercent: number;
+  totalCostUsd: number;
+  costPer1000EmailsUsd: number;
+  averageLatencyMs: number;
+  averagePromptTokens: number;
+  averageCompletionTokens: number;
+  measuredAt: string;
+  mistakes: string[];
+}
+
 // AI cost monitoring (AI CONFIGURATION → AI Usage & Cost).
 export interface AiUsagePeriodDto {
   label: string;

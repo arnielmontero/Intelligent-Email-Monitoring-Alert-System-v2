@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.AddScoped<ClassificationProfileService>();
         services.AddScoped<AiModelService>();
         services.AddScoped<AiProviderSettingsService>();
+        services.AddScoped<AiModelBenchmarkService>();
         services.AddScoped<Iemas.Application.AiUsage.AiUsageQueryService>();
         services.AddScoped<EmailClassificationService>();
         services.AddScoped<CaseMatchingService>();

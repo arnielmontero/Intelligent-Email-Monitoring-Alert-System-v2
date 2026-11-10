@@ -137,7 +137,7 @@ public class EmailClassificationService
 
         if (zettelkasten.Verdict == InquiryFilterVerdict.Inquiry)
         {
-            return await PersistDeterministicInquiryAsync(message, profile, filterResult, stopwatch, cancellationToken);
+            return await PersistDeterministicInquiryAsync(message, profile, filterResult, stopwatch, cancellationToken, zettelkasten.Category);
         }
 
         var models = await _db.AiModelConfigs

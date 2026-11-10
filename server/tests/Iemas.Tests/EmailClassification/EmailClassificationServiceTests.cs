@@ -41,6 +41,13 @@ public class EmailClassificationServiceTests
         };
     }
 
+    /// <summary>
+    /// Deliberately ambiguous for the Zettelkasten filter (Uncertain), so these tests exercise the AI path.
+    /// A plain "Please send your latest price list." is now a confident inquiry decided without AI.
+    /// </summary>
+    private const string AmbiguousBody =
+        "I visited your website and wanted to know whether your team could support us on an upcoming project.";
+
     private static EmailMessage CreateMessage(Guid accountId, string subject, string? body)
     {
         return new EmailMessage
@@ -218,7 +225,7 @@ public class EmailClassificationServiceTests
         db.EmailAccounts.Add(account);
         db.ClassificationProfiles.Add(profile);
         db.AiModelConfigs.Add(CreateModel(maxRetries: 1));
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 
@@ -264,7 +271,7 @@ public class EmailClassificationServiceTests
         db.ClassificationProfiles.Add(profile);
         db.AiModelConfigs.Add(CreateModel("primary-model", fallbackOrder: 0, maxRetries: 3));
         db.AiModelConfigs.Add(CreateModel("fallback-model", fallbackOrder: 1, maxRetries: 0));
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 
@@ -302,7 +309,7 @@ public class EmailClassificationServiceTests
         db.ClassificationProfiles.Add(profile);
         db.AiModelConfigs.Add(CreateModel("primary-model", fallbackOrder: 0, maxRetries: 3));
         db.AiModelConfigs.Add(CreateModel("fallback-model", fallbackOrder: 1, maxRetries: 0));
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 
@@ -336,7 +343,7 @@ public class EmailClassificationServiceTests
         db.EmailAccounts.Add(account);
         db.ClassificationProfiles.Add(profile);
         db.AiModelConfigs.Add(CreateModel(maxRetries: 1));
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 
@@ -375,7 +382,7 @@ public class EmailClassificationServiceTests
         db.ClassificationProfiles.Add(profile);
         db.AiModelConfigs.Add(CreateModel("primary-model", fallbackOrder: 0, maxRetries: 0));
         db.AiModelConfigs.Add(CreateModel("fallback-model", fallbackOrder: 1, maxRetries: 0));
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 
@@ -417,7 +424,7 @@ public class EmailClassificationServiceTests
         db.AiModelConfigs.Add(CreateModel("primary-model", fallbackOrder: 0, maxRetries: 0));
         db.AiModelConfigs.Add(CreateModel("fallback-model", fallbackOrder: 1, maxRetries: 0));
         var messages = Enumerable.Range(1, 4)
-            .Select(i => CreateMessage(account.Id, $"Price inquiry {i}", "Please send your latest price list."))
+            .Select(i => CreateMessage(account.Id, $"Price inquiry {i}", AmbiguousBody))
             .ToList();
         db.EmailMessages.AddRange(messages);
         await db.SaveChangesAsync();
@@ -467,7 +474,7 @@ public class EmailClassificationServiceTests
         db.ClassificationProfiles.Add(profile);
         db.AiModelConfigs.Add(CreateModel("only-model", fallbackOrder: 0, maxRetries: 0));
         var messages = Enumerable.Range(1, 4)
-            .Select(i => CreateMessage(account.Id, $"Price inquiry {i}", "Please send your latest price list."))
+            .Select(i => CreateMessage(account.Id, $"Price inquiry {i}", AmbiguousBody))
             .ToList();
         db.EmailMessages.AddRange(messages);
         await db.SaveChangesAsync();
@@ -507,7 +514,7 @@ public class EmailClassificationServiceTests
         db.EmailAccounts.Add(account);
         db.ClassificationProfiles.Add(profile);
         db.AiModelConfigs.Add(CreateModel(maxRetries: 0));
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 
@@ -537,7 +544,7 @@ public class EmailClassificationServiceTests
         db.EmailAccounts.Add(account);
         db.ClassificationProfiles.Add(profile);
         db.AiModelConfigs.Add(CreateModel());
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 
@@ -567,7 +574,7 @@ public class EmailClassificationServiceTests
         using var db = TestDbContext.CreateNew();
         var account = CreateAccount();
         db.EmailAccounts.Add(account);
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 
@@ -589,7 +596,7 @@ public class EmailClassificationServiceTests
         using var db = TestDbContext.CreateNew();
         var account = CreateAccount();
         db.EmailAccounts.Add(account);
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         message.ProcessingStatus = EmailProcessingStatus.Processed;
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
@@ -614,7 +621,7 @@ public class EmailClassificationServiceTests
         db.ClassificationProfiles.Add(profile);
         db.AiModelConfigs.Add(CreateModel());
 
-        var important = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var important = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         var notImportant = CreateMessage(account.Id, "Weekly Newsletter", "Unsubscribe here.");
         db.EmailMessages.AddRange(important, notImportant);
         await db.SaveChangesAsync();
@@ -647,7 +654,7 @@ public class EmailClassificationServiceTests
         db.EmailAccounts.Add(account);
         db.ClassificationProfiles.Add(CreateSalesProfile());
         db.AiModelConfigs.Add(CreateModel());
-        db.EmailMessages.Add(CreateMessage(account.Id, "Price inquiry", "Please send your latest price list."));
+        db.EmailMessages.Add(CreateMessage(account.Id, "Price inquiry", AmbiguousBody));
         await db.SaveChangesAsync();
 
         var provider = new FakeAiClassificationProvider
@@ -674,7 +681,7 @@ public class EmailClassificationServiceTests
         db.EmailAccounts.Add(account);
         db.ClassificationProfiles.Add(CreateSalesProfile());
         db.AiModelConfigs.Add(CreateModel(maxRetries: 2));
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 
@@ -713,7 +720,7 @@ public class EmailClassificationServiceTests
         db.EmailAccounts.Add(account);
         db.ClassificationProfiles.Add(CreateSalesProfile());
         db.AiModelConfigs.Add(CreateModel(maxRetries: 1));
-        var message = CreateMessage(account.Id, "Price inquiry", "Please send your latest price list.");
+        var message = CreateMessage(account.Id, "Price inquiry", AmbiguousBody);
         db.EmailMessages.Add(message);
         await db.SaveChangesAsync();
 

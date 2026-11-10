@@ -13,11 +13,30 @@ public class AiModelsController : ControllerBase
 {
     private readonly AiModelService _service;
     private readonly AiProviderSettingsService _providerSettings;
+    private readonly AiModelBenchmarkService _benchmark;
 
-    public AiModelsController(AiModelService service, AiProviderSettingsService providerSettings)
+    public AiModelsController(AiModelService service, AiProviderSettingsService providerSettings, AiModelBenchmarkService benchmark)
     {
         _service = service;
         _providerSettings = providerSettings;
+        _benchmark = benchmark;
+    }
+
+    /// <summary>The model dropdown: low-cost candidates with live price, measured accuracy and cost/effectiveness labels.</summary>
+    [HttpGet("recommendations")]
+    public async Task<ActionResult<IReadOnlyList<AiModelRecommendation>>> GetRecommendations(CancellationToken cancellationToken) =>
+        Ok(await _benchmark.GetRecommendationsAsync(cancellationToken));
+
+    [HttpGet("benchmark")]
+    public async Task<ActionResult<IReadOnlyList<AiModelBenchmarkResult>>> GetBenchmark(CancellationToken cancellationToken) =>
+        Ok(await _benchmark.GetStoredAsync(cancellationToken));
+
+    /// <summary>Runs the benchmark email set through up to 8 models (real calls; typically well under $0.01 per model).</summary>
+    [HttpPost("benchmark")]
+    public async Task<ActionResult<IReadOnlyList<AiModelBenchmarkResult>>> RunBenchmark([FromBody] RunAiBenchmarkRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Models is not { Count: > 0 }) return BadRequest(new { message = "Choose at least one model to analyze." });
+        return Ok(await _benchmark.RunAsync(request.Models, cancellationToken));
     }
 
     /// <summary>OpenRouter connection settings. The API key is never returned, only whether one is set and its last 4 characters.</summary>
@@ -79,3 +98,5 @@ public class AiModelsController : ControllerBase
         return result.Succeeded ? Ok(result.Value) : NotFound(new { message = result.Error });
     }
 }
+
+public record RunAiBenchmarkRequest(List<string>? Models);

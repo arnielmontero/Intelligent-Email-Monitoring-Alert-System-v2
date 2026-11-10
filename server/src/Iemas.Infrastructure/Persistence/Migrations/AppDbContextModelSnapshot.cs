@@ -1896,8 +1896,8 @@ namespace Iemas.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Value")
                         .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)");
 
                     b.HasKey("Id");
 

@@ -5,6 +5,7 @@ import { useAuthStore } from "../store/authStore";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const login = useAuthStore((s) => s.login);
@@ -45,13 +46,24 @@ export default function LoginPage() {
         />
 
         <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        <div className="password-field">
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button type="button" className="password-toggle" onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+              <circle cx="12" cy="12" r="3" />
+              {showPassword && <path d="M3 3l18 18" />}
+            </svg>
+          </button>
+        </div>
 
         {error && <div className="form-error">{error}</div>}
 

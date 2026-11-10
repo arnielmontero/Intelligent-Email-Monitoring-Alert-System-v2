@@ -131,7 +131,9 @@ public class EmailPipelineChainingTests
         db.EmailMessages.Add(new EmailMessage
         {
             EmailAccountId = account.Id, Provider = EmailProtocol.Imap, ProviderMessageId = "1", FromAddress = "customer@example.com",
-            ToAddresses = "sales@sawo.com", Subject = "Price request", BodyText = "Please send prices.", ReceivedAt = DateTimeOffset.UtcNow,
+            ToAddresses = "sales@sawo.com", Subject = "Upcoming project",
+            // Ambiguous on purpose so the (fake) AI decides; "Please send prices." is now a confident no-AI inquiry.
+            BodyText = "I visited your website and wanted to know whether your team could support us on an upcoming project.", ReceivedAt = DateTimeOffset.UtcNow,
             ProcessingStatus = EmailProcessingStatus.PendingClassification,
         });
         await db.SaveChangesAsync();

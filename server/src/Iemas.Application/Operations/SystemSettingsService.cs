@@ -63,6 +63,9 @@ public static class SystemSettingKeys
     public const string InquiryPhrases = "inquiry.inquiry_phrases";
     public const string NotInquiryPhrases = "inquiry.not_inquiry_phrases";
     public const string AutomatedSenderPatterns = "inquiry.automated_sender_patterns";
+    public const string ProductTerms = "inquiry.product_terms";
+    public const string RequestCues = "inquiry.request_cues";
+    public const string DealerPhrases = "inquiry.dealer_phrases";
     public const string InquiryScoreThreshold = "inquiry.inquiry_score_threshold";
     public const string NotInquiryScoreThreshold = "inquiry.not_inquiry_score_threshold";
 
@@ -93,18 +96,107 @@ public static class SystemSettingDefaults
         "price list", "pricing", "how much", "what is the price", "interested in your", "interested in buying",
         "would like to inquire", "would like to enquire", "inquiry about", "enquiry about", "would like to order",
         "place an order", "availability of", "do you have", "can you provide", "could you send",
-        "more information about", "product catalog", "brochure", "become a distributor", "become a dealer",
-        "discuss a possible project", "help us with", "can you help");
+        "more information about", "product catalog", "brochure",
+        "discuss a possible project", "help us with", "can you help",
+        // Learned from real SAWO web-form / info@ inquiries (inquiries_export.csv): buyers ask for prices and quotes,
+        // where to buy, spare parts, manuals, shipping and dealer terms - often in a single short line.
+        // "customize my sauna" is the subject of the website's sauna configurator form.
+        "customize my sauna", "quote", "quotation", "price for", "price of", "the price", "best price", "prices", "price guide", "pricing options",
+        "how much would", "how much is", "how much does", "how much will", "cost of", "costs", "the cost", "send me", "please send", "pls send",
+        "please provide", "kindly quote", "kindly provide", "please advise", "kindly advise",
+        "where can i buy", "where to buy", "where can i get", "where can i purchase", "from where to buy", "i would like to buy", "i would like to purchase",
+        "i want to buy", "i want to purchase", "i'd like to purchase", "looking to purchase", "looking to buy", "interested in purchasing",
+        "would like to purchase", "would like to get", "want to order", "can we order", "can i order", "how to order", "how can i buy", "how can i purchase",
+        "do you ship", "ship to", "shipping to", "deliver to", "deliver in", "delivered to", "delivery time", "lead time", "catalogue", "catalog",
+        "dealer", "distributor", "supplier in", "spare part", "replacement", "replace my", "need to replace", "user manual", "manual for",
+        "instruction manual", "specification", "cad drawing", "is it possible", "compatible", "warranty", "repair", "not working", "doesn't work",
+        "stopped working", "broken", "malfunction", "error e",
+        // Common non-English enquiries (German, French, Italian, Spanish, Finnish, Swedish, Dutch, Tagalog, Thai, Japanese).
+        "anfrage", "preis", "angebot", "wo kann ich", "preventivo", "prezzo", "devis", "prix", "combien", "tarjous", "hinta", "paljonko",
+        "presupuesto", "cotización", "cotizacion", "precio", "repuesto", "prijs", "offerte", "pris på", "vad kostar", "magkano", "ขอราคา", "ราคา", "見積", "価格");
+
+    /// <summary>
+    /// Phrases a business uses when it wants to resell, distribute, wholesale, represent or partner with SAWO.
+    /// A confident inquiry with any of these is labelled "Dealer / Reseller" instead of "Inquiry".
+    /// Deliberately not "dealer" alone: end customers ask "is there a dealer near me?".
+    /// </summary>
+    public static readonly string DealerPhrases = string.Join('\n',
+        "become a dealer", "become a distributor", "become a reseller", "become your", "dealer inquiry", "dealer enquiry", "dealer request",
+        "dealer application", "dealer program", "dealer pricing", "dealer price", "dealer prices", "dealer partnership", "dealer account",
+        "authorized dealer", "authorised dealer", "reseller", "resell", "wholesale", "distribution", "distributorship", "exclusive distributor",
+        "distributor for", "distributor in our", "agent in", "partnership", "partner with", "collaboration", "cooperation", "co-operation",
+        "oem", "private label", "our store", "our retail", "retail store", "online store", "our e-commerce", "e-commerce store",
+        "ecommerce", "dropship", "drop ship", "carry your", "add your products", "stock your", "sales conditions", "terms of cooperation",
+        "bulk order", "for our market", "in our country", "trade price", "trade account", "for the syrian market", "for the usa market",
+        "distribución", "para nuestro país", "distribuzione", "rivenditore", "revendeur", "händler werden", "jälleenmyyjä");
+
+    /// <summary>
+    /// SAWO / sauna product vocabulary in the languages customers write in. Product context is what makes a
+    /// one-line web-form message ("Need 6 kw sauna heater") a confident inquiry without AI.
+    /// </summary>
+    public static readonly string ProductTerms = string.Join('\n',
+        "sauna", "heater", "stove", "steam", "generator", "infrared", "infared", "controller", "control unit", "control panel",
+        "control box", "power controller", "heating element", "elements", "thermostat", "sensor", "sauna stones", "stones",
+        "sauna door", "door handle", "hinge", "bucket", "pail", "ladle", "thermometer", "hygrometer", "bench", "aroma",
+        "sauna room", "sauna kit", "sauna cabin", "steam room", "steam shower", "vaporizer", "timer", "wifi", "liner", "coals",
+        "wooden door", "glass door", "sauna handle", "relay", "steam unit",
+        "saunova", "innova", "sawotec", "nordex", "scandia", "scandifire", "krios", "aries", "cumulus", "cubos", "tower round",
+        "tower corner", "savonia", "nimbus", "taurus", "dragonfire", "mini x", "mini combi", "sawo mini", "super savonia", "phoenix", "rock",
+        "kiuas", "kiukaa", "vastus", "vastukset", "ohjauspaneeli", "den ofen", "der ofen", "einen ofen", "ofenhändler", "saunaofen", "heizstab", "steuerteil", "steuergerät", "dampfgenerator",
+        "poêle", "poele", "pierres", "vapeur", "stufa", "generatore di vapore", "calefactor", "estufa", "generador", "vapor", "bastu", "aggregaat",
+        "サウナ", "ストーン", "ซาวน่า", "ไอน้ำ", "ห้องอบ");
+
+    /// <summary>Weak intent cues: alone they never decide, together with product context they do.</summary>
+    public static readonly string RequestCues = string.Join('\n',
+        "i need", "we need", "need a", "need to", "i want", "we want", "looking for", "looking to", "interested", "would like",
+        "i'd like", "we'd like", "i like to", "require", "requirement", "inquire", "enquire", "inquiry", "enquiry", "inquiring", "please", "pls",
+        "kindly", "advise", "let me know", "wondering", "planning", "asap", "urgent", "need", "recommend", "available", "availability",
+        "installation", "install", "contact me", "call me", "still waiting", "waiting for", "no reply", "can i get", "can we get",
+        "when will", "how often", "how long", "how to", "suitable", "do you sell", "do you make", "do you offer", "do you do", "is there",
+        "which", "want to know", "would like to know", "wish to know", "can't find", "cannot find", "any details",
+        "estamos interesados", "interesados", "medidas", "miten", "kannattaa", "utelisin", "tiedättekö", "ถาม",
+        "ich möchte", "ich suche", "bitte", "gibt es", "können sie", "kann ich", "erbitte", "je voudrais", "je cherche", "pouvez-vous",
+        "quiero", "necesito", "necesitamos", "estoy buscando", "me gustaría", "podría", "vorrei", "cerco", "haluaisin", "tarvitsen",
+        "tarvitaan", "kaivattaisiin", "onko", "voiko", "jag vill", "ik wil", "pwede", "รบกวน", "ขอ", "したい", "ください");
 
     public static readonly string NotInquiryPhrases = string.Join('\n',
         "unsubscribe", "view this email in your browser", "this is an automated message", "do not reply to this email",
         "this email was sent automatically", "payment received", "payment confirmation", "your order has shipped",
         "delivery status notification", "out of office", "automatic reply", "auto-reply", "password reset",
-        "verify your email", "webinar", "newsletter", "you are receiving this email because");
+        "verify your email", "webinar", "newsletter", "you are receiving this email because",
+        // Promotional / renewal marketing (e.g. a vendor's "Renew before ... current pricing" mail).
+        "manage your subscription", "email preferences", "update your preferences", "renew before", "renew now",
+        "limited time", "special offer", "exclusive offer", "save up to", "% off", "black friday", "cyber monday",
+        "view in browser", "view it in your browser", "your license expires", "your subscription expires",
+        // Cold vendor outreach seen in the inbox: trade-show attendee/contact lists, exhibitor mailings, SEO/Wikipedia
+        // services and "we introduce our company" pitches. These sell TO SAWO; they are not customer inquiries.
+        "attendee list", "attendees list", "attendee email", "attendee data", "email list", "mailing list", "contact database",
+        "industry database", "verified database", "targeted lists", "business contact information", "send counts and pricing",
+        "dear exhibitor", "greetings exhibitors", "discounted hotel", "hotel rooms", "is exhibiting at", "are exhibiting at",
+        "trade show booth", "wikipedia page", "backlinks", "guest post", "search engine optimization",
+        "exclusive supplier of", "formally introduce", "iso/ce/rohs", "leading exporter of", "abbestellen",
+        "one of the leading", "leading manufacturer", "leading supplier", "professional manufacturer", "introduce our company",
+        "introduce our products", "would like to introduce", "allow me to introduce", "our product range includes", "our core customers",
+        "competitive price", "factory direct", "free sample", "reach out to see if", "would you be interested in", "are you planning any",
+        "your sourcing department", "your purchasing department", "based specialist in", "surface treatment", "lead generation",
+        "marketing campaigns", "prospecting", "is conducting a profiling", "designated establishments",
+        // Generic service offers (agencies, outsourcing, consultants pitching their services to us).
+        "our services", "i came across your website", "came across your company", "grow your business", "increase your sales",
+        "more leads", "qualified leads", "appointment setting", "virtual assistant", "web design", "website redesign", "app development",
+        "digital marketing", "social media marketing", "free consultation", "free audit", "15-minute call", "15 minute call",
+        "hop on a call", "outsourcing", "we help companies", "we help businesses", "helping businesses", "rank higher",
+        "first page of google", "seo services", "our agency", "white label", "case studies",
+        // Consumer-style promotions (a business advertising its own services/packages to us).
+        "dear valued customer", "valued customers", "pleased to introduce", "we are pleased to offer", "our services include",
+        "our packages", "packages for individuals", "contact us today", "book now", "book your", "we look forward to serving you",
+        "look forward to serving", "exclusive deal", "promo code",
+        // Logistics / accounting notices about orders already placed.
+        "tracking number:", "has been dispatched", "proof of delivery", "remittance advice", "statement of account");
 
     public static readonly string AutomatedSenderPatterns = string.Join('\n',
         "noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon", "postmaster", "bounce",
-        "notifications@", "notification@", "newsletter", "alerts@", "marketing@");
+        "notifications@", "notification@", "newsletter", "alerts@", "marketing@",
+        "list@", "mailer@", "mailing@", "promo@", "promotions@", "offers@", "deals@", "news@", "updates@", "info-noreply");
 
     public static readonly string LegitimacyRules = string.Join('\n',
         "Written by a real person or company that does business with us (customer, supplier, partner or colleague)",
@@ -113,6 +205,7 @@ public static class SystemSettingDefaults
     public static readonly string NotLegitimateRules = string.Join('\n',
         "Spam, phishing or scam attempts",
         "Mass marketing, promotions and newsletters",
+        "Unsolicited sales pitches: companies offering us their products, materials, services, data lists or a supplier \"collaboration\"",
         "Automated notifications: delivery updates, system alerts, receipts, calendar invites",
         "Out-of-office and other auto-replies",
         "Test messages");
@@ -172,6 +265,16 @@ public class SystemSettingsService
             "Phrases typical of newsletters, notices and auto-replies. Each distinct match removes 3 points.", SettingValueType.RuleList, SystemSettingDefaults.NotInquiryPhrases, 0, 9000),
         new(SystemSettingKeys.AutomatedSenderPatterns, "Inquiry detection", "Automated sender patterns",
             "Text found in automated sender addresses (noreply, notifications@ ...). A match removes 4 points.", SettingValueType.RuleList, SystemSettingDefaults.AutomatedSenderPatterns, 0, 9000),
+        new(SystemSettingKeys.DealerPhrases, "Inquiry detection", "Dealer / reseller phrases",
+            "Phrases a business uses when it wants to resell, distribute, wholesale or partner with us. Each distinct match adds 2 points (max 4), "
+            + "and a confident inquiry with any of them is labelled \"Dealer / Reseller\".", SettingValueType.RuleList, SystemSettingDefaults.DealerPhrases, 0, 9000),
+        new(SystemSettingKeys.ProductTerms, "Inquiry detection", "Product terms",
+            "Our product vocabulary in any language (sauna, heater, kiuas, Ofen, Saunova ...). Each distinct match adds 1 point (max 3). "
+            + "SAWO model codes (NR-90NS, 1414RS ...) and kW ratings add 2 points automatically. Product terms alone never make an inquiry.",
+            SettingValueType.RuleList, SystemSettingDefaults.ProductTerms, 0, 9000),
+        new(SystemSettingKeys.RequestCues, "Inquiry detection", "Request cues",
+            "Weak signs of a request (need, looking for, please, möchte ...). Each distinct match adds 1 point (max 2).",
+            SettingValueType.RuleList, SystemSettingDefaults.RequestCues, 0, 9000),
         new(SystemSettingKeys.InquiryScoreThreshold, "Inquiry detection", "Score to accept as an inquiry without AI",
             "At or above this score, with no negative signal, the email is treated as an inquiry without calling the AI.", SettingValueType.Integer, "5", 1, 50),
         new(SystemSettingKeys.NotInquiryScoreThreshold, "Inquiry detection", "Score to reject without AI",

@@ -1,6 +1,77 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../api/client";
-import type { AiCatalogModel, AiModelDto, AiProviderKeyCheck, AiProviderSettingsDto, TestAiModelResult } from "../../api/types";
+import type {
+  AiCatalogModel, AiModelBenchmarkResult, AiModelDto, AiModelRecommendation, AiProviderKeyCheck, AiProviderSettingsDto, TestAiModelResult,
+} from "../../api/types";
+
+const OTHER = "__other__";
+
+function money(v: number | null | undefined) {
+  if (v === null || v === undefined) return "?";
+  return v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`;
+}
+
+/** "Qwen3 30B — $0.13 / 1,000 emails · Excellent (100%) · ★ Best value" */
+function recommendationLabel(r: AiModelRecommendation) {
+  const cost = r.costPer1000EmailsUsd !== null ? `${money(r.costPer1000EmailsUsd)} / 1,000 emails${r.costIsMeasured ? "" : " (est.)"}` : r.costTier;
+  const eff = r.accuracyPercent !== null ? `${r.effectivenessTier} (${r.accuracyPercent}%)` : r.effectivenessTier;
+  const badges = [r.isBestValue && "★ Best value", r.isMostAccurate && !r.isBestValue && "Most accurate", r.isCheapest && "Cheapest"].filter(Boolean);
+  return `${r.name} — ${cost} · ${eff}${badges.length ? " · " + badges.join(" · ") : ""}`;
+}
+
+/**
+ * Model dropdown: analysed low-cost models labelled with cost and effectiveness, best value first.
+ * "Other model…" falls back to searching OpenRouter's full catalog.
+ */
+function ModelPicker({ value, onChange, recommendations, catalogById }: {
+  value: string;
+  onChange: (identifier: string) => void;
+  recommendations: AiModelRecommendation[];
+  catalogById: Map<string, AiCatalogModel>;
+}) {
+  const known = recommendations.some((r) => r.modelIdentifier === value);
+  const [other, setOther] = useState(value !== "" && !known);
+  // The model list may arrive after the form opened: switch out of "Other" once the value is a listed model.
+  useEffect(() => { if (known) setOther(false); }, [known]);
+  const selected = recommendations.find((r) => r.modelIdentifier === value);
+
+  return (
+    <>
+      <select
+        value={other ? OTHER : value}
+        onChange={(e) => {
+          if (e.target.value === OTHER) { setOther(true); onChange(""); }
+          else { setOther(false); onChange(e.target.value); }
+        }}
+        style={fullWidth}
+        required={!other}
+      >
+        <option value="" disabled>Choose a model…</option>
+        {recommendations.filter((r) => r.inCatalog).map((r) => (
+          <option key={r.modelIdentifier} value={r.modelIdentifier}>{recommendationLabel(r)}</option>
+        ))}
+        <option value={OTHER}>Other model… (search OpenRouter's full list)</option>
+      </select>
+      {other && (
+        <input
+          list="openrouter-models"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="e.g. openai/gpt-4o-mini"
+          style={{ ...fullWidth, marginTop: 6 }}
+          required
+        />
+      )}
+      <div style={hintStyle}>
+        {selected
+          ? `${selected.modelIdentifier} — ${selected.note}. ${selected.accuracyPercent !== null
+              ? `Measured ${selected.accuracyPercent}% correct on the benchmark emails, ~${Math.round((selected.averageLatencyMs ?? 0) / 100) / 10}s per email.`
+              : "Not analysed yet — run the model analysis below."}`
+          : other ? (formatPrice(catalogById.get(value.trim())) ?? "Type to search OpenRouter's model list.") : "Sorted best value first. Costs are per 1,000 emails that reach the AI."}
+      </div>
+    </>
+  );
+}
 
 interface ModelForm {
   modelIdentifier: string;
@@ -21,6 +92,7 @@ function formatPrice(model: AiCatalogModel | undefined) {
 export default function AiModelsPage() {
   const [models, setModels] = useState<AiModelDto[]>([]);
   const [catalog, setCatalog] = useState<AiCatalogModel[]>([]);
+  const [recommendations, setRecommendations] = useState<AiModelRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -52,9 +124,19 @@ export default function AiModelsPage() {
     }
   }
 
+  async function loadRecommendations() {
+    try {
+      const res = await apiClient.get<AiModelRecommendation[]>("/ai-models/recommendations");
+      setRecommendations(res.data);
+    } catch {
+      setRecommendations([]);
+    }
+  }
+
   useEffect(() => {
     loadModels();
     loadCatalog();
+    loadRecommendations();
   }, []);
 
   function pickFromCatalog(target: "add" | "edit", identifier: string) {
@@ -193,13 +275,12 @@ export default function AiModelsPage() {
                 <tr key={m.id} style={{ background: "var(--color-surface)" }}>
                   <td style={tdStyle} colSpan={7}>
                     <div style={gridStyle}>
-                      <Field label="Model (OpenRouter identifier)" wide>
-                        <input
-                          list="openrouter-models"
+                      <Field label="Model" wide>
+                        <ModelPicker
                           value={editForm.modelIdentifier}
-                          onChange={(e) => pickFromCatalog("edit", e.target.value)}
-                          style={fullWidth}
-                          required
+                          onChange={(id) => pickFromCatalog("edit", id)}
+                          recommendations={recommendations}
+                          catalogById={catalogById}
                         />
                         {editPrice && <div style={hintStyle}>{editPrice}</div>}
                       </Field>
@@ -262,18 +343,14 @@ export default function AiModelsPage() {
       <h2 style={sectionTitle}>Add model</h2>
       <form onSubmit={handleCreate} style={panelStyle}>
         <div style={gridStyle}>
-          <Field label="Model (OpenRouter identifier)" wide>
-            <input
-              list="openrouter-models"
+          <Field label="Model" wide>
+            <ModelPicker
               value={form.modelIdentifier}
-              onChange={(e) => pickFromCatalog("add", e.target.value)}
-              placeholder={catalog.length ? `Search ${catalog.length} models, e.g. openai/gpt-4o-mini` : "e.g. openai/gpt-4o-mini"}
-              style={fullWidth}
-              required
+              onChange={(id) => pickFromCatalog("add", id)}
+              recommendations={recommendations}
+              catalogById={catalogById}
             />
-            <div style={hintStyle}>
-              {addPrice ?? (catalog.length ? "Type to search OpenRouter's model list." : "Model list unavailable — you can still type an identifier.")}
-            </div>
+            {addPrice && <div style={hintStyle}>{addPrice}</div>}
           </Field>
           <Field label="Display name">
             <input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="Filled from the model list" style={fullWidth} />
@@ -292,6 +369,8 @@ export default function AiModelsPage() {
           <button type="submit" className="btn-primary">Add model</button>
         </div>
       </form>
+
+      <ModelAnalysis recommendations={recommendations} onDone={loadRecommendations} />
 
       <datalist id="openrouter-models">
         {catalog.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -410,6 +489,103 @@ function ProviderPanel({ onSaved }: { onSaved: () => void }) {
       {settings.updatedByEmail && (
         <div style={{ ...hintStyle, marginTop: 8 }}>
           Last changed by {settings.updatedByEmail}{settings.updatedAt ? ` on ${new Date(settings.updatedAt).toLocaleString()}` : ""}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Compare models on cost and effectiveness, and re-run the benchmark (real calls, a fraction of a cent per model). */
+function ModelAnalysis({ recommendations, onDone }: { recommendations: AiModelRecommendation[]; onDone: () => void }) {
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [last, setLast] = useState<AiModelBenchmarkResult[] | null>(null);
+
+  async function run() {
+    setRunning(true);
+    setError(null);
+    try {
+      const res = await apiClient.post<AiModelBenchmarkResult[]>("/ai-models/benchmark", { models: chosen }, { timeout: 15 * 60 * 1000 });
+      setLast(res.data);
+      setChosen([]);
+      onDone();
+    } catch (err: any) {
+      setError(err.response?.data?.message ?? "The analysis did not finish. Models measured before the problem were still saved.");
+      onDone();
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const toggle = (id: string) => setChosen((c) => (c.includes(id) ? c.filter((x) => x !== id) : c.length >= 8 ? c : [...c, id]));
+
+  return (
+    <section style={{ ...panelStyle, marginTop: 28 }}>
+      <h2 style={{ ...sectionTitle, margin: 0 }}>Model analysis</h2>
+      <p style={{ ...hintStyle, marginTop: 4 }}>
+        Each model reads the same {28} hard emails — short or foreign-language customer questions, dealer requests and vendor/service pitches —
+        with the real classification prompt. "Correct" means the same Important / Not-important decision a person would make; sending a clear
+        case to manual review counts as wrong. Cost is what OpenRouter actually billed, per 1,000 emails that reach the AI (most email is decided
+        by the no-AI filter and costs nothing).
+      </p>
+      {error && <div className="form-error">{error}</div>}
+      <table style={{ width: "100%", marginTop: 8 }}>
+        <thead>
+          <tr>
+            <th style={thStyle}></th>
+            <th style={thStyle}>Model</th>
+            <th style={thStyle}>Cost / 1,000 emails</th>
+            <th style={thStyle}>Effectiveness</th>
+            <th style={thStyle}>Speed</th>
+            <th style={thStyle}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {recommendations.map((r) => (
+            <tr key={r.modelIdentifier}>
+              <td style={tdStyle}>
+                <input type="checkbox" checked={chosen.includes(r.modelIdentifier)} disabled={running || !r.inCatalog} onChange={() => toggle(r.modelIdentifier)} />
+              </td>
+              <td style={tdStyle}>
+                {r.name}
+                <div style={hintStyle}>{r.modelIdentifier} — {r.note}{r.inCatalog ? "" : " (no longer offered by OpenRouter)"}</div>
+              </td>
+              <td style={tdStyle}>
+                {money(r.costPer1000EmailsUsd)}{r.costIsMeasured ? "" : " est."}
+                <div style={hintStyle}>{r.costTier}</div>
+              </td>
+              <td style={tdStyle}>
+                {r.accuracyPercent !== null ? `${r.accuracyPercent}%` : "—"}
+                <div style={hintStyle}>{r.effectivenessTier}</div>
+              </td>
+              <td style={tdStyle}>{r.averageLatencyMs ? `${(r.averageLatencyMs / 1000).toFixed(1)}s` : "—"}</td>
+              <td style={tdStyle}>
+                {r.isBestValue && <span style={{ ...pillStyle, background: "#166534" }}>★ Best value</span>}{" "}
+                {r.isMostAccurate && !r.isBestValue && <span style={{ ...pillStyle, background: "#1d4ed8" }}>Most accurate</span>}{" "}
+                {r.isCheapest && <span style={{ ...pillStyle, background: "#6b7280" }}>Cheapest</span>}
+              </td>
+            </tr>
+          ))}
+          {recommendations.length === 0 && <tr><td style={tdStyle} colSpan={6}>Model list unavailable — check the OpenRouter connection.</td></tr>}
+        </tbody>
+      </table>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn-primary" disabled={running || chosen.length === 0} onClick={run}>
+          {running ? `Analyzing ${chosen.length} model(s)…` : `Analyze ${chosen.length || ""} selected`}
+        </button>
+        <span style={hintStyle}>Up to 8 at a time; about 1 minute and well under $0.01 per model.</span>
+      </div>
+      {last && (
+        <div style={{ marginTop: 12 }}>
+          {last.map((r) => (
+            <details key={r.modelIdentifier} style={{ marginTop: 6 }}>
+              <summary>{r.modelIdentifier}: {r.correct}/{r.samples} correct, {r.failed} failed, billed {money(r.totalCostUsd)}</summary>
+              <ul style={{ ...hintStyle, margin: "6px 0 0 16px" }}>
+                {r.mistakes.length === 0 ? <li>No mistakes.</li> : r.mistakes.map((m, i) => <li key={i}>{m}</li>)}
+              </ul>
+            </details>
+          ))}
         </div>
       )}
     </section>

@@ -164,11 +164,29 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
         return null;
     }
 
+    private const int MaxOutputTokens = 600;
+
+    /// <summary>
+    /// Cost control: input tokens are most of the bill. Long emails are almost always quoted reply history,
+    /// signatures and disclaimers; the request itself is at the top. ~4,000 characters ≈ 1,000 tokens.
+    /// </summary>
+    private const int MaxBodyChars = 4000;
+
+    private static string TrimBody(string? body)
+    {
+        if (string.IsNullOrEmpty(body)) return "(no text body)";
+        return body.Length <= MaxBodyChars ? body : body[..MaxBodyChars] + "\n[... rest of the email omitted to save cost ...]";
+    }
+
     private static object BuildChatRequest(ClassificationRequest request, string modelIdentifier) => new
     {
         model = modelIdentifier,
         temperature = 0,
         response_format = new { type = "json_object" },
+        // Cost control: the answer is a ~80-token JSON object. The cap stops a misbehaving model from
+        // billing thousands of output tokens. (No "reasoning" option on purpose: on some models it switches
+        // paid thinking ON - measured 5x the output tokens on Gemini Flash-Lite.)
+        max_tokens = MaxOutputTokens,
         // Asks OpenRouter to return the real cost of this call in the response's usage block.
         usage = new { include = true },
         messages = new object[]
@@ -207,6 +225,21 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
         definitions. Judge meaning and intent, not just keyword presence — for example, an
         automated shipping notification is not relevant even if it mentions a product name, while
         a genuine customer pricing question is relevant even without an exact keyword match.
+
+        WHO WANTS WHAT decides "relevant". Relevant means the sender wants something FROM us:
+        a customer, prospect, installer, project or company asking about our products, prices,
+        quotes, availability, orders, deliveries, spare parts, manuals, support, repairs or
+        complaints, or a business asking to buy, resell, distribute or represent OUR products.
+        Short, vague, misspelled or non-English messages from such senders are still relevant.
+        NOT relevant: the sender is trying to SELL to us — a company introducing or offering its
+        own products, materials, components, services, data or contact lists, trade-show extras,
+        marketing/SEO/web services, or a "collaboration" whose real aim is to become our supplier —
+        even when it is polite, personalised and mentions our industry or products. Such unsolicited
+        sales pitches are also not "legitimate" for this purpose. Unless a profile rule says
+        otherwise, judge relevance this way.
+
+        "category": a short label (e.g. "Product inquiry", "Dealer / Reseller", "Support",
+        "Complaint", "Vendor pitch", "Marketing", "Automated"); use the profile's categories when given.
 
         Also judge, using the organisation's own rules given in the user message:
         - "legitimate": is this a genuine business email from a real sender, as opposed to spam,
@@ -252,7 +285,7 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
             Subject: {request.Subject}
 
             Body:
-            {request.BodyText ?? "(no text body)"}
+            {TrimBody(request.BodyText)}
             ===== END EMAIL CONTENT =====
             """;
     }
@@ -282,7 +315,7 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
                 return null;
             }
 
-            var category = root.TryGetProperty("category", out var categoryEl) ? categoryEl.GetString() : null;
+            var category = root.TryGetProperty("category", out var categoryEl) && categoryEl.ValueKind == JsonValueKind.String ? categoryEl.GetString() : null;
             var priority = root.TryGetProperty("priority", out var priorityEl) ? priorityEl.GetString() : null;
             var summary = root.TryGetProperty("summary", out var summaryEl) ? summaryEl.GetString() : null;
             var actionRequired = root.TryGetProperty("action_required", out var actionEl) && actionEl.ValueKind == JsonValueKind.True;
@@ -291,10 +324,11 @@ public class OpenRouterClassificationProvider : IAiClassificationProvider
                 ? legitEl.ValueKind == JsonValueKind.True
                 : null;
 
+            // The category is only a display label; a model that leaves it empty (seen with Claude Haiku when no
+            // profile categories are configured) still gave a usable relevance/confidence answer. Don't discard it.
             if (string.IsNullOrWhiteSpace(category))
             {
-                error = "Missing or empty 'category' field.";
-                return null;
+                category = "Uncategorized";
             }
 
             if (priority is not ("LOW" or "MEDIUM" or "HIGH"))

@@ -64,7 +64,9 @@ public class SystemSettingConfiguration : IEntityTypeConfiguration<SystemSetting
         builder.HasKey(s => s.Id);
         builder.Property(s => s.Key).IsRequired().HasMaxLength(100);
         builder.HasIndex(s => s.Key).IsUnique();
-        builder.Property(s => s.Value).IsRequired().HasMaxLength(4000);
+        // Rule lists (inquiry phrases, product terms ...) may be up to 9,000 characters (see the settings catalog),
+        // and the hidden AI benchmark results row holds JSON; 4,000 was too small for both.
+        builder.Property(s => s.Value).IsRequired().HasMaxLength(20000);
         builder.Property(s => s.UpdatedByEmail).HasMaxLength(256);
     }
 }
