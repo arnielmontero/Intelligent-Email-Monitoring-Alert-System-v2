@@ -57,8 +57,26 @@ public partial class CaseDetailWindow : Window
 
     private void Reply_Click(object sender, RoutedEventArgs e)
     {
+        // Best: a real Reply in Outlook to the customer's own email (same thread, quoted history).
+        System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+        string? problem;
+        try
+        {
+            problem = OutlookReply.TryOpenReply(_case.LatestCustomerMessageId, _case.CustomerEmailAddress, _case.Subject);
+        }
+        finally
+        {
+            System.Windows.Input.Mouse.OverrideCursor = null;
+        }
+        if (problem is null)
+        {
+            ShowResult("Outlook opened a reply to the customer's email. Write your answer and click Send; IEMAS will notice it by itself.", ok: true);
+            return;
+        }
+
+        // Fallback: a new email to the customer with "Re: subject".
         var result = EmailLauncher.OpenCompose(_case.CustomerEmailAddress, _case.Subject);
-        ShowResult(result.Message, ok: result.Outcome != EmailLaunchOutcome.Failed);
+        ShowResult($"{problem} {result.Message}", ok: result.Outcome != EmailLaunchOutcome.Failed);
     }
 
     private async void Action_Click(object sender, RoutedEventArgs e)

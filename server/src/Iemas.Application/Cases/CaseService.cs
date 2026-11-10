@@ -199,6 +199,11 @@ public class CaseService
                 c.Subject, c.WorkStatus, c.ReplyStatus, c.NotificationStatus,
                 c.FirstEmailReceivedAt, c.LastActivityAt,
                 c.CompletionReason, c.CompletionComment, c.CompletedAt, c.ReopenCount,
-                c.Emails.Count));
+                c.Emails.Count,
+                c.Emails
+                    .Where(e => e.Role == ConversationRole.Customer && e.EmailMessage.MessageId != null)
+                    .OrderByDescending(e => e.EmailMessage.ReceivedAt)
+                    .Select(e => e.EmailMessage.MessageId)
+                    .FirstOrDefault()));
     }
 }

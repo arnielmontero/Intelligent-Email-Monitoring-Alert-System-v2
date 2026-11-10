@@ -21,7 +21,10 @@ public record CaseDto(
     string? CompletionComment,
     DateTimeOffset? CompletedAt,
     int ReopenCount,
-    int EmailCount);
+    int EmailCount,
+    // RFC Message-ID of the customer's most recent email, so the Windows Agent can find that exact
+    // email in Outlook and open a real Reply (same thread, proper In-Reply-To headers).
+    string? LatestCustomerMessageId = null);
 
 public record CaseEventDto(
     Guid Id,

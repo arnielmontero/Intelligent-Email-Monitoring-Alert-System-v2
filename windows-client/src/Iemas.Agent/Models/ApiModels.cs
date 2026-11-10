@@ -36,7 +36,8 @@ public record CaseDto(
     string? CompletionComment,
     DateTimeOffset? CompletedAt,
     int ReopenCount,
-    int EmailCount);
+    int EmailCount,
+    string? LatestCustomerMessageId = null);
 
 public record AgentSyncResponse(List<CaseDto> ActionRequired, List<CaseDto> Waiting, DateTimeOffset ServerTimeUtc);
 
