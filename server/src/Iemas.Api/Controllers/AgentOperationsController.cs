@@ -24,10 +24,29 @@ public class AgentOperationsController : ControllerBase
     private readonly AgentSyncService _syncService;
     private readonly AgentCaseActionService _actionService;
 
-    public AgentOperationsController(AgentSyncService syncService, AgentCaseActionService actionService)
+    private readonly Iemas.Application.Inquiries.ConversationSyncService _conversationSync;
+
+    public AgentOperationsController(AgentSyncService syncService, AgentCaseActionService actionService,
+        Iemas.Application.Inquiries.ConversationSyncService conversationSync)
     {
         _syncService = syncService;
         _actionService = actionService;
+        _conversationSync = conversationSync;
+    }
+
+    /// <summary>
+    /// The employee's replies read from Outlook's Sent Items by the Agent (for mailboxes Outlook uses as POP,
+    /// whose sent mail never reaches the server). Attached only to this employee's own open inquiries.
+    /// </summary>
+    [HttpPost("sent-messages")]
+    public async Task<ActionResult<AgentSentMessagesResult>> ReportSentMessages([FromBody] AgentSentMessagesRequest request, CancellationToken cancellationToken)
+    {
+        var messages = (request.Messages ?? new()).Take(100)
+            .Where(m => !string.IsNullOrWhiteSpace(m.EntryId) && !string.IsNullOrWhiteSpace(m.From) && m.To is { Count: > 0 })
+            .Select(m => m.ToProviderMessage())
+            .ToList();
+        var (agent, internalCount) = await _conversationSync.IngestFromAgentAsync(EmployeeId, messages, cancellationToken);
+        return Ok(new AgentSentMessagesResult(messages.Count, agent, internalCount));
     }
 
     private Guid AgentId => Guid.Parse(User.FindFirst("agent_id")!.Value);

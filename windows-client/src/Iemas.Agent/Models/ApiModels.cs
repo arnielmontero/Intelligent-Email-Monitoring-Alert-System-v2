@@ -42,6 +42,25 @@ public record CaseDto(
     DateTimeOffset? LatestCustomerReceivedAt = null,
     int UnansweredCustomerEmails = 0);
 
+/// <summary>One email from Outlook's Sent Items (see OutlookSentItems); mirrors the server's AgentSentMessageDto.</summary>
+public record AgentSentMessageDto(
+    string EntryId,
+    string? MessageId,
+    string? InReplyTo,
+    string? References,
+    string From,
+    string? FromName,
+    List<string> To,
+    List<string>? Cc,
+    string Subject,
+    string? Body,
+    DateTimeOffset SentAt,
+    int AttachmentCount);
+
+public record AgentSentMessagesRequest(List<AgentSentMessageDto> Messages);
+
+public record AgentSentMessagesResult(int Received, int RepliesStored, int InternalStored);
+
 public record AgentSyncResponse(List<CaseDto> ActionRequired, List<CaseDto> Waiting, DateTimeOffset ServerTimeUtc);
 
 /// <summary>§73 — every field §73 requires. RequestId is the idempotency key (a fresh GUID per user action, not per retry — a retried submit reuses the same RequestId so the server's idempotent replay logic applies).</summary>

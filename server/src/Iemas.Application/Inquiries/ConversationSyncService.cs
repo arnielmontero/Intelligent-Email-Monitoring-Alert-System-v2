@@ -109,6 +109,50 @@ public class ConversationSyncService
             return (0, 0, true);
         }
 
+        var (agentStored, internalStored) = await AttachSentAsync(account, cases, sent, "sent:", cancellationToken);
+
+        foreach (var c in cases) c.ReplyLastCheckedAt = now;
+        await _db.SaveChangesAsync(cancellationToken);
+        return (agentStored, internalStored, false);
+    }
+
+    /// <summary>
+    /// Sent emails reported by the employee's Windows Agent, read from Outlook's own Sent Items. Needed when
+    /// the mailbox is set up as POP in Outlook: the replies are then saved only on the agent's PC and never
+    /// reach the server's Sent folder. Only the employee's own open inquiries are considered, so an Agent can
+    /// never attach mail to someone else's inquiry; the same matching rules as the Sent-folder check apply.
+    /// </summary>
+    public async Task<(int Agent, int Internal)> IngestFromAgentAsync(Guid employeeId, IReadOnlyCollection<ProviderMessage> sent, CancellationToken cancellationToken)
+    {
+        if (sent.Count == 0) return (0, 0);
+        var cases = await _db.Cases
+            .Where(c => c.OwnerEmployeeId == employeeId && c.Stage != InquiryStage.Resolved && c.Stage != InquiryStage.Closed)
+            .ToListAsync(cancellationToken);
+
+        int agentStored = 0, internalStored = 0;
+        foreach (var group in cases.GroupBy(c => c.EmailAccountId))
+        {
+            var account = await _db.EmailAccounts.FirstOrDefaultAsync(a => a.Id == group.Key, cancellationToken);
+            if (account is null) continue;
+            // Only mail sent from this monitored mailbox (Outlook may hold other accounts, e.g. a personal one).
+            var fromMailbox = sent.Where(m => string.Equals(m.FromAddress, account.EmailAddress, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (fromMailbox.Count == 0) continue;
+            var (agent, internalCount) = await AttachSentAsync(account, group.ToList(), fromMailbox, "outlook:", cancellationToken);
+            agentStored += agent;
+            internalStored += internalCount;
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+        if (agentStored + internalStored > 0)
+            _logger?.LogInformation("Windows Agent reported {Agent} reply(ies) and {Internal} internal email(s) for employee {EmployeeId}", agentStored, internalStored, employeeId);
+        return (agentStored, internalStored);
+    }
+
+    /// <summary>Stores every sent message that belongs to one of <paramref name="cases"/> (all from <paramref name="account"/>) and advances the lifecycle.</summary>
+    private async Task<(int Agent, int Internal)> AttachSentAsync(
+        EmailAccount account, List<Case> cases, IEnumerable<ProviderMessage> sent, string idPrefix, CancellationToken cancellationToken)
+    {
+        var accountId = account.Id;
+        var caseIds = cases.Select(c => c.Id).ToList();
         var links = await _db.CaseEmails
             .Where(ce => caseIds.Contains(ce.CaseId))
             .Select(ce => new { ce.CaseId, ce.EmailMessage.MessageId, ce.EmailMessage.ThreadId })
@@ -117,7 +161,7 @@ public class ConversationSyncService
         int agentStored = 0, internalStored = 0;
         foreach (var message in sent.OrderBy(m => m.ReceivedAt))
         {
-            var providerId = $"sent:{message.ProviderMessageId}";
+            var providerId = $"{idPrefix}{message.ProviderMessageId}";
             var known = await _db.EmailMessages.AnyAsync(m => m.EmailAccountId == accountId
                 && (m.ProviderMessageId == providerId || (message.MessageId != null && m.MessageId == message.MessageId)), cancellationToken);
             if (known) continue;
@@ -182,9 +226,7 @@ public class ConversationSyncService
             target.ConversationSyncedThrough = target.ConversationSyncedThrough is DateTimeOffset t && t > message.ReceivedAt ? t : message.ReceivedAt;
         }
 
-        foreach (var c in cases) c.ReplyLastCheckedAt = now;
-        await _db.SaveChangesAsync(cancellationToken);
-        return (agentStored, internalStored, false);
+        return (agentStored, internalStored);
     }
 
     /// <summary>

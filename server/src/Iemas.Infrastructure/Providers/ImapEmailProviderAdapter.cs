@@ -195,10 +195,10 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
         }
         using var _ = client;
 
-        IMailFolder? sentFolder;
+        List<IMailFolder> sentFolders;
         try
         {
-            sentFolder = await ResolveSentFolderAsync(client, timeoutCts.Token);
+            sentFolders = await ResolveSentFoldersAsync(client, timeoutCts.Token);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -206,7 +206,7 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
             return new FetchSentResult(false, ex.Message, Array.Empty<ProviderMessage>(), Array.Empty<(string, string)>());
         }
 
-        if (sentFolder is null)
+        if (sentFolders.Count == 0)
         {
             await SafeDisconnectAsync(client, cancellationToken);
             return new FetchSentResult(false, "No Sent folder could be located on this account (server does not advertise SPECIAL-USE \\Sent and no conventional folder name matched).", Array.Empty<ProviderMessage>(), Array.Empty<(string, string)>());
@@ -214,29 +214,45 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
 
         try
         {
-            await sentFolder.OpenAsync(FolderAccess.ReadOnly, timeoutCts.Token);
-
-            var uids = await sentFolder.SearchAsync(SearchQuery.SentSince(since.UtcDateTime), timeoutCts.Token);
-            var toFetch = uids.OrderByDescending(u => u.Id).Take(maxMessages).ToList();
-
             var messages = new List<ProviderMessage>();
             var malformed = new List<(string Identifier, string Error)>();
+            var seenMessageIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var uid in toFetch)
+            // Mail clients don't agree on where sent mail goes: the server's \Sent folder may be "Sent"
+            // while Outlook saves into "Sent Items" (or the reverse). Every Sent-type folder is read; the
+            // first keeps plain UIDs, the others are prefixed so UIDs from different folders never collide.
+            for (var i = 0; i < sentFolders.Count; i++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
+                var folder = sentFolders[i];
+                var prefix = i == 0 ? string.Empty : $"{folder.FullName}/";
                 try
                 {
-                    var mime = await sentFolder.GetMessageAsync(uid, timeoutCts.Token);
-                    messages.Add(NormalizeMessage(uid, mime));
+                    await folder.OpenAsync(FolderAccess.ReadOnly, timeoutCts.Token);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException && i > 0)
                 {
-                    // §42 — one malformed Sent message must not abort the whole verification
-                    // check, same isolation principle as malformed Inbox messages (§20/§78).
-                    malformed.Add((uid.Id.ToString(), ex.Message));
+                    continue; // an extra candidate folder we can't open is not a failure of the check
                 }
+
+                var uids = await folder.SearchAsync(SearchQuery.SentSince(since.UtcDateTime), timeoutCts.Token);
+                foreach (var uid in uids.OrderByDescending(u => u.Id).Take(maxMessages))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var mime = await folder.GetMessageAsync(uid, timeoutCts.Token);
+                        var normalized = NormalizeMessage(uid, mime);
+                        if (normalized.MessageId is { } mid && !seenMessageIds.Add(mid)) continue; // same mail in two folders
+                        messages.Add(prefix.Length == 0 ? normalized : normalized with { ProviderMessageId = prefix + normalized.ProviderMessageId });
+                    }
+                    catch (Exception ex)
+                    {
+                        // §42 — one malformed Sent message must not abort the whole verification
+                        // check, same isolation principle as malformed Inbox messages (§20/§78).
+                        malformed.Add((prefix + uid.Id, ex.Message));
+                    }
+                }
+                await folder.CloseAsync(false, timeoutCts.Token);
             }
 
             await client.DisconnectAsync(true, cancellationToken);
@@ -254,19 +270,25 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
     /// find the Sent folder regardless of naming/locale), then falls back to a short list of
     /// conventional names for servers that don't support SPECIAL-USE/XLIST.
     /// </summary>
-    private static async Task<IMailFolder?> ResolveSentFolderAsync(ImapClient client, CancellationToken cancellationToken)
+    private static async Task<List<IMailFolder>> ResolveSentFoldersAsync(ImapClient client, CancellationToken cancellationToken)
     {
-        if (client.Capabilities.HasFlag(ImapCapabilities.SpecialUse))
+        var found = new List<IMailFolder>();
+        void Add(IMailFolder? folder)
         {
-            var special = client.GetFolder(SpecialFolder.Sent);
-            if (special is not null) return special;
+            if (folder is not null && !found.Any(f => string.Equals(f.FullName, folder.FullName, StringComparison.OrdinalIgnoreCase)))
+                found.Add(folder);
+        }
+
+        if (client.Capabilities.HasFlag(ImapCapabilities.SpecialUse) || client.Capabilities.HasFlag(ImapCapabilities.XList))
+        {
+            try { Add(client.GetFolder(SpecialFolder.Sent)); } catch (NotSupportedException) { }
         }
 
         foreach (var name in ConventionalSentFolderNames)
         {
             try
             {
-                return await client.GetFolderAsync(name, cancellationToken);
+                Add(await client.GetFolderAsync(name, cancellationToken));
             }
             catch (FolderNotFoundException)
             {
@@ -274,10 +296,28 @@ public class ImapEmailProviderAdapter : IEmailProviderAdapter
             }
         }
 
-        return null;
+        // Anything else the server marks as \Sent, or that is named like a Sent folder (e.g. "INBOX.Sent Items").
+        try
+        {
+            foreach (var ns in client.PersonalNamespaces)
+            {
+                foreach (var folder in await client.GetFoldersAsync(ns, false, cancellationToken))
+                {
+                    if (folder.Attributes.HasFlag(FolderAttributes.Sent)
+                        || ConventionalSentFolderNames.Any(n => string.Equals(folder.Name, n, StringComparison.OrdinalIgnoreCase)))
+                        Add(folder);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Listing is only a fallback; the folders found above still count.
+        }
+
+        return found;
     }
 
-    private static readonly string[] ConventionalSentFolderNames = { "Sent", "Sent Items", "Sent Mail", "[Gmail]/Sent Mail" };
+    private static readonly string[] ConventionalSentFolderNames = { "Sent", "Sent Items", "Sent Messages", "Sent Mail", "[Gmail]/Sent Mail", "INBOX.Sent", "INBOX.Sent Items", "INBOX.Sent Messages" };
 
     private static async Task SafeDisconnectAsync(ImapClient client, CancellationToken cancellationToken)
     {

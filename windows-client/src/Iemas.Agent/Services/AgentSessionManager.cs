@@ -54,6 +54,54 @@ public class AgentSessionManager : IAsyncDisposable
         // reaches CONNECTED automatically the moment an admin approves, without a manual retry.
         _reauthWatchTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _reauthWatchTimer.Tick += async (_, _) => await PollRegistrationIfPendingAsync();
+
+        _sentItemsTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(2) };
+        _sentItemsTimer.Tick += async (_, _) => await ReportOutlookRepliesAsync();
+    }
+
+    private readonly DispatcherTimer _sentItemsTimer;
+    private readonly HashSet<string> _reportedEntryIds = new(StringComparer.Ordinal);
+    private bool _scanningSentItems;
+
+    /// <summary>
+    /// Sends the employee's replies to their open inquiries from Outlook's Sent Items to the server. Needed for
+    /// POP mailboxes, whose sent mail stays on this PC; harmless for IMAP ones (the server ignores duplicates).
+    /// </summary>
+    private async Task ReportOutlookRepliesAsync()
+    {
+        if (_scanningSentItems || State != SessionState.Connected) return;
+        var openCases = ActionRequired.Concat(Waiting).ToList();
+        if (openCases.Count == 0 || !OutlookSentItems.IsOutlookRunning()) return;
+
+        _scanningSentItems = true;
+        try
+        {
+            var customers = openCases.Select(c => c.CustomerEmailAddress.Trim().ToLowerInvariant()).ToHashSet();
+            // From the oldest open inquiry, but never more than 30 days back.
+            var since = new[] { openCases.Min(c => c.FirstEmailReceivedAt), DateTimeOffset.Now.AddDays(-30) }.Max();
+
+            var (messages, problem) = await OutlookSentItems.ReadAsync(since, customers);
+            var fresh = messages.Where(m => !_reportedEntryIds.Contains(m.EntryId)).ToList();
+            if (fresh.Count == 0)
+            {
+                if (problem is not null && problem != "Outlook is not running.")
+                    await _api.ReportErrorAsync($"Reading Outlook Sent Items failed: {problem}", CancellationToken.None);
+                return;
+            }
+
+            var result = await _api.ReportSentMessagesAsync(new AgentSentMessagesRequest(fresh.Take(100).ToList()), CancellationToken.None);
+            if (!result.Succeeded) return; // tried again on the next tick
+            foreach (var m in fresh.Take(100)) _reportedEntryIds.Add(m.EntryId);
+            if (result.Value is { RepliesStored: > 0 } or { InternalStored: > 0 }) await RefreshSyncAsync();
+        }
+        catch (Exception ex)
+        {
+            await _api.ReportErrorAsync($"Reading Outlook Sent Items failed: {ex.Message}", CancellationToken.None);
+        }
+        finally
+        {
+            _scanningSentItems = false;
+        }
     }
 
     public async Task StartAsync()
@@ -153,6 +201,8 @@ public class AgentSessionManager : IAsyncDisposable
 
         await RefreshSyncAsync();
         _heartbeatTimer.Start();
+        _sentItemsTimer.Start();
+        _ = ReportOutlookRepliesAsync();
     }
 
     private void OnSignalRStateChanged(AgentConnectionState state)
@@ -281,6 +331,7 @@ public class AgentSessionManager : IAsyncDisposable
 
     public void SignOut()
     {
+        _sentItemsTimer.Stop();
         _heartbeatTimer.Stop();
         _reauthWatchTimer.Stop();
         _credentialStore.Clear();
@@ -290,6 +341,7 @@ public class AgentSessionManager : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _sentItemsTimer.Stop();
         _heartbeatTimer.Stop();
         _reauthWatchTimer.Stop();
         await _signalR.DisposeAsync();

@@ -86,6 +86,7 @@ public sealed class InquiryHarness : IDisposable
     private readonly EmailClassificationService _classification;
     private readonly CaseWorkflowService _workflow;
     private readonly ConversationSyncService _sync;
+    public ConversationSyncService Sync => _sync;
     public InquirySupervisionService Supervision { get; }
     public AgentCaseActionService AgentActions { get; }
 

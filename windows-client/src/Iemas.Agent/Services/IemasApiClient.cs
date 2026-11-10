@@ -121,6 +121,18 @@ public class IemasApiClient : IDisposable
             return await ReadResultAsync<bool>(response, ct, treatNoContentAsSuccess: true);
         });
 
+    public Task<ApiResult<AgentSentMessagesResult>> ReportSentMessagesAsync(AgentSentMessagesRequest request, CancellationToken ct) =>
+        ExecuteAsync<AgentSentMessagesResult>(async () =>
+        {
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/v1/agent/sent-messages")
+            {
+                Content = JsonContent.Create(request, options: JsonOptions),
+            };
+            ApplyAuth(httpRequest);
+            using var response = await _http.SendAsync(httpRequest, ct);
+            return await ReadResultAsync<AgentSentMessagesResult>(response, ct);
+        });
+
     /// <summary>§8.1 "Report errors."</summary>
     public async Task ReportErrorAsync(string detail, CancellationToken ct)
     {
