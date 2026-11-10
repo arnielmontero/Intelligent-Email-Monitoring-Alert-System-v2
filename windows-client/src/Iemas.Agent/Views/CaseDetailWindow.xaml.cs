@@ -28,15 +28,35 @@ public partial class CaseDetailWindow : Window
 
         Title = $"{theCase.CaseNumber} - IEMAS";
         CaseNumberText.Text = theCase.CaseNumber;
-        SubjectText.Text = theCase.Subject;
         CustomerText.Text = string.IsNullOrWhiteSpace(theCase.CustomerDisplayName)
             ? theCase.CustomerEmailAddress
             : $"{theCase.CustomerDisplayName} <{theCase.CustomerEmailAddress}>";
         var emails = theCase.EmailCount == 1 ? "1 email" : $"{theCase.EmailCount} emails";
-        ReceivedText.Text = $"{theCase.FirstEmailReceivedAt.ToLocalTime():ddd d MMM, h:mm tt}  ·  {emails} in this conversation";
+
+        // Show the customer's newest email (the one "Reply in email" answers), not the first one.
+        var latestAt = theCase.LatestCustomerReceivedAt ?? theCase.FirstEmailReceivedAt;
+        var hasLater = theCase.LatestCustomerReceivedAt is { } l && l > theCase.FirstEmailReceivedAt.AddSeconds(1);
+        SubjectText.Text = ReplySubject;
+        ReceivedText.Text = $"{latestAt.ToLocalTime():ddd d MMM, h:mm tt}  ·  {emails} in this conversation";
+        LatestLabel.Visibility = hasLater ? Visibility.Visible : Visibility.Collapsed;
+        if (hasLater)
+        {
+            FirstEmailLabel.Visibility = FirstEmailText.Visibility = Visibility.Visible;
+            FirstEmailText.Text = $"{theCase.FirstEmailReceivedAt.ToLocalTime():ddd d MMM, h:mm tt}  ·  \"{theCase.Subject}\"";
+        }
+
+        var unanswered = theCase.UnansweredCustomerEmails;
+        if (unanswered > 0 && theCase.WorkStatus is not (CaseWorkStatus.Completed or CaseWorkStatus.Cancelled))
+        {
+            UnansweredBadge.Visibility = Visibility.Visible;
+            UnansweredText.Text = unanswered == 1 ? "1 UNANSWERED EMAIL" : $"{unanswered} UNANSWERED EMAILS";
+        }
 
         ShowStatus();
     }
+
+    /// <summary>Subject of the customer's newest email, falling back to the Case subject.</summary>
+    private string ReplySubject => string.IsNullOrWhiteSpace(_case.LatestCustomerSubject) ? _case.Subject : _case.LatestCustomerSubject!;
 
     public void FocusComment() => Loaded += (_, _) => CommentTextBox.Focus();
 
@@ -62,7 +82,7 @@ public partial class CaseDetailWindow : Window
         string? problem;
         try
         {
-            problem = OutlookReply.TryOpenReply(_case.LatestCustomerMessageId, _case.CustomerEmailAddress, _case.Subject);
+            problem = OutlookReply.TryOpenReply(_case.LatestCustomerMessageId, _case.CustomerEmailAddress, ReplySubject);
         }
         finally
         {
@@ -75,7 +95,7 @@ public partial class CaseDetailWindow : Window
         }
 
         // Fallback: a new email to the customer with "Re: subject".
-        var result = EmailLauncher.OpenCompose(_case.CustomerEmailAddress, _case.Subject);
+        var result = EmailLauncher.OpenCompose(_case.CustomerEmailAddress, ReplySubject);
         ShowResult($"{problem} {result.Message}", ok: result.Outcome != EmailLaunchOutcome.Failed);
     }
 

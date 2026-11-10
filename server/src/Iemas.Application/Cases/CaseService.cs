@@ -204,6 +204,18 @@ public class CaseService
                     .Where(e => e.Role == ConversationRole.Customer && e.EmailMessage.MessageId != null)
                     .OrderByDescending(e => e.EmailMessage.ReceivedAt)
                     .Select(e => e.EmailMessage.MessageId)
-                    .FirstOrDefault()));
+                    .FirstOrDefault(),
+                c.Emails
+                    .Where(e => e.Role == ConversationRole.Customer)
+                    .OrderByDescending(e => e.EmailMessage.ReceivedAt)
+                    .Select(e => e.EmailMessage.Subject)
+                    .FirstOrDefault(),
+                c.Emails
+                    .Where(e => e.Role == ConversationRole.Customer)
+                    .Max(e => (DateTimeOffset?)e.EmailMessage.ReceivedAt),
+                // Customer emails since our last message to them (all of them when we never wrote).
+                c.Emails.Count(e => e.Role == ConversationRole.Customer
+                    && ((c.LastAgentMessageAt == null && c.FirstAgentResponseAt == null)
+                        || e.EmailMessage.ReceivedAt > (c.LastAgentMessageAt ?? c.FirstAgentResponseAt)))));
     }
 }

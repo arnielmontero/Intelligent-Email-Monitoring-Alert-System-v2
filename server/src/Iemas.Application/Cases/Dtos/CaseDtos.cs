@@ -24,7 +24,12 @@ public record CaseDto(
     int EmailCount,
     // RFC Message-ID of the customer's most recent email, so the Windows Agent can find that exact
     // email in Outlook and open a real Reply (same thread, proper In-Reply-To headers).
-    string? LatestCustomerMessageId = null);
+    string? LatestCustomerMessageId = null,
+    // The customer's newest email (what the agent is actually answering) and how many customer
+    // emails arrived since our last message to them, so the Agent can show "3 unanswered".
+    string? LatestCustomerSubject = null,
+    DateTimeOffset? LatestCustomerReceivedAt = null,
+    int UnansweredCustomerEmails = 0);
 
 public record CaseEventDto(
     Guid Id,

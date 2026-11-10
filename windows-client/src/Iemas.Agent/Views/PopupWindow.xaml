@@ -13,9 +13,15 @@
         </Border.Effect>
         <StackPanel Margin="16,12,16,14">
             <Grid>
-                <Border x:Name="BadgeBorder" Background="#DBEAFE" CornerRadius="10" Padding="8,2" HorizontalAlignment="Left">
-                    <TextBlock x:Name="BadgeText" Text="NEW EMAIL" FontWeight="Bold" Foreground="#1E40AF" FontSize="11"/>
-                </Border>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                    <Border x:Name="BadgeBorder" Background="#DBEAFE" CornerRadius="10" Padding="8,2">
+                        <TextBlock x:Name="BadgeText" Text="NEW EMAIL" FontWeight="Bold" Foreground="#1E40AF" FontSize="11"/>
+                    </Border>
+                    <!-- "3 UNANSWERED": solid so the count is the first thing the eye lands on. -->
+                    <Border x:Name="CountBorder" Background="#E11D48" CornerRadius="10" Padding="8,2" Margin="6,0,0,0" Visibility="Collapsed">
+                        <TextBlock x:Name="CountText" FontWeight="Bold" Foreground="White" FontSize="11"/>
+                    </Border>
+                </StackPanel>
                 <Button Content="✕" HorizontalAlignment="Right" Background="Transparent" BorderThickness="0" Padding="4,0"
                         Cursor="Hand" ToolTip="Dismiss" Click="Dismiss_Click"/>
             </Grid>

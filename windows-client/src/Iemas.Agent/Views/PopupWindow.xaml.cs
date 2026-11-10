@@ -30,6 +30,7 @@ public partial class PopupWindow : Window
         CaseText.Text = message.CaseNumber ?? string.Empty;
         ButtonsPanel.Visibility = _caseId is null ? Visibility.Collapsed : Visibility.Visible;
         ApplyColours(TitleText.Text);
+        ShowUnansweredCount(MessageText.Text);
 
         Loaded += (_, _) => Arrange();
         Closed += (_, _) => { Open.Remove(this); Arrange(); };
@@ -62,6 +63,18 @@ public partial class PopupWindow : Window
         BadgeText.Foreground = Brush(style.Text);
         BadgeText.Text = style.Badge;
         OpenButton.Background = Brush(style.Accent);
+    }
+
+    /// <summary>
+    /// Pulls "N unanswered email(s)" out of the server's message and shows it as a solid pill next to the
+    /// badge, so the count can't be missed inside the sentence.
+    /// </summary>
+    private void ShowUnansweredCount(string message)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(message, @"(\d+)\s+unanswered\s+email", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success || !int.TryParse(match.Groups[1].Value, out var count) || count < 1) return;
+        CountText.Text = count == 1 ? "1 UNANSWERED" : $"{count} UNANSWERED";
+        CountBorder.Visibility = Visibility.Visible;
     }
 
     /// <summary>Shows an alert; must be called on the UI thread.</summary>

@@ -90,7 +90,14 @@
             <!-- 1. What is this? -->
             <Border Style="{StaticResource Card}">
                 <StackPanel>
-                    <TextBlock x:Name="CaseNumberText" FontSize="11" FontWeight="SemiBold" Foreground="#6B7280"/>
+                    <DockPanel LastChildFill="False">
+                        <TextBlock x:Name="CaseNumberText" DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Foreground="#6B7280"/>
+                        <!-- Customer emails we still haven't answered: the thing the agent must not miss. -->
+                        <Border x:Name="UnansweredBadge" DockPanel.Dock="Right" Background="#E11D48" CornerRadius="10" Padding="10,3" Visibility="Collapsed">
+                            <TextBlock x:Name="UnansweredText" Foreground="White" FontSize="12" FontWeight="Bold"/>
+                        </Border>
+                    </DockPanel>
+                    <TextBlock x:Name="LatestLabel" Text="LATEST EMAIL FROM THE CUSTOMER" FontSize="10" FontWeight="SemiBold" Foreground="#9F1239" Margin="0,8,0,0" Visibility="Collapsed"/>
                     <TextBlock x:Name="SubjectText" FontSize="17" FontWeight="Bold" Foreground="#111827" TextWrapping="Wrap" Margin="0,4,0,8"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -100,11 +107,14 @@
                         <Grid.RowDefinitions>
                             <RowDefinition/>
                             <RowDefinition/>
+                            <RowDefinition/>
                         </Grid.RowDefinitions>
                         <TextBlock Text="From" Foreground="#6B7280" Margin="0,0,12,2"/>
                         <TextBlock x:Name="CustomerText" Grid.Column="1" Foreground="#111827" TextWrapping="Wrap"/>
-                        <TextBlock Text="Received" Grid.Row="1" Foreground="#6B7280" Margin="0,0,12,0"/>
-                        <TextBlock x:Name="ReceivedText" Grid.Row="1" Grid.Column="1" Foreground="#111827"/>
+                        <TextBlock Text="Received" Grid.Row="1" Foreground="#6B7280" Margin="0,0,12,2"/>
+                        <TextBlock x:Name="ReceivedText" Grid.Row="1" Grid.Column="1" Foreground="#111827" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="FirstEmailLabel" Text="Started" Grid.Row="2" Foreground="#6B7280" Margin="0,0,12,0" Visibility="Collapsed"/>
+                        <TextBlock x:Name="FirstEmailText" Grid.Row="2" Grid.Column="1" Foreground="#6B7280" TextWrapping="Wrap" Visibility="Collapsed"/>
                     </Grid>
                 </StackPanel>
             </Border>
