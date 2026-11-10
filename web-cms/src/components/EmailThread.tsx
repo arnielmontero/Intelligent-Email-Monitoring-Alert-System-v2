@@ -78,7 +78,9 @@ function EmailCard({ message: m, number, title, showSubject, isLatest }: {
   const [showAll, setShowAll] = useState(false);
   const style = ROLE_STYLE[m.role];
   const full = (m.text ?? "").trim();
-  const fresh = stripQuoted(full);
+  // If the person typed their answer BELOW the quoted original (common in Outlook), there is no "new" text above
+  // the quote; show the whole email rather than an empty card.
+  const fresh = stripQuoted(full) || full;
   const hasHidden = fresh.length < full.length;
   const body = showAll ? full : fresh;
 

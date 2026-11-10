@@ -232,6 +232,7 @@ public class CaseWorkflowServiceTests
         var account = CreateAccount();
         db.EmailAccounts.Add(account);
         var firstMessage = CreateMessage(account.Id, "Price Request");
+        firstMessage.MessageId = "<price-request-1@customer.example>";   // a real Message-ID, so the reply below genuinely threads off it
         db.EmailMessages.Add(firstMessage);
         db.EmailClassifications.Add(CreateClassification(firstMessage.Id, ImportanceDecision.Important));
         await db.SaveChangesAsync();

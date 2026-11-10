@@ -259,10 +259,14 @@ public class ConversationSyncService
             if (hit.CaseId != Guid.Empty) return (ById(hit.CaseId), CaseMatchSignal.References, "References contains a message of this inquiry");
         }
 
+        // A customer can have several open inquiries. With no thread headers, the one whose subject the
+        // message carries wins; otherwise the most recently active one.
+        var sentSubject = Cases.CaseMatchingService.NormalizeSubject(message.Subject);
         var byRecipient = cases
             .Where(c => message.ReceivedAt >= c.FirstEmailReceivedAt
                 && message.ToAddresses.Concat(message.CcAddresses).Any(a => string.Equals(a, c.CustomerEmailAddress, StringComparison.OrdinalIgnoreCase)))
-            .OrderByDescending(c => c.LastActivityAt)
+            .OrderByDescending(c => sentSubject.Length > 0 && string.Equals(c.NormalizedSubject, sentSubject, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(c => c.LastActivityAt)
             .FirstOrDefault();
         return byRecipient is null
             ? (null, CaseMatchSignal.NewCase, null)

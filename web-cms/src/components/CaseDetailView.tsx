@@ -37,6 +37,7 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState<CaseCompletionReason>(0);
   const [comment, setComment] = useState("");
+  const [tab, setTab] = useState<"conversation" | "analysis">("conversation");
 
   async function load() {
     try {
@@ -101,20 +102,52 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
         )}
       </div>
 
-      {conversation && (
+      {/* The conversation is what people read; how IEMAS judged each email lives on its own tab. */}
+      <div role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--color-border)", margin: "20px 0 4px" }}>
+        <TabButton active={tab === "conversation"} onClick={() => setTab("conversation")}>
+          {conversation ? `Conversation (${conversation.length})` : `Emails (${detail.emails.length})`}
+        </TabButton>
+        <TabButton active={tab === "analysis"} onClick={() => setTab("analysis")}>
+          AI analysis ({detail.emails.length})
+        </TabButton>
+      </div>
+
+      {tab === "conversation" && (
         <>
-          <h2 style={{ ...(compact ? compactSectionTitle : sectionTitle), marginBottom: 4 }}>Conversation with the customer</h2>
-          <p style={{ ...hintStyle, margin: "0 0 12px" }}>
-            Every email in this case, oldest first: the customer's first message, then each reply, one after the other.
-          </p>
-          <EmailThread messages={conversation} />
+          {conversation ? (
+            <>
+              <p style={{ ...hintStyle, margin: "10px 0 12px" }}>
+                Every email in this case, oldest first: the customer's messages and our replies, one after the other.
+              </p>
+              <EmailThread messages={conversation} />
+            </>
+          ) : (
+            <div style={{ marginTop: 12 }}>
+              {detail.emails.map((e, i) => <EmailCard key={e.emailMessageId} email={e} defaultOpen={i === detail.emails.length - 1} showAnalysis={false} />)}
+            </div>
+          )}
         </>
       )}
 
-      <h2 style={compact ? compactSectionTitle : sectionTitle}>
-        {conversation ? `AI analysis of received emails (${detail.emails.length})` : `Emails (${detail.emails.length})`}
-      </h2>
-      {detail.emails.map((e, i) => <EmailCard key={e.emailMessageId} email={e} defaultOpen={!conversation && i === detail.emails.length - 1} />)}
+      {tab === "analysis" && (
+        <>
+          <div style={{ ...aiBoxStyle, margin: "12px 0" }}>
+            <strong>What is this?</strong>
+            <p style={{ margin: "6px 0 0", lineHeight: 1.5 }}>
+              Every email that arrives is checked once to decide whether it is a real customer inquiry that someone must answer.
+              This tab shows that check for each email the customer sent: the verdict (Important or not), whether it needs a reply,
+              how urgent it looks, and <em>why</em>. It is not needed to answer the customer. Use it to understand why an email did,
+              or did not, become a case, and to tune the filters if the system gets one wrong.
+            </p>
+            <p style={{ margin: "8px 0 0", lineHeight: 1.5 }}>
+              <strong>Zettelkasten</strong> in the "Why" line is IEMAS's own built-in keyword filter. It decides most emails by itself, at no AI cost,
+              and the score shows how strongly the wording looked like an inquiry. <strong>AI</strong> with a model name means the filter was unsure
+              and an AI model was asked.
+            </p>
+          </div>
+          {detail.emails.map((e) => <EmailCard key={e.emailMessageId} email={e} defaultOpen={false} showAnalysis />)}
+        </>
+      )}
 
       <h2 style={compact ? compactSectionTitle : sectionTitle}>Timeline</h2>
       <ol style={{ listStyle: "none", padding: 0, margin: 0, borderLeft: "2px solid var(--color-border)" }}>
@@ -188,9 +221,28 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
   );
 }
 
-function EmailCard({ email, defaultOpen }: { email: CaseEmailDto; defaultOpen: boolean }) {
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      style={{
+        background: "transparent", border: "none", cursor: "pointer", padding: "8px 14px", fontSize: 14, marginBottom: -1,
+        fontWeight: active ? 600 : 400,
+        color: active ? "var(--color-accent)" : "var(--color-text-muted)",
+        borderBottom: `2px solid ${active ? "var(--color-accent)" : "transparent"}`,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EmailCard({ email, defaultOpen, showAnalysis }: { email: CaseEmailDto; defaultOpen: boolean; showAnalysis: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
-  const cls = email.classification;
+  const cls = showAnalysis ? email.classification : null;
   return (
     <div style={{ ...panelStyle, marginBottom: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, cursor: "pointer" }} onClick={() => setOpen(!open)}>

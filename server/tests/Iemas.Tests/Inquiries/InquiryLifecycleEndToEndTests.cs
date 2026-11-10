@@ -244,6 +244,53 @@ public class InquiryLifecycleEndToEndTests
     }
 
     [Fact]
+    public async Task S6e_NewInquiryFromTheSameCustomer_AfterWeAnswered_IsItsOwnCase_AndANewEmailAlert()
+    {
+        using var h = new InquiryHarness(Agent1);
+        var first = h.Receive(Agent1, Customer, "Quote please", "Please send a quote for a 6 kW sauna heater. How much?", Monday0900);
+        await h.RunAsync(Monday0900.AddMinutes(1));
+        h.Send(Agent1, Customer, "RE: Quote please", "Here is the quotation.", Day(0, 10), inReplyTo: first);
+        await h.RunAsync(Day(0, 10, 5));
+
+        // A brand-new email thread about something else, from the same address.
+        h.Receive(Agent1, Customer, "Spare parts", "Do you sell spare parts for the heater? Please send a quote. How much for a stone set?", Day(1, 9));
+        await h.RunAsync(Day(1, 9, 1));
+
+        var cases = await h.Db.Cases.OrderBy(c => c.CaseNumber).ToListAsync();
+        Assert.Equal(2, cases.Count);
+        Assert.Equal(new[] { "Quote please", "Spare parts" }, cases.Select(c => c.Subject));
+        Assert.Equal(InquiryStage.InitialResponseReceived, cases[0].Stage);        // the answered one is left alone
+        Assert.Equal(InquiryStage.AwaitingInitialResponse, cases[1].Stage);
+        Assert.Equal(2, h.PopUpTitlesFor(Agent1).Count(t => t == "New Email"));    // the new inquiry is announced as new
+        Assert.DoesNotContain(WroteAgainTitle, h.PopUpTitlesFor(Agent1));
+    }
+
+    [Fact]
+    public async Task S6f_NewInquiryFromTheSameCustomer_AfterTheOldOneWasResolved_DoesNotReopenIt()
+    {
+        using var h = new InquiryHarness(Agent1);
+        h.Receive(Agent1, Customer, "Quote please", "Please send a quote for a 6 kW sauna heater. How much?", Monday0900);
+        await h.RunAsync(Monday0900.AddMinutes(1));
+        var old = await h.CaseAsync(Agent1, Customer);
+        old.Stage = InquiryStage.Resolved;
+        old.WorkStatus = CaseWorkStatus.Completed;
+        old.CompletedAt = Day(0, 12);
+        await h.Db.SaveChangesAsync();
+
+        // Next day, same customer, same kind of request (even the same subject), a new thread.
+        h.Receive(Agent1, Customer, "Quote please", "Please send a quote for another 6 kW sauna heater. How much?", Day(1, 9));
+        await h.RunAsync(Day(1, 9, 1));
+
+        h.Db.ChangeTracker.Clear();
+        var cases = await h.Db.Cases.OrderBy(c => c.CaseNumber).ToListAsync();
+        Assert.Equal(2, cases.Count);
+        Assert.Equal(CaseWorkStatus.Completed, cases[0].WorkStatus);               // history untouched
+        Assert.Equal(0, cases[0].ReopenCount);
+        Assert.Equal(CaseWorkStatus.ActionRequired, cases[1].WorkStatus);
+        Assert.Equal(2, h.PopUpTitlesFor(Agent1).Count(t => t == "New Email"));
+    }
+
+    [Fact]
     public async Task S6b_FollowUpProcessedBeforeTheAgentReplyIsSynced_AgentStillOwesTheResponse()
     {
         using var h = new InquiryHarness(Agent1);

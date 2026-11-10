@@ -1,4 +1,5 @@
 using Iemas.Application.Common.Interfaces;
+using Iemas.Application.Inquiries;
 using Iemas.Domain.Cases;
 using Iemas.Domain.Email;
 using Microsoft.EntityFrameworkCore;
@@ -100,68 +101,50 @@ public class CaseMatchingService
             }
         }
 
-        // 5. Participant + email-account relationship — an open (not Completed/Cancelled) Case
-        // for the same customer on the same monitored account. §37 — same customer does not
-        // automatically mean same Case, so this only considers Cases still actively open; a
-        // completed/cancelled Case never silently reabsorbs a new, possibly-unrelated message
-        // here (reopening a genuinely-related completed Case is handled separately by the
-        // workflow service via §36/§49, using the stronger signals above, not this one).
-        var openCaseSameParticipant = await _db.Cases
+        // 5. A NEW email thread from a customer who already has an open inquiry on this account.
+        // Nothing above links it to a conversation, so by default it is a new inquiry and gets its own
+        // Case. It only joins an existing open Case when that is clearly the same matter:
+        //   a) same subject (the customer re-sent or nudged the same question), or
+        //   b) we have not answered that Case yet (the customer is chasing us or adding details; the
+        //      agent gets a "still needs your response" alert instead of a second Case for the same wait).
+        // Once we HAVE replied and the new email is about something else, it is a separate inquiry.
+        //
+        // A closed Case (completed, cancelled, expired, resolved) is never reopened by a new thread: only a
+        // real reply in its own conversation (signals 1-4 above) reopens it. The earlier "recent
+        // conversation" and "subject only" fallbacks were removed for that reason: they let an unrelated
+        // new request silently reopen an old, finished Case (§37: same customer is not the same Case).
+        var normalizedSubject = NormalizeSubject(message.Subject);
+        var openCases = await _db.Cases
             .Where(c => c.EmailAccountId == message.EmailAccountId
                 && c.CustomerEmailAddress == message.FromAddress
                 && c.WorkStatus != CaseWorkStatus.Completed
                 && c.WorkStatus != CaseWorkStatus.Cancelled
-                && c.WorkStatus != CaseWorkStatus.Expired)
+                && c.WorkStatus != CaseWorkStatus.Expired
+                && c.Stage != InquiryStage.Resolved
+                && c.Stage != InquiryStage.Closed)
             .OrderByDescending(c => c.LastActivityAt)
-            .FirstOrDefaultAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
 
-        if (openCaseSameParticipant is not null)
-        {
-            return new CaseMatchResult(openCaseSameParticipant, CaseMatchSignal.ParticipantAndAccountRelationship,
-                $"Open case for {message.FromAddress} on this account");
-        }
-
-        // 6. Recent conversation context — same participant/account, but the most recent case is
-        // itself very recent (within the recency window), even if not "open" in the strict
-        // work-status sense above (e.g. Completed very recently). This intentionally sits below
-        // signal 5 and above subject, and is still narrower than reopening on subject alone.
-        var recentCase = await _db.Cases
-            .Where(c => c.EmailAccountId == message.EmailAccountId && c.CustomerEmailAddress == message.FromAddress)
-            .OrderByDescending(c => c.LastActivityAt)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (recentCase is not null && (message.ReceivedAt - recentCase.LastActivityAt) <= RecentConversationWindow)
-        {
-            return new CaseMatchResult(recentCase, CaseMatchSignal.RecentConversationContext,
-                $"Last activity on this customer's case was {(message.ReceivedAt - recentCase.LastActivityAt).TotalHours:0.#}h ago");
-        }
-
-        // 7. Normalized subject — weak signal only, never sufficient alone (§34 hard requirement).
-        // Narrowed to the same account + same customer pair specifically so it cannot match a
-        // different customer's unrelated case merely because both happened to write "Price
-        // Request" (§19's spirit: never let subject alone drive matching, even indirectly).
-        var normalizedSubject = NormalizeSubject(message.Subject);
         if (!string.IsNullOrWhiteSpace(normalizedSubject))
         {
-            // Case-insensitive on purpose — subject casing varies incidentally (mail clients,
-            // typing habits) and must not affect whether this weak signal can fire at all.
-            var bySubject = await _db.Cases
-                .Where(c => c.EmailAccountId == message.EmailAccountId
-                    && c.CustomerEmailAddress == message.FromAddress
-                    && c.NormalizedSubject.ToLower() == normalizedSubject.ToLower())
-                .OrderByDescending(c => c.LastActivityAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (bySubject is not null)
+            // Case-insensitive on purpose: subject casing varies incidentally between mail clients.
+            var sameSubject = openCases.FirstOrDefault(c => string.Equals(c.NormalizedSubject, normalizedSubject, StringComparison.OrdinalIgnoreCase));
+            if (sameSubject is not null)
             {
-                return new CaseMatchResult(bySubject, CaseMatchSignal.NormalizedSubjectWeakSignal, $"NormalizedSubject=\"{normalizedSubject}\"");
+                return new CaseMatchResult(sameSubject, CaseMatchSignal.NormalizedSubjectWeakSignal,
+                    $"Same subject \"{normalizedSubject}\" as an open Case of this customer");
             }
+        }
+
+        var stillWaitingForUs = openCases.FirstOrDefault(c => InquiryLifecycle.AgentOwesNextStep(c.Stage));
+        if (stillWaitingForUs is not null)
+        {
+            return new CaseMatchResult(stillWaitingForUs, CaseMatchSignal.ParticipantAndAccountRelationship,
+                $"Open Case of {message.FromAddress} that has not been answered yet");
         }
 
         return new CaseMatchResult(null, CaseMatchSignal.NewCase, null);
     }
-
-    private static readonly TimeSpan RecentConversationWindow = TimeSpan.FromHours(48);
 
     private static List<string> SplitReferences(string? references)
     {
