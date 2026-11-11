@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { AgentDto, AgentLogDto, EmployeeDto } from "../../api/types";
 import { AGENT_REGISTRATION_STATUS_LABELS, AGENT_CONNECTION_STATUS_LABELS, AGENT_LOG_EVENT_TYPE_LABELS } from "../../api/types";
+import { InfoTip } from "../../components/help/Tooltip";
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<AgentDto[]>([]);
@@ -123,7 +124,7 @@ export default function AgentsPage() {
 
         {error && <div className="form-error">{error}</div>}
 
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ marginBottom: 16 }}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ marginBottom: 16 }} data-tip="Show only PCs that are Pending approval, Approved, Rejected or Revoked.">
           <option value="">All statuses</option>
           {Object.entries(AGENT_REGISTRATION_STATUS_LABELS).map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
@@ -133,13 +134,13 @@ export default function AgentsPage() {
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
           <thead>
             <tr>
-              <th style={thStyle}>Client Name</th>
-              <th style={thStyle}>Enrollment Email</th>
-              <th style={thStyle}>Employee</th>
-              <th style={thStyle}>Registration</th>
-              <th style={thStyle}>Connection</th>
+              <th style={thStyle}>Client Name<InfoTip text="The PC's computer name." /></th>
+              <th style={thStyle}>Enrollment Email<InfoTip text="The email address typed in when the IEMAS Agent was installed." /></th>
+              <th style={thStyle}>Employee<InfoTip text="The employee this PC belongs to. Their pop-ups are delivered here." /></th>
+              <th style={thStyle}>Registration<InfoTip text="Pending: waiting for approval. Approved: working. Rejected or Revoked: blocked." /></th>
+              <th style={thStyle}>Connection<InfoTip text="Whether the PC is connected to IEMAS right now." /></th>
               <th style={thStyle}>Last Connected</th>
-              <th style={thStyle}>Version</th>
+              <th style={thStyle}>Version<InfoTip text="Which version of the IEMAS Agent the PC runs." /></th>
               <th style={thStyle}></th>
             </tr>
           </thead>
@@ -157,6 +158,7 @@ export default function AgentsPage() {
                   {a.registrationStatus === 0 && (
                     <>
                       <select
+                        data-tip="Choose the employee who uses this PC before approving it."
                         value={selectedEmployeeId(a)}
                         onChange={(e) => setApproveEmployeeId((prev) => ({ ...prev, [a.id]: e.target.value }))}
                         style={{ marginRight: 8 }}
@@ -166,14 +168,14 @@ export default function AgentsPage() {
                           <option key={emp.id} value={emp.id}>{emp.fullName}</option>
                         ))}
                       </select>
-                      <button onClick={() => handleApprove(a)} style={{ marginRight: 8 }}>Approve</button>
-                      <button onClick={() => handleReject(a)} style={{ marginRight: 8 }}>Reject</button>
+                      <button onClick={() => handleApprove(a)} style={{ marginRight: 8 }} data-tip="Allow this PC to connect. It starts receiving the chosen employee's pop-ups.">Approve</button>
+                      <button onClick={() => handleReject(a)} style={{ marginRight: 8 }} data-tip="Refuse this PC. Use it for a registration you do not recognise.">Reject</button>
                     </>
                   )}
                   {a.registrationStatus === 1 && (
-                    <button onClick={() => handleRevoke(a)} style={{ marginRight: 8 }}>Revoke</button>
+                    <button onClick={() => handleRevoke(a)} style={{ marginRight: 8 }} data-tip="Cut this PC off immediately, e.g. lost or replaced. It must register again to reconnect.">Revoke</button>
                   )}
-                  <button onClick={() => openLogs(a.id)}>Logs</button>
+                  <button onClick={() => openLogs(a.id)} data-tip="Technical connection log for this PC, for troubleshooting.">Logs</button>
                   <button
                     className="btn-danger"
                     disabled={a.registrationStatus !== 2 && a.registrationStatus !== 3}

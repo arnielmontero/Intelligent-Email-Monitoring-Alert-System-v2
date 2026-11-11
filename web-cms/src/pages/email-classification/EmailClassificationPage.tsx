@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { ClassificationProfileDto, TestClassificationResult } from "../../api/types";
 import { Badge } from "../../components/StatCard";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 const lines = (text: string | null | undefined) => (text ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -117,13 +118,13 @@ export default function EmailClassificationPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      <h2 style={{ fontSize: 16, marginTop: 24 }}>Profiles</h2>
+      <h2 style={{ fontSize: 16, marginTop: 24, display: "flex", alignItems: "center" }}>Profiles<InfoTip text="A profile tells the AI what matters for a mailbox: its categories and the words that make an email important or not. Choose a profile per mailbox on Email Accounts." /></h2>
       <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: 24 }}>
         <thead>
           <tr>
             <th style={thStyle}>Name</th>
-            <th style={thStyle}>Enabled</th>
-            <th style={thStyle}>Categories</th>
+            <th style={thStyle}>Enabled<InfoTip text="Only enabled profiles are used. Disabling one makes its mailboxes fall back to the default rules." /></th>
+            <th style={thStyle}>Categories<InfoTip text="Click to see the profile's categories and include/exclude words." /></th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -148,10 +149,10 @@ export default function EmailClassificationPage() {
                     </button>
                   </td>
                   <td style={{ ...tdStyle, whiteSpace: "nowrap", textAlign: "right" }}>
-                    <button onClick={() => handleToggleEnabled(p)} style={{ marginRight: 8 }}>
+                    <button onClick={() => handleToggleEnabled(p)} style={{ marginRight: 8 }} data-tip="Turn this profile on or off without deleting it.">
                       {p.enabled ? "Disable" : "Enable"}
                     </button>
-                    <button className="btn-danger" onClick={() => handleDelete(p.id)}>Delete</button>
+                    <button className="btn-danger" onClick={() => handleDelete(p.id)} data-tip="Delete this profile permanently. Profiles cannot be edited, so to change one create a new profile and delete the old one.">Delete</button>
                   </td>
                 </tr>
                 {isOpen && (
@@ -167,39 +168,39 @@ export default function EmailClassificationPage() {
         </tbody>
       </table>
 
-      <h2 style={{ fontSize: 16 }}>New Profile</h2>
+      <h2 style={{ fontSize: 16, display: "flex", alignItems: "center" }}>New Profile<InfoTip text="Create a profile, then select it on a mailbox (Email Accounts, Edit). Profiles cannot be edited later." /></h2>
       <form onSubmit={handleCreate} style={{ marginBottom: 32, display: "flex", flexDirection: "column", gap: 8, maxWidth: 480 }}>
         <div>
-          <label>Name</label><br />
+          <label><TipLabel tip="A short name, e.g. Sales or Support.">Name</TipLabel></label><br />
           <input value={name} onChange={(e) => setName(e.target.value)} required style={{ width: "100%" }} />
         </div>
         <div>
-          <label>Description</label><br />
+          <label><TipLabel tip="Optional note about what the profile is for.">Description</TipLabel></label><br />
           <input value={description} onChange={(e) => setDescription(e.target.value)} style={{ width: "100%" }} />
         </div>
         <div>
-          <label>Categories (one per line)</label><br />
+          <label><TipLabel tip="The kinds of email the AI may sort into, one per line, e.g. Quote request, Complaint, Order status.">Categories (one per line)</TipLabel></label><br />
           <textarea value={categories} onChange={(e) => setCategories(e.target.value)} rows={4} style={{ width: "100%" }} />
         </div>
         <div>
-          <label>Include definitions (one per line)</label><br />
+          <label><TipLabel tip="Descriptions of email that IS important, one per line, e.g. A customer asks about delivery dates.">Include definitions (one per line)</TipLabel></label><br />
           <textarea value={includeDefinitions} onChange={(e) => setIncludeDefinitions(e.target.value)} rows={4} style={{ width: "100%" }} />
         </div>
         <div>
-          <label>Exclude definitions (one per line)</label><br />
+          <label><TipLabel tip="Descriptions of email that is NOT important, one per line, e.g. Newsletters or automatic notifications.">Exclude definitions (one per line)</TipLabel></label><br />
           <textarea value={excludeDefinitions} onChange={(e) => setExcludeDefinitions(e.target.value)} rows={4} style={{ width: "100%" }} />
         </div>
-        <button type="submit">Create Profile</button>
+        <button type="submit" data-tip="Save this profile. It is enabled straight away.">Create Profile</button>
       </form>
 
-      <h2 style={{ fontSize: 16 }}>Test classification</h2>
+      <h2 style={{ fontSize: 16, display: "flex", alignItems: "center" }}>Test classification<InfoTip text="Paste a sample email to see what the AI would decide. Nothing is saved and no Case is made (it does use one AI call)." /></h2>
       <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
         Never creates a real notification or Case — runs the same deterministic filter + AI
         pipeline against ad-hoc subject/content only.
       </p>
       <form onSubmit={handleTest} style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 480 }}>
         <div>
-          <label>Profile</label><br />
+          <label><TipLabel tip="Which profile to test with.">Profile</TipLabel></label><br />
           <select value={testProfileId} onChange={(e) => setTestProfileId(e.target.value)} style={{ width: "100%" }}>
             <option value="">(none)</option>
             {profiles.map((p) => (
@@ -208,14 +209,14 @@ export default function EmailClassificationPage() {
           </select>
         </div>
         <div>
-          <label>Subject</label><br />
+          <label><TipLabel tip="The subject line of the sample email.">Subject</TipLabel></label><br />
           <input value={testSubject} onChange={(e) => setTestSubject(e.target.value)} style={{ width: "100%" }} />
         </div>
         <div>
-          <label>Content</label><br />
+          <label><TipLabel tip="The body text of the sample email.">Content</TipLabel></label><br />
           <textarea value={testContent} onChange={(e) => setTestContent(e.target.value)} rows={4} style={{ width: "100%" }} />
         </div>
-        <button type="submit" disabled={testRunning}>{testRunning ? "Testing..." : "Test"}</button>
+        <button type="submit" disabled={testRunning} data-tip="Ask the AI to classify the sample email and show its verdict and reason.">{testRunning ? "Testing..." : "Test"}</button>
       </form>
 
       {testResult && (

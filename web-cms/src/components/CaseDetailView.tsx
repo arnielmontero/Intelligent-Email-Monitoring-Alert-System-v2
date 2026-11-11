@@ -14,6 +14,7 @@ import { useAuthStore } from "../store/authStore";
 import { compact as compactNumber, usd } from "../pages/ai-usage/format";
 import AiCost from "./AiCost";
 import EmailThread from "./EmailThread";
+import { InfoTip } from "./help/Tooltip";
 
 const WORK_STATUS_COLORS: Record<number, string> = {
   1: "#b45309", 2: "#2563eb", 6: "#dc2626", 7: "#dc2626", 8: "#166534", 9: "var(--color-pill-neutral)", 11: "#7c3aed",
@@ -94,13 +95,14 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
 
       <div style={{ ...infoGridStyle, gridTemplateColumns: compact ? "1fr 1fr" : infoGridStyle.gridTemplateColumns }}>
         <Info label="Customer" value={c.customerDisplayName ? `${c.customerDisplayName} <${c.customerEmailAddress}>` : c.customerEmailAddress} />
-        <Info label="Mailbox (received at)" value={c.emailAccountAddress} />
-        <Info label="Owner" value={c.ownerEmployeeName ?? "Unassigned"} />
+        <Info label="Mailbox (received at)" value={c.emailAccountAddress} tip="The watched mailbox the customer wrote to. Its owner owns the Case." />
+        <Info label="Owner" value={c.ownerEmployeeName ?? "Unassigned"} tip="The employee responsible for answering. Reminders and pop-ups go to them." />
         <Info label="First email" value={new Date(c.firstEmailReceivedAt).toLocaleString()} />
         <Info label="Last activity" value={new Date(c.lastActivityAt).toLocaleString()} />
         {detail.aiCost && (
           <Info
             label="AI spent on this case"
+            tip="What the AI cost for this Case: reading the customer's emails plus checking whether the conversation looks resolved."
             value={detail.aiCost.total.calls === 0
               ? "$0"
               : `${usd(detail.aiCost.total.costUsd, 6)} · ${compactNumber(detail.aiCost.total.totalTokens)} tokens`}
@@ -123,7 +125,7 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
           {conversation ? `Conversation (${conversation.length})` : `Emails (${detail.emails.length})`}
         </TabButton>
         <TabButton active={tab === "analysis"} onClick={() => setTab("analysis")}>
-          AI analysis ({analysed.length})
+          <span data-tip="Why each customer email was (or was not) treated as an inquiry. Useful when tuning the filters.">AI analysis ({analysed.length})</span>
         </TabButton>
       </div>
 
@@ -164,7 +166,7 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
         </>
       )}
 
-      <h2 style={compact ? compactSectionTitle : sectionTitle}>Timeline</h2>
+      <h2 style={{ ...(compact ? compactSectionTitle : sectionTitle), display: "flex", alignItems: "center" }}>Timeline<InfoTip text="Everything that happened to this Case, oldest first: emails, stage changes, reminders, escalations and employee actions." /></h2>
       <ol style={{ listStyle: "none", padding: 0, margin: 0, borderLeft: "2px solid var(--color-border)" }}>
         {detail.history.map((h) => (
           <li key={h.id} style={{ padding: "6px 0 10px 16px", position: "relative" }}>
@@ -177,7 +179,7 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
 
       {detail.notifications && detail.notifications.length > 0 && (
         <>
-          <h2 style={compact ? compactSectionTitle : sectionTitle}>Notifications sent</h2>
+          <h2 style={{ ...(compact ? compactSectionTitle : sectionTitle), display: "flex", alignItems: "center" }}>Notifications sent<InfoTip text="Pop-ups sent to employees' PCs about this Case, and whether they were acknowledged." /></h2>
           <table style={tableStyle}>
             <thead>
               <tr><th style={thStyle}>When</th><th style={thStyle}>To</th><th style={thStyle}>Type</th><th style={thStyle}>Status</th><th style={thStyle}>Message</th></tr>
@@ -199,7 +201,7 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
 
       {detail.verificationAttempts.length > 0 && (
         <>
-          <h2 style={compact ? compactSectionTitle : sectionTitle}>Reply verification</h2>
+          <h2 style={{ ...(compact ? compactSectionTitle : sectionTitle), display: "flex", alignItems: "center" }}>Reply verification<InfoTip text="Each time IEMAS looked in the Sent folder for a reply to this Case, and what it found." /></h2>
           <table style={tableStyle}>
             <thead>
               <tr><th style={thStyle}>When</th><th style={thStyle}>Outcome</th><th style={thStyle}>Detail</th></tr>
@@ -222,13 +224,13 @@ export default function CaseDetailView({ caseId, compact = false, onChanged }: C
 
       {isAdmin && isOpen && (
         <section style={{ ...panelStyle, marginTop: 24 }}>
-          <h2 style={{ fontSize: 16, marginTop: 0 }}>Complete this Case</h2>
+          <h2 style={{ fontSize: 16, marginTop: 0, display: "flex", alignItems: "center" }}>Complete this Case<InfoTip text="Close the Case by hand when it needs no more work. All reminders and escalation stop. Pick the reason that fits; 'Incorrect classification' also stops the filter learning from this sender as an inquiry." /></h2>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <select value={reason} onChange={(e) => setReason(Number(e.target.value) as CaseCompletionReason)}>
+            <select value={reason} onChange={(e) => setReason(Number(e.target.value) as CaseCompletionReason)} data-tip="Why the Case is being closed. This is kept in the history and reports.">
               {CASE_COMPLETION_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
-            <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Optional comment" style={{ flex: 1, minWidth: 240 }} />
-            <button className="btn-primary" onClick={complete}>Mark completed</button>
+            <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Optional comment" style={{ flex: 1, minWidth: 240 }} data-tip="Optional note saved with the completion, e.g. what was done for the customer." />
+            <button className="btn-primary" onClick={complete} data-tip="Close this Case now with the chosen reason.">Mark completed</button>
           </div>
         </section>
       )}
@@ -314,10 +316,10 @@ function EmailCard({ email, defaultOpen, showAnalysis }: { email: CaseEmailDto; 
   );
 }
 
-function Info({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Info({ label, value, hint, tip }: { label: string; value: string; hint?: string; tip?: string }) {
   return (
     <div>
-      <div style={hintStyle}>{label}</div>
+      <div style={{ ...hintStyle, display: "flex", alignItems: "center" }}>{label}{tip && <InfoTip text={tip} />}</div>
       <div>{value}</div>
       {hint && <div style={hintStyle}>{hint}</div>}
     </div>

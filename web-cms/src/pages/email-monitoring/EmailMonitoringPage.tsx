@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { EmailAccountDto } from "../../api/types";
+import { InfoTip } from "../../components/help/Tooltip";
 
 interface IntakeRunResult {
   emailAccountId: string;
@@ -76,7 +77,7 @@ export default function EmailMonitoringPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      <button onClick={runAll} disabled={runningId !== null} style={{ marginBottom: 16 }}>
+      <button onClick={runAll} disabled={runningId !== null} style={{ marginBottom: 16 }} data-tip="Check every mailbox for new email right now, instead of waiting for the automatic check every minute.">
         {runningId === "all" ? "Running..." : "Run Now (All Accounts)"}
       </button>
 
@@ -84,8 +85,8 @@ export default function EmailMonitoringPage() {
         <thead>
           <tr>
             <th style={thStyle}>Account</th>
-            <th style={thStyle}>Monitoring</th>
-            <th style={thStyle}>Last Run</th>
+            <th style={thStyle}>Monitoring<InfoTip text="Whether IEMAS is checking this mailbox. Turn it on or off on Email Accounts." /></th>
+            <th style={thStyle}>Last Run<InfoTip text="When the mailbox was last checked, and how many new emails were fetched." /></th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -107,7 +108,7 @@ export default function EmailMonitoringPage() {
                     : "Not run this session"}
                 </td>
                 <td style={tdStyle}>
-                  <button onClick={() => runOne(acc.id)} disabled={runningId !== null}>
+                  <button onClick={() => runOne(acc.id)} disabled={runningId !== null} data-tip="Check just this mailbox for new email now. Handy right after adding or fixing it.">
                     {runningId === acc.id ? "Running..." : "Run Now"}
                   </button>
                 </td>

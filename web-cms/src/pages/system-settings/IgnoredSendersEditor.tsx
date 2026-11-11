@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { SystemSettingDto } from "../../api/types";
+import { InfoTip } from "../../components/help/Tooltip";
 
 interface Props {
   setting: SystemSettingDto;
@@ -82,10 +83,11 @@ export default function IgnoredSendersEditor({ setting, onSaved }: Props) {
           value={newEntry}
           onChange={(e) => setNewEntry(e.target.value)}
           placeholder="Domain (sawo.com) or address (noreply@shop.com)"
+          data-tip="A whole domain ignores everyone at it; a full address ignores just that sender."
           style={{ flex: "1 1 320px", maxWidth: 420 }}
           disabled={busy}
         />
-        <button type="submit" className="btn-primary" disabled={busy || !newEntry.trim()}>+ Add</button>
+        <button type="submit" className="btn-primary" disabled={busy || !newEntry.trim()} data-tip="Add to the ignore list. Their future email never becomes a Case or alert.">+ Add</button>
         {entries.length > 8 && (
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter list…" style={{ marginLeft: "auto", width: 220 }} />
         )}
@@ -96,7 +98,7 @@ export default function IgnoredSendersEditor({ setting, onSaved }: Props) {
           <tr>
             <th style={thStyle}>Domain / address</th>
             <th style={thStyle}>Type</th>
-            <th style={thStyle}>What is ignored</th>
+            <th style={thStyle}>What is ignored<InfoTip text="What happens to email from this sender. Replies inside an existing customer conversation are still kept with it." /></th>
             <th style={{ ...thStyle, width: 170 }}></th>
           </tr>
         </thead>
@@ -133,8 +135,8 @@ export default function IgnoredSendersEditor({ setting, onSaved }: Props) {
                     </div>
                   ) : (
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button disabled={busy} onClick={() => { setEditing(entry); setEditValue(entry); }}>Edit</button>
-                      <button className="btn-danger" disabled={busy} onClick={() => remove(entry)}>Delete</button>
+                      <button disabled={busy} onClick={() => { setEditing(entry); setEditValue(entry); }} data-tip="Change this entry.">Edit</button>
+                      <button className="btn-danger" disabled={busy} onClick={() => remove(entry)} data-tip="Stop ignoring this sender.">Delete</button>
                     </div>
                   )}
                 </td>

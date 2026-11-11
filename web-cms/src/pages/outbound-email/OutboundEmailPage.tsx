@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { EmailAccountDto, TestConnectionResult } from "../../api/types";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 /// Requirements §18 (Outbound Email Configuration — internal IEMAS notification emails only,
 /// never a customer mailbox), §19 (inbound/outbound separation kept as two distinct
@@ -122,30 +123,30 @@ export default function OutboundEmailPage() {
         <p style={{ color: "var(--color-text-muted)" }}>No outbound email account configured yet.</p>
       )}
 
-      <button onClick={() => setShowForm((s) => !s)} style={{ marginBottom: 16 }}>
+      <button onClick={() => setShowForm((s) => !s)} style={{ marginBottom: 16 }} data-tip="Set up the mailbox IEMAS uses to send escalation emails to managers.">
         {showForm ? "Cancel" : "+ Configure Outbound Email"}
       </button>
 
       {showForm && (
         <form onSubmit={handleCreate} style={{ marginBottom: 24, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end", background: "var(--color-surface)", padding: 16, borderRadius: 8 }}>
           <div>
-            <label>From Name</label><br />
+            <label><TipLabel tip="The sender name managers see, e.g. IEMAS Alerts.">From Name</TipLabel></label><br />
             <input value={fromName} onChange={(e) => setFromName(e.target.value)} required />
           </div>
           <div>
-            <label>From Email</label><br />
+            <label><TipLabel tip="The address escalation emails are sent from. Use a dedicated no-reply mailbox.">From Email</TipLabel></label><br />
             <input type="email" value={emailAddress} onChange={(e) => setEmailAddress(e.target.value)} required placeholder="iemas-notification@sawo.com" />
           </div>
           <div>
-            <label>SMTP Host</label><br />
+            <label><TipLabel tip="The outgoing mail server from your email provider, e.g. smtp.office365.com.">SMTP Host</TipLabel></label><br />
             <input value={host} onChange={(e) => setHost(e.target.value)} required placeholder="smtp.sawo.com" />
           </div>
           <div>
-            <label>Port</label><br />
+            <label><TipLabel tip="Usually 587 (STARTTLS) or 465 (SSL).">Port</TipLabel></label><br />
             <input type="number" value={port} onChange={(e) => setPort(Number(e.target.value))} required style={{ width: 80 }} />
           </div>
           <div>
-            <label>Encryption</label><br />
+            <label><TipLabel tip="How the connection is secured. Match what your provider says for the port you chose.">Encryption</TipLabel></label><br />
             <select value={encryption} onChange={(e) => setEncryption(e.target.value)}>
               <option value="STARTTLS">STARTTLS</option>
               <option value="SSL/TLS">SSL/TLS</option>
@@ -153,14 +154,14 @@ export default function OutboundEmailPage() {
             </select>
           </div>
           <div>
-            <label>Username</label><br />
+            <label><TipLabel tip="The login for the sending mailbox, usually its full email address.">Username</TipLabel></label><br />
             <input value={username} onChange={(e) => setUsername(e.target.value)} required />
           </div>
           <div>
-            <label>Password</label><br />
+            <label><TipLabel tip="The mailbox password or app password. Stored encrypted and never shown again.">Password</TipLabel></label><br />
             <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} required autoComplete="new-password" />
           </div>
-          <button type="submit">Save</button>
+          <button type="submit" data-tip="Save the settings. Use Test Connection afterwards to check they work.">Save</button>
         </form>
       )}
 
@@ -171,8 +172,8 @@ export default function OutboundEmailPage() {
               <th style={thStyle}>From Name</th>
               <th style={thStyle}>From Email</th>
               <th style={thStyle}>SMTP Host:Port</th>
-              <th style={thStyle}>Credential</th>
-              <th style={thStyle}>Last Test</th>
+              <th style={thStyle}>Credential<InfoTip text="Whether a password is stored. It is encrypted and never displayed." /></th>
+              <th style={thStyle}>Last Test<InfoTip text="Result of the last Test Connection." /></th>
               <th style={thStyle}></th>
             </tr>
           </thead>
@@ -191,10 +192,10 @@ export default function OutboundEmailPage() {
                       : (acc.lastTestedAt ? (acc.lastTestSucceeded ? "✓ Success" : `✗ ${acc.lastTestError}`) : "Not tested")}
                   </td>
                   <td style={tdStyle}>
-                    <button onClick={() => handleTestConnection(acc.id)} disabled={testingId === acc.id}>
+                    <button onClick={() => handleTestConnection(acc.id)} disabled={testingId === acc.id} data-tip="Log in to the SMTP server with the saved settings to check they work. No email is sent.">
                       {testingId === acc.id ? "Testing..." : "Test Connection"}
                     </button>{" "}
-                    <button onClick={() => handleToggleActive(acc)}>{acc.isActive ? "Disable" : "Enable"}</button>
+                    <button onClick={() => handleToggleActive(acc)} data-tip="Disable stops escalation emails being sent from this account. Enable turns it back on.">{acc.isActive ? "Disable" : "Enable"}</button>
                     <button
                       className="btn-danger"
                       disabled={acc.isActive}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { EmployeeDto, RoleDto, UserDto } from "../../api/types";
 import { useAuthStore } from "../../store/authStore";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 interface UserForm {
   email: string;
@@ -145,21 +146,21 @@ export default function UsersPage() {
             <h2 style={{ fontSize: 18, marginTop: 0 }}>{editingId ? `Edit ${form.email}` : "Add user"}</h2>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
               <div>
-                <label>Email</label><br />
+                <label><TipLabel tip="The address the user signs in with. It cannot be changed later.">Email</TipLabel></label><br />
                 <input type="email" value={form.email} disabled={!!editingId} required onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </div>
               <div>
-                <label>Display name</label><br />
+                <label><TipLabel tip="The name shown in the top bar and the audit log.">Display name</TipLabel></label><br />
                 <input value={form.displayName} required maxLength={200} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
               </div>
               {!editingId && (
                 <div>
-                  <label>Initial password</label><br />
+                  <label><TipLabel tip="A first password to give the user. Ask them to change it after signing in.">Initial password</TipLabel></label><br />
                   <input type="password" value={form.password} required autoComplete="new-password" onChange={(e) => setForm({ ...form, password: e.target.value })} />
                 </div>
               )}
               <div>
-                <label>Linked employee</label><br />
+                <label><TipLabel tip="Optional: connect this login to an employee record, so their actions are tied to them.">Linked employee</TipLabel></label><br />
                 <select value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })}>
                   <option value="">— none —</option>
                   {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.fullName} ({emp.email})</option>)}
@@ -167,7 +168,7 @@ export default function UsersPage() {
               </div>
             </div>
             <div style={{ marginTop: 12 }}>
-              <label>Roles</label>
+              <label><TipLabel tip="What the user may do. Super Administrator: everything. Administrator: settings and Cases. Supervisor: view and act on inquiries. Auditor: read-only. See the table below.">Roles</TipLabel></label>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 4 }}>
                 {roles.map((r) => (
                   <label key={r.name} style={{ display: "flex", gap: 6, alignItems: "center", opacity: r.name === "SuperAdministrator" && !isSuperAdmin ? 0.5 : 1 }}>
@@ -192,10 +193,10 @@ export default function UsersPage() {
             <thead>
               <tr>
                 <th style={thStyle}>User</th>
-                <th style={thStyle}>Roles</th>
-                <th style={thStyle}>Employee</th>
+                <th style={thStyle}>Roles<InfoTip text="What this user may do in the CMS. See Roles and permissions below." /></th>
+                <th style={thStyle}>Employee<InfoTip text="The employee record this login belongs to, if any." /></th>
                 <th style={thStyle}>Last sign-in</th>
-                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Status<InfoTip text="Inactive users cannot sign in." /></th>
                 <th style={thStyle}></th>
               </tr>
             </thead>
@@ -213,10 +214,10 @@ export default function UsersPage() {
                   <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
                     {canManage(u) ? (
                       <div style={{ display: "flex", gap: 6 }}>
-                        <button onClick={() => startEdit(u)}>Edit</button>
-                        <button onClick={() => resetPassword(u)}>Reset password</button>
+                        <button onClick={() => startEdit(u)} data-tip="Change display name, linked employee or roles.">Edit</button>
+                        <button onClick={() => resetPassword(u)} data-tip="Set a new password for this user, e.g. when they forgot theirs.">Reset password</button>
                         {u.id !== currentUser?.userId && (
-                          <button onClick={() => setActive(u, !u.isActive)}>{u.isActive ? "Deactivate" : "Activate"}</button>
+                          <button onClick={() => setActive(u, !u.isActive)} data-tip="Deactivate signs the user out immediately and blocks sign-in. Activate lets them back in.">{u.isActive ? "Deactivate" : "Activate"}</button>
                         )}
                       </div>
                     ) : (
@@ -228,7 +229,7 @@ export default function UsersPage() {
             </tbody>
           </table>
 
-          <h2 style={{ fontSize: 18 }}>Roles and permissions</h2>
+          <h2 style={{ fontSize: 18, display: "flex", alignItems: "center" }}>Roles and permissions<InfoTip text="Exactly what each role can see and do." /></h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginBottom: 32 }}>
             {roles.map((r) => (
               <div key={r.name} style={panelStyle}>
@@ -247,14 +248,14 @@ export default function UsersPage() {
         <h2 style={{ fontSize: 18, marginTop: 0 }}>Change my password</h2>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
           <div>
-            <label>Current password</label><br />
+            <label><TipLabel tip="Your password now.">Current password</TipLabel></label><br />
             <input type="password" value={ownCurrent} required autoComplete="current-password" onChange={(e) => setOwnCurrent(e.target.value)} />
           </div>
           <div>
-            <label>New password</label><br />
+            <label><TipLabel tip="Your new password. It must meet the minimum length set in System Settings.">New password</TipLabel></label><br />
             <input type="password" value={ownNew} required autoComplete="new-password" onChange={(e) => setOwnNew(e.target.value)} />
           </div>
-          <button type="submit">Change password</button>
+          <button type="submit" data-tip="Change your own password. You stay signed in.">Change password</button>
         </div>
       </form>
     </div>

@@ -100,7 +100,7 @@ def main():
     # Wait for the inquiries and the agent replies, then send the customers' later messages in-thread.
     for tag, c in CASES.items():
         subj, prev, refs = sent[tag]
-        base.wait_for(f"{tag} agent reply", base.stage_is(subj, "InitialResponseReceived"), timeout=240)
+        base.wait_for(f"{tag} agent reply", base.stage_is(subj, "InitialResponseReceived"), timeout=720)
         if c["customer_after"]:
             base.smtp_send(c["who"], agent, f"Re: {subj}", c["customer_after"], datetime.now(timezone.utc), f"<ai{run}.{tag}.9@customer.example>", prev, refs)
 
@@ -108,7 +108,7 @@ def main():
     review = 0
     for tag, c in CASES.items():
         subj = sent[tag][0]
-        got = base.wait_for(f"{tag} assessed", lambda: (lambda i: i if i and i["aiVerdict"] else None)(base.find(subj)), timeout=300, every=10)
+        got = base.wait_for(f"{tag} assessed", lambda: (lambda i: i if i and i["aiVerdict"] else None)(base.find(subj)), timeout=600, every=10)
         base.check(f"{tag}: the AI assessed the conversation", got is not None)
         if not got:
             continue

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../api/client";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 import type {
   AiCatalogModel, AiModelBenchmarkResult, AiModelDto, AiModelRecommendation, AiProviderKeyCheck, AiProviderSettingsDto, TestAiModelResult,
 } from "../../api/types";
@@ -253,16 +254,16 @@ export default function AiModelsPage() {
 
       <ProviderPanel onSaved={loadCatalog} />
 
-      <h2 style={sectionTitle}>Models</h2>
+      <h2 style={{ ...sectionTitle, display: "flex", alignItems: "center" }}>Models<InfoTip text="The AI models IEMAS may use to read email. The default is tried first; if it fails, the next one by fallback order is tried." /></h2>
       <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: 28 }}>
         <thead>
           <tr>
             <th style={thStyle}>Model</th>
             <th style={thStyle}>Enabled</th>
-            <th style={thStyle}>Default</th>
-            <th style={thStyle}>Fallback</th>
-            <th style={thStyle}>Timeout / Retries</th>
-            <th style={thStyle}>Last test</th>
+            <th style={thStyle}>Default<InfoTip text="The model asked first for every email." /></th>
+            <th style={thStyle}>Fallback<InfoTip text="Order in which backup models are tried if the default fails. Lower numbers go first." /></th>
+            <th style={thStyle}>Timeout / Retries<InfoTip text="How long to wait for an answer, and how many times to try again before moving to the next model." /></th>
+            <th style={thStyle}>Last test<InfoTip text="Result of the last Test for this model." /></th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -275,7 +276,7 @@ export default function AiModelsPage() {
                 <tr key={m.id} style={{ background: "var(--color-surface)" }}>
                   <td style={tdStyle} colSpan={7}>
                     <div style={gridStyle}>
-                      <Field label="Model" wide>
+                      <Field label="Model" wide tip="The OpenRouter model to use. Start typing to search the list.">
                         <ModelPicker
                           value={editForm.modelIdentifier}
                           onChange={(id) => pickFromCatalog("edit", id)}
@@ -284,16 +285,16 @@ export default function AiModelsPage() {
                         />
                         {editPrice && <div style={hintStyle}>{editPrice}</div>}
                       </Field>
-                      <Field label="Display name">
+                      <Field label="Display name" tip="A friendly name shown in the CMS.">
                         <input value={editForm.displayName} onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })} style={fullWidth} />
                       </Field>
-                      <Field label="Fallback order">
+                      <Field label="Fallback order" tip="When the default model fails, backup models are tried from the lowest number up.">
                         <input type="number" value={editForm.fallbackOrder} onChange={(e) => setEditForm({ ...editForm, fallbackOrder: Number(e.target.value) })} style={fullWidth} />
                       </Field>
-                      <Field label="Timeout (seconds)">
+                      <Field label="Timeout (seconds)" tip="How long to wait for the model to answer before giving up on that try.">
                         <input type="number" min={1} max={300} value={editForm.timeoutSeconds} onChange={(e) => setEditForm({ ...editForm, timeoutSeconds: Number(e.target.value) })} style={fullWidth} />
                       </Field>
-                      <Field label="Retries">
+                      <Field label="Retries" tip="How many extra tries before moving on to the next model.">
                         <input type="number" min={0} max={10} value={editForm.maxRetries} onChange={(e) => setEditForm({ ...editForm, maxRetries: Number(e.target.value) })} style={fullWidth} />
                       </Field>
                     </div>
@@ -314,7 +315,7 @@ export default function AiModelsPage() {
                 </td>
                 <td style={tdStyle}>{m.enabled ? "Yes" : "No"}</td>
                 <td style={tdStyle}>
-                  {m.isDefault ? "Yes" : <button onClick={() => updateModel(m, { isDefault: true }, "Failed to set default AI model.")}>Set default</button>}
+                  {m.isDefault ? "Yes" : <button onClick={() => updateModel(m, { isDefault: true }, "Failed to set default AI model.")} data-tip="Make this the first model asked for every email.">Set default</button>}
                 </td>
                 <td style={tdStyle}>{m.fallbackOrder}</td>
                 <td style={tdStyle}>{m.timeoutSeconds}s / {m.maxRetries}</td>
@@ -327,10 +328,10 @@ export default function AiModelsPage() {
                 </td>
                 <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => handleTest(m.id)} disabled={testingId !== null}>{testingId === m.id ? "Testing..." : "Test"}</button>
-                    <button onClick={() => startEdit(m)}>Edit</button>
-                    <button onClick={() => updateModel(m, { enabled: !m.enabled }, "Failed to update AI model.")}>{m.enabled ? "Disable" : "Enable"}</button>
-                    <button className="btn-danger" onClick={() => handleDelete(m)}>Delete</button>
+                    <button onClick={() => handleTest(m.id)} disabled={testingId !== null} data-tip="Send one small test request to check this model answers. Costs a fraction of a cent.">{testingId === m.id ? "Testing..." : "Test"}</button>
+                    <button onClick={() => startEdit(m)} data-tip="Change name, fallback order, timeout or retries.">Edit</button>
+                    <button onClick={() => updateModel(m, { enabled: !m.enabled }, "Failed to update AI model.")} data-tip="Disabled models are never used, but stay in the list.">{m.enabled ? "Disable" : "Enable"}</button>
+                    <button className="btn-danger" onClick={() => handleDelete(m)} data-tip="Remove this model from the list.">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -340,10 +341,10 @@ export default function AiModelsPage() {
         </tbody>
       </table>
 
-      <h2 style={sectionTitle}>Add model</h2>
+      <h2 style={{ ...sectionTitle, display: "flex", alignItems: "center" }}>Add model<InfoTip text="Add another OpenRouter model, for example as a cheaper backup. Use Model analysis below to compare them first." /></h2>
       <form onSubmit={handleCreate} style={panelStyle}>
         <div style={gridStyle}>
-          <Field label="Model" wide>
+          <Field label="Model" wide tip="The OpenRouter model to use. Start typing to search the list.">
             <ModelPicker
               value={form.modelIdentifier}
               onChange={(id) => pickFromCatalog("add", id)}
@@ -352,21 +353,21 @@ export default function AiModelsPage() {
             />
             {addPrice && <div style={hintStyle}>{addPrice}</div>}
           </Field>
-          <Field label="Display name">
+          <Field label="Display name" tip="A friendly name shown in the CMS.">
             <input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="Filled from the model list" style={fullWidth} />
           </Field>
-          <Field label="Fallback order">
+          <Field label="Fallback order" tip="When the default model fails, backup models are tried from the lowest number up.">
             <input type="number" value={form.fallbackOrder} onChange={(e) => setForm({ ...form, fallbackOrder: Number(e.target.value) })} style={fullWidth} />
           </Field>
-          <Field label="Timeout (seconds)">
+          <Field label="Timeout (seconds)" tip="How long to wait for the model to answer before giving up on that try.">
             <input type="number" min={1} max={300} value={form.timeoutSeconds} onChange={(e) => setForm({ ...form, timeoutSeconds: Number(e.target.value) })} style={fullWidth} />
           </Field>
-          <Field label="Retries">
+          <Field label="Retries" tip="How many extra tries before moving on to the next model.">
             <input type="number" min={0} max={10} value={form.maxRetries} onChange={(e) => setForm({ ...form, maxRetries: Number(e.target.value) })} style={fullWidth} />
           </Field>
         </div>
         <div style={{ marginTop: 12 }}>
-          <button type="submit" className="btn-primary">Add model</button>
+          <button type="submit" className="btn-primary" data-tip="Add the model to the list. It is enabled straight away.">Add model</button>
         </div>
       </form>
 
@@ -444,7 +445,7 @@ function ProviderPanel({ onSaved }: { onSaved: () => void }) {
   return (
     <section style={panelStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
-        <h2 style={{ ...sectionTitle, margin: 0 }}>OpenRouter connection</h2>
+        <h2 style={{ ...sectionTitle, margin: 0, display: "flex", alignItems: "center" }}>OpenRouter connection<InfoTip text="OpenRouter is the paid service IEMAS uses to reach AI models. It needs an API key from openrouter.ai." /></h2>
         <span style={{ ...pillStyle, background: settings.hasApiKey ? "#166534" : "var(--color-danger)" }}>
           {settings.hasApiKey ? "API key set" : "No API key"}
         </span>
@@ -457,11 +458,11 @@ function ProviderPanel({ onSaved }: { onSaved: () => void }) {
       {notice && <div style={noticeStyle}>{notice}</div>}
 
       <div style={gridStyle}>
-        <Field label="API base URL" wide>
+        <Field label="API base URL" wide tip="Leave empty to use the normal OpenRouter address. Only change it if a developer tells you to.">
           <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={settings.defaultBaseUrl} style={fullWidth} />
           <div style={hintStyle}>Default: {settings.defaultBaseUrl}</div>
         </Field>
-        <Field label="API key" wide>
+        <Field label="API key" wide tip="The secret key from openrouter.ai (starts with sk-or-). It is stored encrypted and never shown again; only its last characters are displayed.">
           <input
             type="password"
             autoComplete="off"
@@ -475,10 +476,10 @@ function ProviderPanel({ onSaved }: { onSaved: () => void }) {
       </div>
 
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <button className="btn-primary" disabled={saving} onClick={() => save()}>{saving ? "Saving..." : "Save"}</button>
-        <button disabled={testing || !settings.hasApiKey} onClick={test}>{testing ? "Testing..." : "Test connection"}</button>
+        <button className="btn-primary" disabled={saving} onClick={() => save()} data-tip="Save the key and address.">{saving ? "Saving..." : "Save"}</button>
+        <button disabled={testing || !settings.hasApiKey} onClick={test} data-tip="Check the saved key works and see how much credit it has used.">{testing ? "Testing..." : "Test connection"}</button>
         {settings.keySource === "CMS" && (
-          <button className="btn-danger" onClick={() => window.confirm("Remove the API key saved here?") && save(true)}>Remove key</button>
+          <button className="btn-danger" onClick={() => window.confirm("Remove the API key saved here?") && save(true)} data-tip="Delete the saved key. The AI stops working until a new key is saved.">Remove key</button>
         )}
         {check && (
           <span style={{ color: check.succeeded ? "var(--color-success)" : "var(--color-danger)", fontSize: 13 }}>
@@ -522,7 +523,7 @@ function ModelAnalysis({ recommendations, onDone }: { recommendations: AiModelRe
 
   return (
     <section style={{ ...panelStyle, marginTop: 28 }}>
-      <h2 style={{ ...sectionTitle, margin: 0 }}>Model analysis</h2>
+      <h2 style={{ ...sectionTitle, margin: 0, display: "flex", alignItems: "center" }}>Model analysis<InfoTip text="Compare models on the same set of tricky test emails: how often they decide correctly, how fast, and what they would cost." /></h2>
       <p style={{ ...hintStyle, marginTop: 4 }}>
         Each model reads the same {28} hard emails — short or foreign-language customer questions, dealer requests and vendor/service pitches —
         with the real classification prompt. "Correct" means the same Important / Not-important decision a person would make; sending a clear
@@ -535,9 +536,9 @@ function ModelAnalysis({ recommendations, onDone }: { recommendations: AiModelRe
           <tr>
             <th style={thStyle}></th>
             <th style={thStyle}>Model</th>
-            <th style={thStyle}>Cost / 1,000 emails</th>
-            <th style={thStyle}>Effectiveness</th>
-            <th style={thStyle}>Speed</th>
+            <th style={thStyle}>Cost / 1,000 emails<InfoTip text="What the model would cost for 1,000 emails that reach the AI." /></th>
+            <th style={thStyle}>Effectiveness<InfoTip text="How many of the test emails the model decided the same way a person would." /></th>
+            <th style={thStyle}>Speed<InfoTip text="Average time the model took to answer." /></th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -571,7 +572,7 @@ function ModelAnalysis({ recommendations, onDone }: { recommendations: AiModelRe
         </tbody>
       </table>
       <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn-primary" disabled={running || chosen.length === 0} onClick={run}>
+        <button className="btn-primary" disabled={running || chosen.length === 0} onClick={run} data-tip="Run the test emails through each ticked model. Takes about a minute and costs well under a cent per model.">
           {running ? `Analyzing ${chosen.length} model(s)…` : `Analyze ${chosen.length || ""} selected`}
         </button>
         <span style={hintStyle}>Up to 8 at a time; about 1 minute and well under $0.01 per model.</span>
@@ -592,10 +593,10 @@ function ModelAnalysis({ recommendations, onDone }: { recommendations: AiModelRe
   );
 }
 
-function Field({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+function Field({ label, wide, tip, children }: { label: string; wide?: boolean; tip?: string; children: React.ReactNode }) {
   return (
     <div style={{ gridColumn: wide ? "span 2" : undefined, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-      <label>{label}</label>
+      <label>{tip ? <TipLabel tip={tip}>{label}</TipLabel> : label}</label>
       {children}
     </div>
   );

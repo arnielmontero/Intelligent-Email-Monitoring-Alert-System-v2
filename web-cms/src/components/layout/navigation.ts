@@ -169,13 +169,13 @@ export const NAV_SECTIONS: NavSection[] = [
       {
         label: "Escalation Policies",
         path: "/escalation-policies",
-        help: "What happens when a Case still has no reply after a number of reminders: after how many reminders and how long a grace period, and up to 3 levels, each with a recipient (the owner, their supervisor, the department manager, a specific employee or a group). Checked every 10 minutes. The Case is marked Escalated and the owner gets an Escalation pop-up; the chosen recipient is recorded in Escalation History but is not contacted automatically yet (no pop-up or email to them). The Channel field is stored only.",
+        help: "What happens when a Case still has no reply after a number of reminders: after how many reminders and how long a grace period, and up to 3 levels, each with a recipient (the owner, their supervisor, the department manager, a specific employee or a group). Checked every 10 minutes. The Case is marked Escalated, the owner gets an Escalation pop-up, and the chosen recipient is sent an escalation email (through the Outbound Email account) with the customer, subject, owner, status, last activity and reason. Every attempt is recorded in Escalation History.",
         tasks: ["Set after how many reminders a Case escalates", "Choose who each level is for", "Test a policy against a Case without recording anything"],
       },
       {
         label: "Escalation Groups",
         path: "/escalation-groups",
-        help: "Named groups of employees, for example \"Sales managers\", that an escalation level can name as its recipient. The group is recorded in Escalation History; its members are not contacted automatically yet.",
+        help: "Named groups of employees, for example \"Sales managers\", that an escalation level can name as its recipient. Every active member of the group receives the escalation email, and the group is recorded in Escalation History.",
       },
     ],
   },

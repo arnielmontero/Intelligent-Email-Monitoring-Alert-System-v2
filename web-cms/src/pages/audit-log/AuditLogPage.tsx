@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { AuditLogDto } from "../../api/types";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 export default function AuditLogPage() {
   const [logs, setLogs] = useState<AuditLogDto[]>([]);
@@ -48,18 +49,18 @@ export default function AuditLogPage() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "end", marginBottom: 16, flexWrap: "wrap" }}>
         <div>
-          <label>Action contains</label><br />
+          <label><TipLabel tip="Part of the action name, e.g. AGENT_ for everything about PC agents, or USER_ for user changes.">Action contains</TipLabel></label><br />
           <input value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} placeholder="e.g. AGENT_" />
         </div>
         <div>
-          <label>Entity Type</label><br />
+          <label><TipLabel tip="The kind of thing that was changed, e.g. Agent, User, EmailAccount.">Entity Type</TipLabel></label><br />
           <input value={entityTypeFilter} onChange={(e) => setEntityTypeFilter(e.target.value)} placeholder="e.g. Agent" />
         </div>
         <div>
-          <label>Take</label><br />
+          <label><TipLabel tip="How many of the most recent entries to load (up to 500).">Take</TipLabel></label><br />
           <input type="number" min={1} max={500} value={take} onChange={(e) => setTake(Number(e.target.value))} style={{ width: 80 }} />
         </div>
-        <button onClick={load}>Filter</button>
+        <button onClick={load} data-tip="Reload the log with the filters above.">Filter</button>
       </div>
 
       <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
@@ -69,9 +70,9 @@ export default function AuditLogPage() {
             <th style={thStyle}>User</th>
             <th style={thStyle}>Action</th>
             <th style={thStyle}>Entity Type</th>
-            <th style={thStyle}>Entity ID</th>
+            <th style={thStyle}>Entity ID<InfoTip text="The internal ID of the record that was changed." /></th>
             <th style={thStyle}>Details</th>
-            <th style={thStyle}>IP Address</th>
+            <th style={thStyle}>IP Address<InfoTip text="The network address the change was made from." /></th>
           </tr>
         </thead>
         <tbody>

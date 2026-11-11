@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { EmailAccountDto, EmployeeDto, TestConnectionResult } from "../../api/types";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 const PROTOCOL_LABELS = ["IMAP", "Microsoft Graph", "SMTP"];
 const AUTH_METHOD_LABELS = ["Password", "OAuth2", "App Password"];
@@ -206,21 +207,21 @@ export default function EmailAccountsPage() {
       {notice && <div style={noticeStyle}>{notice}</div>}
 
       {editing === null && (
-        <button className="btn-primary" onClick={startAdd} style={{ marginBottom: 16 }}>+ Add email account</button>
+        <button className="btn-primary" onClick={startAdd} style={{ marginBottom: 16 }} data-tip="Connect a new mailbox for IEMAS to watch. You need its IMAP server, username and password.">+ Add email account</button>
       )}
 
       {editing !== null && (
         <form onSubmit={handleSubmit} style={panelStyle}>
           <h2 style={{ fontSize: 18, marginTop: 0 }}>{isNew ? "Add email account" : `Edit ${form.emailAddress}`}</h2>
           <div style={gridStyle}>
-            <Field label="Email address">
+            <Field label="Email address" tip="The mailbox address customers write to, e.g. sales@sawo.com. It cannot be changed after the account is added.">
               <input type="email" value={form.emailAddress} disabled={!isNew} required
                 onChange={(e) => setForm({ ...form, emailAddress: e.target.value })} style={fullWidth} />
             </Field>
-            <Field label="Display name">
+            <Field label="Display name" tip="A friendly name shown in lists, e.g. Sales inbox.">
               <input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} style={fullWidth} />
             </Field>
-            <Field label="Owner employee">
+            <Field label="Owner employee" tip="The person responsible for this mailbox. They get the pop-ups, own its Cases and receive the reminders.">
               <select value={form.ownerEmployeeId} onChange={(e) => setForm({ ...form, ownerEmployeeId: e.target.value })} style={fullWidth}>
                 <option value="">— none —</option>
                 {employees.filter((emp) => emp.isActive || emp.id === form.ownerEmployeeId).map((emp) => (
@@ -228,34 +229,34 @@ export default function EmailAccountsPage() {
                 ))}
               </select>
             </Field>
-            <Field label="IMAP host">
+            <Field label="IMAP host" tip="The incoming mail server address from your email provider, e.g. imap.gmail.com or outlook.office365.com.">
               <input value={form.host} required placeholder="imap.example.com" onChange={(e) => setForm({ ...form, host: e.target.value })} style={fullWidth} />
             </Field>
-            <Field label="Port">
+            <Field label="Port" tip="Usually 993 for SSL/TLS. Your email provider lists it next to the IMAP server.">
               <input type="number" min={1} max={65535} value={form.port} required onChange={(e) => setForm({ ...form, port: Number(e.target.value) })} style={fullWidth} />
             </Field>
-            <Field label="Encryption">
+            <Field label="Encryption" tip="How the connection is secured. Choose SSL/TLS unless your provider says otherwise.">
               <select value={form.encryption} onChange={(e) => setForm({ ...form, encryption: e.target.value })} style={fullWidth}>
                 <option value="SSL/TLS">SSL/TLS</option>
                 <option value="STARTTLS">STARTTLS</option>
                 <option value="NONE">None</option>
               </select>
             </Field>
-            <Field label="Username">
+            <Field label="Username" tip="The login for the mailbox, usually the full email address.">
               <input value={form.username} required onChange={(e) => setForm({ ...form, username: e.target.value })} style={fullWidth} />
             </Field>
-            <Field label="Password / App password">
+            <Field label="Password / App password" tip="The mailbox password. Microsoft 365 and Gmail usually need an app password instead of the normal one. It is stored encrypted and never shown again.">
               <input type="password" value={form.secret} required={isNew} autoComplete="new-password"
                 placeholder={isNew ? "" : "Leave blank to keep the current password"}
                 onChange={(e) => setForm({ ...form, secret: e.target.value })} style={fullWidth} />
             </Field>
-            <Field label="Classification profile">
+            <Field label="Classification profile" tip="Which classification profile the AI uses for this mailbox, e.g. Sales. It tells the AI what counts as important here.">
               <input value={form.classificationProfileName} placeholder="Sales"
                 onChange={(e) => setForm({ ...form, classificationProfileName: e.target.value })} style={fullWidth} />
             </Field>
           </div>
           <div style={{ ...panelInnerStyle }}>
-            <label>Create Cases only for email received after</label>
+            <label><TipLabel tip="Email older than this date is kept for matching replies, but never becomes a Case or alert. Stops a newly added mailbox from flooding agents with old email.">Create Cases only for email received after</TipLabel></label>
             <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
               <input type="datetime-local" value={form.cutoffLocal} disabled={form.processAllHistory}
                 onChange={(e) => setForm({ ...form, cutoffLocal: e.target.value })} />
@@ -263,6 +264,7 @@ export default function EmailAccountsPage() {
                 <input type="checkbox" checked={form.processAllHistory}
                   onChange={(e) => setForm({ ...form, processAllHistory: e.target.checked })} />
                 Process the whole mailbox history
+                <InfoTip text="Treat every old email as new work too. Rarely wanted: it can create many Cases and AI costs at once." />
               </label>
             </div>
             <div style={hintStyle}>
@@ -275,10 +277,11 @@ export default function EmailAccountsPage() {
             <input type="checkbox" checked={form.monitoringEnabled}
               onChange={(e) => setForm({ ...form, monitoringEnabled: e.target.checked })} />
             Monitoring enabled (poll this mailbox for new email)
+            <InfoTip text="When on, IEMAS checks this mailbox for new email every minute. Turn it off to pause just this mailbox." />
           </label>
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
             <button type="submit" className="btn-primary">{isNew ? "Add account" : "Save changes"}</button>
-            <button type="button" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="button" onClick={() => setEditing(null)} data-tip="Close the form without saving.">Cancel</button>
           </div>
         </form>
       )}
@@ -289,10 +292,10 @@ export default function EmailAccountsPage() {
             <th style={thStyle}>Email</th>
             <th style={thStyle}>Protocol</th>
             <th style={thStyle}>Host:Port</th>
-            <th style={thStyle}>Owner</th>
-            <th style={thStyle}>Monitoring</th>
-            <th style={thStyle}>Credential</th>
-            <th style={thStyle}>Last Test</th>
+            <th style={thStyle}>Owner<InfoTip text="The employee who receives this mailbox's pop-ups and owns its Cases." /></th>
+            <th style={thStyle}>Monitoring<InfoTip text="Whether IEMAS is checking this mailbox for new email." /></th>
+            <th style={thStyle}>Credential<InfoTip text="Whether a password is stored for this mailbox. Passwords are encrypted and never displayed." /></th>
+            <th style={thStyle}>Last Test<InfoTip text="Result of the last Test connection." /></th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -321,11 +324,11 @@ export default function EmailAccountsPage() {
                 </td>
                 <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => handleTestConnection(acc.id)} disabled={testingId === acc.id}>
+                    <button onClick={() => handleTestConnection(acc.id)} disabled={testingId === acc.id} data-tip="Try logging in to the mailbox with the saved settings. Nothing is read or changed.">
                       {testingId === acc.id ? "Testing..." : "Test"}
                     </button>
-                    <button onClick={() => startEdit(acc)}>Edit</button>
-                    <button onClick={() => handleToggleActive(acc)} style={{ minWidth: 88 }}>{acc.isActive ? "Deactivate" : "Activate"}</button>
+                    <button onClick={() => startEdit(acc)} data-tip="Change the owner, server settings, password or cut-off date.">Edit</button>
+                    <button onClick={() => handleToggleActive(acc)} style={{ minWidth: 88 }} data-tip="Deactivate stops all checking of this mailbox but keeps its history. Activate turns it back on.">{acc.isActive ? "Deactivate" : "Activate"}</button>
                     <button
                       className="btn-danger"
                       disabled={acc.isActive}
@@ -346,10 +349,10 @@ export default function EmailAccountsPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, tip, children }: { label: string; tip?: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-      <label>{label}</label>
+      <label>{tip ? <TipLabel tip={tip}>{label}</TipLabel> : label}</label>
       {children}
     </div>
   );

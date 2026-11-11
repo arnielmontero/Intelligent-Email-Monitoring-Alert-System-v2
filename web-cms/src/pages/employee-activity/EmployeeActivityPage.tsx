@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { EmployeeActivityDto, EmployeeActivitySummaryDto } from "../../api/types";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 const ACTIVITY_LABELS: Record<string, string> = {
   Acknowledged: "Acknowledged",
@@ -76,26 +77,26 @@ export default function EmployeeActivityPage() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "end", marginBottom: 16, flexWrap: "wrap" }}>
         <div>
-          <label>Period</label><br />
+          <label><TipLabel tip="How far back to look.">Period</TipLabel></label><br />
           <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
             {RANGES.map((r) => <option key={r.days} value={r.days}>{r.label}</option>)}
           </select>
         </div>
         <div>
-          <label>Employee</label><br />
+          <label><TipLabel tip="Show one employee, or everyone.">Employee</TipLabel></label><br />
           <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
             <option value="">All</option>
             {summary.map((s) => <option key={s.employeeId} value={s.employeeId}>{s.employeeName}</option>)}
           </select>
         </div>
         <div>
-          <label>Activity</label><br />
+          <label><TipLabel tip="Show only one kind of action, e.g. acknowledged or completed.">Activity</TipLabel></label><br />
           <select value={activity} onChange={(e) => setActivity(e.target.value)}>
             <option value="">All</option>
             {Object.entries(ACTIVITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
-        <button onClick={() => load()}>Apply</button>
+        <button onClick={() => load()} data-tip="Reload the summary and list with the filters above.">Apply</button>
       </div>
 
       {error && <div className="form-error">{error}</div>}
@@ -106,13 +107,13 @@ export default function EmployeeActivityPage() {
             <thead>
               <tr>
                 <th style={thStyle}>Employee</th>
-                <th style={thStyle}>Agent</th>
+                <th style={thStyle}>Agent<InfoTip text="Whether the employee's PC app is connected right now." /></th>
                 <th style={thStyle}>Open Cases</th>
-                <th style={thStyle}>Actions</th>
-                <th style={thStyle}>Acknowledged</th>
-                <th style={thStyle}>Completed</th>
-                <th style={thStyle}>Comments</th>
-                <th style={thStyle}>Notifications (ack'd)</th>
+                <th style={thStyle}>Actions<InfoTip text="Total things the employee did from the PC app in the period." /></th>
+                <th style={thStyle}>Acknowledged<InfoTip text="Pop-ups the employee clicked to say they saw them." /></th>
+                <th style={thStyle}>Completed<InfoTip text="Cases the employee closed from the PC app." /></th>
+                <th style={thStyle}>Comments<InfoTip text="Notes the employee added to Cases." /></th>
+                <th style={thStyle}>Notifications (ack'd)<InfoTip text="Pop-ups sent to the employee, and in brackets how many they acknowledged." /></th>
                 <th style={thStyle}>Last activity</th>
               </tr>
             </thead>
@@ -147,7 +148,7 @@ export default function EmployeeActivityPage() {
                 <th style={thStyle}>Activity</th>
                 <th style={thStyle}>Case</th>
                 <th style={thStyle}>Comment</th>
-                <th style={thStyle}>Device</th>
+                <th style={thStyle}>Device<InfoTip text="Which PC the action came from." /></th>
               </tr>
             </thead>
             <tbody>

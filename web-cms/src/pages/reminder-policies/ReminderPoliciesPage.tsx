@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { ReminderPolicyDto } from "../../api/types";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 function timeSpanToHours(ts: string): number {
   const parts = ts.split(":");
@@ -185,11 +186,11 @@ export default function ReminderPoliciesPage() {
           <tr>
             <th style={thStyle}>Name</th>
             <th style={thStyle}>Enabled</th>
-            <th style={thStyle}>Default</th>
-            <th style={thStyle}>Initial Delay</th>
-            <th style={thStyle}>Interval</th>
-            <th style={thStyle}>Max Reminders</th>
-            <th style={thStyle}>Business Hours</th>
+            <th style={thStyle}>Default<InfoTip text="The policy used when no other applies. Its business hours, weekends and holidays are also the calendar Inquiry Supervision counts deadlines in." /></th>
+            <th style={thStyle}>Initial Delay<InfoTip text="How long after a Case is created before the first reminder, if no reply has been found." /></th>
+            <th style={thStyle}>Interval<InfoTip text="Time between one reminder and the next." /></th>
+            <th style={thStyle}>Max Reminders<InfoTip text="After this many reminders, no more are sent (escalation may take over)." /></th>
+            <th style={thStyle}>Business Hours<InfoTip text="If set, reminders only go out (and time only counts) during these hours." /></th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -210,9 +211,9 @@ export default function ReminderPoliciesPage() {
                 {p.excludeWeekends ? ", no weekends" : ""}
               </td>
               <td style={tdStyle}>
-                <button onClick={() => startEdit(p)} style={{ marginRight: 8 }}>Edit</button>
-                <button onClick={() => handleToggleEnabled(p)} style={{ marginRight: 8 }}>{p.enabled ? "Disable" : "Enable"}</button>
-                <button onClick={() => handleDelete(p.id)}>Delete</button>
+                <button onClick={() => startEdit(p)} style={{ marginRight: 8 }} data-tip="Change this policy's timings and business hours.">Edit</button>
+                <button onClick={() => handleToggleEnabled(p)} style={{ marginRight: 8 }} data-tip="Turn this policy on or off without deleting it.">{p.enabled ? "Disable" : "Enable"}</button>
+                <button onClick={() => handleDelete(p.id)} data-tip="Delete this policy permanently.">Delete</button>
               </td>
             </tr>
           ))}
@@ -222,67 +223,67 @@ export default function ReminderPoliciesPage() {
         </tbody>
       </table>
 
-      {!showForm && <button onClick={startCreate}>Add Reminder Policy</button>}
+      {!showForm && <button onClick={startCreate} data-tip="Create a new set of reminder timings.">Add Reminder Policy</button>}
 
       {showForm && (
         <form onSubmit={handleSubmit} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end", maxWidth: 900 }}>
           <h2 style={{ width: "100%", fontSize: 16 }}>{editingId ? "Edit Policy" : "Add Policy"}</h2>
           <div>
-            <label>Name</label><br />
+            <label><TipLabel tip="A short name, e.g. Standard or Weekend support.">Name</TipLabel></label><br />
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           </div>
           <div>
-            <label>Description</label><br />
+            <label><TipLabel tip="Optional note about when this policy is used.">Description</TipLabel></label><br />
             <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
           <div>
-            <label>Initial delay (hours)</label><br />
+            <label><TipLabel tip="Hours to wait after a Case arrives before the first reminder. Example: 4 means the agent gets 4 hours to reply first.">Initial delay (hours)</TipLabel></label><br />
             <input type="number" min={0} step={0.5} value={form.initialDelayHours}
               onChange={(e) => setForm({ ...form, initialDelayHours: Number(e.target.value) })} style={{ width: 80 }} />
           </div>
           <div>
-            <label>Reminder interval (hours)</label><br />
+            <label><TipLabel tip="Hours between reminders while there is still no reply.">Reminder interval (hours)</TipLabel></label><br />
             <input type="number" min={0.1} step={0.5} value={form.reminderIntervalHours}
               onChange={(e) => setForm({ ...form, reminderIntervalHours: Number(e.target.value) })} style={{ width: 80 }} />
           </div>
           <div>
-            <label>Max reminders</label><br />
+            <label><TipLabel tip="Stop reminding after this many. Example: 3.">Max reminders</TipLabel></label><br />
             <input type="number" min={1} value={form.maxReminders}
               onChange={(e) => setForm({ ...form, maxReminders: Number(e.target.value) })} style={{ width: 80 }} />
           </div>
           <div>
-            <label>Minimum interval (hours)</label><br />
+            <label><TipLabel tip="Never send two reminders closer together than this, even if other rules would.">Minimum interval (hours)</TipLabel></label><br />
             <input type="number" min={0} step={0.5} value={form.minimumIntervalHours}
               onChange={(e) => setForm({ ...form, minimumIntervalHours: Number(e.target.value) })} style={{ width: 80 }} />
           </div>
           <div>
-            <label>Expiration (days, blank = never)</label><br />
+            <label><TipLabel tip="Stop reminding about a Case after this many days. Leave blank to keep reminding.">Expiration (days, blank = never)</TipLabel></label><br />
             <input type="number" min={0} value={form.expirationDays}
               onChange={(e) => setForm({ ...form, expirationDays: e.target.value === "" ? "" : Number(e.target.value) })} style={{ width: 80 }} />
           </div>
           <div>
-            <label>Time zone</label><br />
+            <label><TipLabel tip="Time zone for the business hours, e.g. Europe/Helsinki or Asia/Manila.">Time zone</TipLabel></label><br />
             <input value={form.timeZoneId} onChange={(e) => setForm({ ...form, timeZoneId: e.target.value })} style={{ width: 160 }} />
           </div>
           <div>
             <label><input type="checkbox" checked={form.restrictToBusinessHours}
-              onChange={(e) => setForm({ ...form, restrictToBusinessHours: e.target.checked })} /> Restrict to business hours</label>
+              onChange={(e) => setForm({ ...form, restrictToBusinessHours: e.target.checked })} /> Restrict to business hours<InfoTip text="Only send reminders, and only count time, during the hours below." /></label>
           </div>
           {form.restrictToBusinessHours && (
             <>
               <div>
-                <label>Start</label><br />
+                <label><TipLabel tip="When the working day starts.">Start</TipLabel></label><br />
                 <input type="time" value={form.businessHoursStart} onChange={(e) => setForm({ ...form, businessHoursStart: e.target.value })} />
               </div>
               <div>
-                <label>End</label><br />
+                <label><TipLabel tip="When the working day ends.">End</TipLabel></label><br />
                 <input type="time" value={form.businessHoursEnd} onChange={(e) => setForm({ ...form, businessHoursEnd: e.target.value })} />
               </div>
             </>
           )}
           <div>
             <label><input type="checkbox" checked={form.excludeWeekends}
-              onChange={(e) => setForm({ ...form, excludeWeekends: e.target.checked })} /> Exclude weekends</label>
+              onChange={(e) => setForm({ ...form, excludeWeekends: e.target.checked })} /> Exclude weekends<InfoTip text="Saturdays and Sundays do not count and no reminders are sent then." /></label>
           </div>
           <div>
             <label><input type="checkbox" checked={form.enabled}
@@ -290,10 +291,10 @@ export default function ReminderPoliciesPage() {
           </div>
           <div>
             <label><input type="checkbox" checked={form.isDefault}
-              onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} /> Default policy</label>
+              onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} /> Default policy<InfoTip text="Use this policy whenever no other is chosen. Its calendar is also used by Inquiry Supervision." /></label>
           </div>
           <div style={{ width: "100%" }}>
-            <button type="submit" style={{ marginRight: 8 }}>Save</button>
+            <button type="submit" style={{ marginRight: 8 }} data-tip="Save the policy.">Save</button>
             <button type="button" onClick={() => setShowForm(false)}>Cancel</button>
           </div>
         </form>

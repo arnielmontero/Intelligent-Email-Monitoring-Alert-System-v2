@@ -6,6 +6,7 @@ import { CASE_WORK_STATUS_LABELS, CASE_REPLY_STATUS_LABELS } from "../../api/typ
 import CaseSidePanel from "../../components/CaseSidePanel";
 import Pagination from "../../components/Pagination";
 import { selectedRowStyle } from "../../components/styles";
+import { InfoTip } from "../../components/help/Tooltip";
 
 
 export default function CasesPage() {
@@ -60,7 +61,7 @@ export default function CasesPage() {
         {error && <div className="form-error">{error}</div>}
 
         <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} data-tip="Show only Cases in one work status, e.g. Action required, Overdue or Completed.">
             <option value="">All statuses</option>
             {Object.entries(CASE_WORK_STATUS_LABELS).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
@@ -71,6 +72,7 @@ export default function CasesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ minWidth: 260 }}
+            data-tip="Type part of a case number, subject or customer email address, then press Search."
           />
           <button type="submit">Search</button>
         </form>
@@ -81,11 +83,11 @@ export default function CasesPage() {
               <th style={thStyle}>Case #</th>
               <th style={thStyle}>Customer</th>
               <th style={thStyle}>Subject</th>
-              <th style={thStyle}>Owner</th>
-              <th style={thStyle}>Work Status</th>
-              <th style={thStyle}>Reply Status</th>
-              <th style={thStyle} title="Number of emails in the conversation">Emails in thread</th>
-              <th style={thStyle}>Last Activity</th>
+              <th style={thStyle}>Owner<InfoTip text="The employee responsible: the owner of the mailbox the email arrived in." /></th>
+              <th style={thStyle}>Work Status<InfoTip text="Where the work stands: Action required (new), In progress, Waiting, Overdue, Escalated, Completed and so on." /></th>
+              <th style={thStyle}>Reply Status<InfoTip text="Whether a reply to the customer was actually found in the owner's Sent folder. Clicking 'Already replied' on the PC alone does not count." /></th>
+              <th style={thStyle}>Emails in thread<InfoTip text="How many emails belong to this conversation, customer and agent together." /></th>
+              <th style={thStyle}>Last Activity<InfoTip text="When anything last happened on this Case: an email, a reminder or an employee action." /></th>
             </tr>
           </thead>
           <tbody>

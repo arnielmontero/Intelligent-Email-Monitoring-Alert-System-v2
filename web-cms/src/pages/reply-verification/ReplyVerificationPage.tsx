@@ -3,6 +3,7 @@ import { apiClient } from "../../api/client";
 import type { ReplyCheckCaseDto, ReplyCheckOverviewDto, ReplyVerificationRunResult } from "../../api/types";
 import CaseSidePanel from "../../components/CaseSidePanel";
 import { selectedRowStyle } from "../../components/styles";
+import { InfoTip } from "../../components/help/Tooltip";
 import StatCard, { Badge, type Tone } from "../../components/StatCard";
 
 interface Stage {
@@ -12,6 +13,7 @@ interface Stage {
   /** CaseReplyStatus values shown when the card is clicked. */
   filter: string;
   tone?: Tone;
+  help?: string;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -75,9 +77,9 @@ export default function ReplyVerificationPage() {
   }
 
   const stages: Stage[] = overview ? [
-    { label: "Not checked yet", count: overview.awaitingFirstCheck, hint: "new Cases, first check within 5 min", filter: "AwaitingReply" },
-    { label: "No reply yet", count: overview.noReplyYet, hint: "Sent folder checked — nothing to the customer; reminders continue", filter: "NoReplyFound", tone: overview.noReplyYet > 0 ? "warn" : undefined },
-    { label: "Reply found", count: overview.replyFound, hint: "reply confirmed in Sent — reminders stop", filter: "Replied" },
+    { label: "Not checked yet", count: overview.awaitingFirstCheck, hint: "new Cases, first check within 5 min", filter: "AwaitingReply", help: "New Cases whose Sent folder has not been looked at yet. The first check happens within 5 minutes." },
+    { label: "No reply yet", count: overview.noReplyYet, hint: "Sent folder checked — nothing to the customer; reminders continue", filter: "NoReplyFound", tone: overview.noReplyYet > 0 ? "warn" : undefined, help: "The Sent folder was checked and nothing has been sent to the customer yet. Reminders keep going to the owner until a reply appears." },
+    { label: "Reply found", count: overview.replyFound, hint: "reply confirmed in Sent — reminders stop", filter: "Replied", help: "A real reply to the customer was found in the Sent folder. The no-reply reminders for this Case stop." },
   ] : [];
 
   const filters = filter.split(",").filter(Boolean);
@@ -100,17 +102,18 @@ export default function ReplyVerificationPage() {
             <div className="section-title" style={{ marginTop: 8 }}>Open Cases by reply</div>
             <div className="stat-grid">
               {stages.map((stage) => (
-                <StatCard key={stage.label} label={stage.label} value={stage.count} hint={stage.hint} tone={stage.tone}
+                <StatCard key={stage.label} label={stage.label} value={stage.count} hint={stage.hint} tone={stage.tone} help={stage.help}
                   active={filter === stage.filter} onClick={() => setFilter(filter === stage.filter ? "" : stage.filter)} />
               ))}
               <StatCard label="Couldn't check" value={overview.couldNotCheck}
+                help="IEMAS could not open the mailbox's Sent folder (wrong password, server down). It is never treated as 'no reply' and is retried automatically. Fix the mailbox on Email Accounts if it persists."
                 hint="mailbox unreachable — never counted as “no reply”; retried automatically"
                 tone={overview.couldNotCheck > 0 ? "bad" : "neutral"}
                 active={filter === "VerificationFailed,VerificationPending"}
                 onClick={() => setFilter(filter === "VerificationFailed,VerificationPending" ? "" : "VerificationFailed,VerificationPending")} />
             </div>
 
-            <div className="section-title">Sent folders checked</div>
+            <div className="section-title" style={{ display: "flex", alignItems: "center" }}>Sent folders checked<InfoTip text="Each mailbox with open Cases, when its Sent folder was last read, and whether reading it worked." /></div>
             <table style={tableStyle}>
               <thead>
                 <tr>
@@ -147,7 +150,7 @@ export default function ReplyVerificationPage() {
               checked first) — useful right after an employee says they replied.
             </p>
           </div>
-          <button className="btn-primary" onClick={runNow} disabled={running}>
+          <button className="btn-primary" onClick={runNow} disabled={running} data-tip="Look in the Sent folders right now (up to 100 Cases) instead of waiting for the 5-minute check. Use it after an employee says they replied.">
             {running ? "Checking Sent folders..." : "Check Now"}
           </button>
         </div>
@@ -164,7 +167,7 @@ export default function ReplyVerificationPage() {
 
         <div className="section-head">
           <h2 style={sectionTitle}>Open Cases {filterLabel ? `— ${filterLabel}` : ""} ({shown.length})</h2>
-          {filter && <button onClick={() => setFilter("")}>Show all</button>}
+          {filter && <button onClick={() => setFilter("")} data-tip="Remove the card filter and list every open Case.">Show all</button>}
         </div>
         <CaseTable items={shown} empty="No open Cases here." selectedId={selectedId} onSelect={setSelectedId} />
       </div>
@@ -185,7 +188,7 @@ function CaseTable({ items, empty, selectedId, onSelect }: {
           <th style={thStyle}>Customer</th>
           <th style={thStyle}>Subject</th>
           <th style={thStyle}>Mailbox / Owner</th>
-          <th style={thStyle}>Reply</th>
+          <th style={thStyle}>Reply<InfoTip text="Result of the last Sent-folder check for this Case." /></th>
           <th style={thStyle}>Last checked</th>
         </tr>
       </thead>

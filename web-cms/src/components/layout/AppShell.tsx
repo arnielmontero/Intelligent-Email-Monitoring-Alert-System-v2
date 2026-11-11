@@ -6,6 +6,9 @@ import { useAuthStore } from "../../store/authStore";
 import { getThemePreference, setThemePreference, type ThemePreference } from "../../theme";
 import { NAV_SECTIONS, helpAnchor } from "./navigation";
 import NavIcon from "./NavIcon";
+import PageIntro from "../help/PageIntro";
+import { hasGuide, loadSeenGuides, saveSeenGuides } from "../help/guideStorage";
+import { TooltipLayer } from "../help/Tooltip";
 
 const OPEN_SECTION_KEY = "iemas-nav-open-group";
 
@@ -42,6 +45,28 @@ export default function AppShell() {
 
   const activeSection = NAV_SECTIONS.find((section) => section.items.some((item) => isActivePath(item.path, location.pathname)));
   const activeItem = activeSection?.items.find((item) => isActivePath(item.path, location.pathname));
+
+  // First-visit page guide: shown until dismissed on this browser, and re-opened from "Page guide" in the header.
+  const [seenGuides, setSeenGuides] = useState<string[]>(loadSeenGuides);
+  const [guideOpenFor, setGuideOpenFor] = useState<string | null>(null);
+  const guidePath = activeItem && hasGuide(activeItem.path) ? activeItem.path : null;
+  const showGuide = guidePath !== null && (guideOpenFor === guidePath || !seenGuides.includes(guidePath));
+
+  function dismissGuide() {
+    if (!guidePath) return;
+    setGuideOpenFor(null);
+    if (!seenGuides.includes(guidePath)) {
+      const next = [...seenGuides, guidePath];
+      setSeenGuides(next);
+      saveSeenGuides(next);
+    }
+  }
+
+  function toggleGuide() {
+    if (!guidePath) return;
+    if (showGuide) dismissGuide();
+    else setGuideOpenFor(guidePath);
+  }
 
   function toggleSection(id: string) {
     setOpenSection((current) => {
@@ -122,6 +147,12 @@ export default function AppShell() {
               <NavIcon name="help" size={16} /> Help for this page
             </NavLink>
           )}
+          {guidePath && (
+            <button type="button" className="app-header-guide" aria-pressed={showGuide} onClick={toggleGuide}
+              data-tip={showGuide ? "Hide the guide for this page." : "Show the short guide for this page again."}>
+              Page guide
+            </button>
+          )}
           <div className="theme-switch" role="group" aria-label="Colour theme">
             {(["system", "light", "dark"] as ThemePreference[]).map((option) => (
               <button key={option} aria-pressed={theme === option} onClick={() => chooseTheme(option)}
@@ -141,9 +172,14 @@ export default function AppShell() {
               Emergency Pause active: {pausedLabels.join(", ")}
             </NavLink>
           )}
+          {showGuide && guidePath && activeItem && (
+            <PageIntro key={guidePath} path={guidePath} pageTitle={activeItem.label}
+              firstEver={seenGuides.length === 0} onDismiss={dismissGuide} />
+          )}
           <Outlet />
         </main>
       </div>
+      <TooltipLayer />
     </div>
   );
 }

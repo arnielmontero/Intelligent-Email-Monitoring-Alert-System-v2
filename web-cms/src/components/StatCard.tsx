@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { InfoTip } from "./help/Tooltip";
 
 export type Tone = "neutral" | "good" | "warn" | "bad" | "info";
 
@@ -6,6 +7,8 @@ interface StatCardProps {
   label: string;
   value: number | string;
   hint?: string;
+  /** Plain-language explanation of what the number means, shown from a "?" beside the label. */
+  help?: string;
   tone?: Tone;
   /** Page to open when clicked. */
   to?: string;
@@ -15,11 +18,11 @@ interface StatCardProps {
 }
 
 /** A single figure: small uppercase label, large number, one-line hint. Tone only colours a thin top line and the number. */
-export default function StatCard({ label, value, hint, tone = "neutral", to, onClick, active }: StatCardProps) {
+export default function StatCard({ label, value, hint, help, tone = "neutral", to, onClick, active }: StatCardProps) {
   const className = `stat-card tone-${tone}${to || onClick ? " is-clickable" : ""}${active ? " is-active" : ""}`;
   const body = (
     <>
-      <div className="stat-label">{label}</div>
+      <StatLabel help={help}>{label}</StatLabel>
       <div className="stat-value">{value}</div>
       {hint && <div className="stat-hint">{hint}</div>}
     </>
@@ -27,6 +30,16 @@ export default function StatCard({ label, value, hint, tone = "neutral", to, onC
   if (to) return <Link to={to} className={className}>{body}</Link>;
   if (onClick) return <button type="button" onClick={onClick} className={className} aria-pressed={active}>{body}</button>;
   return <div className={className}>{body}</div>;
+}
+
+/** The small uppercase card title, with an optional "?" explaining it. */
+export function StatLabel({ children, help }: { children: React.ReactNode; help?: string }) {
+  return (
+    <div className="stat-label" style={help ? { display: "flex", alignItems: "center" } : undefined}>
+      {children}
+      {help && <InfoTip text={help} />}
+    </div>
+  );
 }
 
 /** A small status pill, e.g. "New Case", "Reply found". */

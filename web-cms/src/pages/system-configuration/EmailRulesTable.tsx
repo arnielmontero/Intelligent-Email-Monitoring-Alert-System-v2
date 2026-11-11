@@ -3,6 +3,7 @@ import { apiClient } from "../../api/client";
 import type { SystemSettingDto } from "../../api/types";
 import Pagination from "../../components/Pagination";
 import { Badge } from "../../components/StatCard";
+import { TipLabel } from "../../components/help/Tooltip";
 
 const PAGE_SIZE = 10;
 
@@ -137,7 +138,7 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
 
       <form onSubmit={add} style={{ display: "grid", gridTemplateColumns: "220px 200px 1fr auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
         <div style={fieldStyle}>
-          <label>Category</label>
+          <label><TipLabel tip="Which question the rule answers: is the email legitimate work, or does it need a response.">Category</TipLabel></label>
           <select value={form.category} disabled={busy}
             onChange={(e) => setForm({ ...form, category: e.target.value as Category })}>
             <option value="legit">{CATEGORY_LABELS.legit}</option>
@@ -145,7 +146,7 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
           </select>
         </div>
         <div style={fieldStyle}>
-          <label>Rule means</label>
+          <label><TipLabel tip="Whether matching email counts as yes or no for that question.">Rule means</TipLabel></label>
           <select value={form.direction} disabled={busy}
             onChange={(e) => setForm({ ...form, direction: e.target.value as Direction })}>
             <option value="yes">{DIRECTION_LABELS[form.category].yes}</option>
@@ -153,12 +154,12 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
           </select>
         </div>
         <div style={fieldStyle}>
-          <label>Rule</label>
+          <label><TipLabel tip="Describe the kind of email in plain words, e.g. The sender asks for a delivery date.">Rule</TipLabel></label>
           <input value={form.text} maxLength={300} disabled={busy}
             onChange={(e) => setForm({ ...form, text: e.target.value })}
             placeholder={form.category === "legit" ? "e.g. Newsletters from suppliers" : "e.g. The sender asks for a delivery date"} />
         </div>
-        <button type="submit" className="btn-primary" disabled={busy || !form.text.trim()}>+ Add rule</button>
+        <button type="submit" className="btn-primary" disabled={busy || !form.text.trim()} data-tip="Save the rule. It applies to email classified from now on.">+ Add rule</button>
       </form>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -169,7 +170,7 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
             </button>
           ))}
         </div>
-        {anyOverridden && <button onClick={restoreDefaults} disabled={busy} style={{ fontSize: 12 }}>Restore default rules</button>}
+        {anyOverridden && <button onClick={restoreDefaults} disabled={busy} style={{ fontSize: 12 }} data-tip="Throw away your changes and go back to the rules IEMAS shipped with.">Restore default rules</button>}
       </div>
 
       <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
@@ -221,8 +222,8 @@ export default function EmailRulesTable({ settings, onSaved }: Props) {
                     <td style={tdStyle}>{rule.text}</td>
                     <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", gap: 6 }}>
-                        <button disabled={busy} onClick={() => { setEditing(rule); setEditForm(rule); }}>Edit</button>
-                        <button className="btn-danger" disabled={busy} onClick={() => remove(rule)}>Delete</button>
+                        <button disabled={busy} onClick={() => { setEditing(rule); setEditForm(rule); }} data-tip="Change this rule's wording or meaning.">Edit</button>
+                        <button className="btn-danger" disabled={busy} onClick={() => remove(rule)} data-tip="Remove this rule. Email already classified keeps its result.">Delete</button>
                       </div>
                     </td>
                   </>

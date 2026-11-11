@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
+import { TipLabel } from "../../components/help/Tooltip";
 
 interface Counts {
   emails: number;
@@ -180,10 +181,10 @@ export default function ResetEmailDataPanel() {
 
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginTop: 16 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <label htmlFor="reset-confirm">Type RESET to confirm</label>
+          <label htmlFor="reset-confirm"><TipLabel tip="A safety check: this deletes every email and Case and cannot be undone.">Type RESET to confirm</TipLabel></label>
           <input id="reset-confirm" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="off" style={{ width: 200 }} />
         </div>
-        <button className="btn-danger" disabled={running || confirmation.trim() !== "RESET"} onClick={reset}>
+        <button className="btn-danger" disabled={running || confirmation.trim() !== "RESET"} onClick={reset} data-tip="Permanently delete all emails, Cases and their history. Employees, mailboxes, users and settings are kept.">
           {running ? "Resetting..." : "Reset email data"}
         </button>
       </div>

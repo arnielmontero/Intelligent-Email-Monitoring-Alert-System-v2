@@ -262,7 +262,7 @@ export default function SystemSettingsPage() {
           )}
         </td>
         <td style={{ ...tdStyle, width: 90 }}>
-          {s.isOverridden && <button onClick={() => reset(s)} title={`Go back to ${friendlyDefault(s)}`}>Reset</button>}
+          {s.isOverridden && <button onClick={() => reset(s)} data-tip={`Go back to the default value: ${friendlyDefault(s)}`}>Reset</button>}
         </td>
       </tr>
     );
@@ -355,11 +355,11 @@ export default function SystemSettingsPage() {
       </datalist>
 
       <div style={{ display: "flex", gap: 8 }}>
-        <button disabled={saving || changed.length === 0} onClick={save}>
+        <button disabled={saving || changed.length === 0} onClick={save} data-tip="Save every setting you changed on this page. Changed settings are marked with a dot.">
           {saving ? "Saving..." : `Save changes${changed.length ? ` (${changed.length})` : ""}`}
         </button>
         {changed.length > 0 && (
-          <button onClick={() => setDraft(Object.fromEntries(settings.map((s) => [s.key, s.value])))}>Discard</button>
+          <button onClick={() => setDraft(Object.fromEntries(settings.map((s) => [s.key, s.value])))} data-tip="Undo the changes you have not saved yet.">Discard</button>
         )}
       </div>
     </div>

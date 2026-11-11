@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { DepartmentDto, EmployeeDto } from "../../api/types";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<EmployeeDto[]>([]);
@@ -129,15 +130,15 @@ export default function EmployeesPage() {
 
       <form onSubmit={handleCreate} style={{ marginBottom: 24, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
         <div>
-          <label>Full name</label><br />
+          <label><TipLabel tip="The person's name as it should appear in pop-ups and reports.">Full name</TipLabel></label><br />
           <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
         </div>
         <div>
-          <label>Email</label><br />
+          <label><TipLabel tip="Their work email address.">Email</TipLabel></label><br />
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
         <div>
-          <label>Department</label><br />
+          <label><TipLabel tip="Their department. The department's manager can be an escalation recipient.">Department</TipLabel></label><br />
           <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
             <option value="">—</option>
             {departments.map((d) => (
@@ -146,7 +147,7 @@ export default function EmployeesPage() {
           </select>
         </div>
         <div>
-          <label>Supervisor</label><br />
+          <label><TipLabel tip="Their direct supervisor. Usually the first person told when one of their Cases is escalated.">Supervisor</TipLabel></label><br />
           <select value={supervisorEmployeeId} onChange={(e) => setSupervisorEmployeeId(e.target.value)}>
             <option value="">—</option>
             {employees.map((e) => (
@@ -154,7 +155,7 @@ export default function EmployeesPage() {
             ))}
           </select>
         </div>
-        <button type="submit">Add Employee</button>
+        <button type="submit" data-tip="Add this person. Then give them a mailbox on Email Accounts and approve their PC on Windows Agents.">Add Employee</button>
       </form>
 
       <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
@@ -164,8 +165,8 @@ export default function EmployeesPage() {
             <th style={thStyle}>Email</th>
             <th style={thStyle}>Department</th>
             <th style={thStyle}>Supervisor</th>
-            <th style={thStyle}>Resolved Manager</th>
-            <th style={thStyle}>Active</th>
+            <th style={thStyle}>Resolved Manager<InfoTip text="The manager IEMAS will use for escalations, taken from the employee's department." /></th>
+            <th style={thStyle}>Active<InfoTip text="Inactive employees get no new Cases or pop-ups, but their history is kept." /></th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -175,15 +176,15 @@ export default function EmployeesPage() {
               <td style={tdStyle} colSpan={7}>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
                   <div>
-                    <label>Full name</label><br />
+                    <label><TipLabel tip="The person's name as it should appear in pop-ups and reports.">Full name</TipLabel></label><br />
                     <input value={editForm.fullName} onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })} required />
                   </div>
                   <div>
-                    <label>Email</label><br />
+                    <label><TipLabel tip="Their work email address.">Email</TipLabel></label><br />
                     <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} required />
                   </div>
                   <div>
-                    <label>Department</label><br />
+                    <label><TipLabel tip="Their department. The department's manager can be an escalation recipient.">Department</TipLabel></label><br />
                     <select value={editForm.departmentId} onChange={(e) => setEditForm({ ...editForm, departmentId: e.target.value })}>
                       <option value="">—</option>
                       {departments.map((d) => (
@@ -192,7 +193,7 @@ export default function EmployeesPage() {
                     </select>
                   </div>
                   <div>
-                    <label>Supervisor</label><br />
+                    <label><TipLabel tip="Their direct supervisor. Usually the first person told when one of their Cases is escalated.">Supervisor</TipLabel></label><br />
                     <select value={editForm.supervisorEmployeeId} onChange={(e) => setEditForm({ ...editForm, supervisorEmployeeId: e.target.value })}>
                       <option value="">—</option>
                       {employees
@@ -206,6 +207,7 @@ export default function EmployeesPage() {
                     <label>
                       <input type="checkbox" checked={editForm.isActive} onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })} />{" "}
                       Active
+                      <InfoTip text="Untick when someone leaves. Their history stays; they get no new work." />
                     </label>
                   </div>
                 </div>
@@ -228,8 +230,8 @@ export default function EmployeesPage() {
               <td style={tdStyle}>{emp.isActive ? "Yes" : "No"}</td>
               <td style={tdStyle}>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => startEdit(emp)} disabled={editingId !== null}>Edit</button>
-                  <button onClick={() => handleToggleActive(emp)} style={{ minWidth: 80 }}>
+                  <button onClick={() => startEdit(emp)} disabled={editingId !== null} data-tip="Change name, email, department or supervisor.">Edit</button>
+                  <button onClick={() => handleToggleActive(emp)} style={{ minWidth: 80 }} data-tip="Deactivate someone who left: they get no new work, history is kept. Activate brings them back.">
                     {emp.isActive ? "Deactivate" : "Activate"}
                   </button>
                   <button

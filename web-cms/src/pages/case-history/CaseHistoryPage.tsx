@@ -6,6 +6,7 @@ import type { CaseEventSearchResultDto, EmailAccountDto, EmployeeDto, PagedResul
 import Pagination from "../../components/Pagination";
 import CaseSidePanel from "../../components/CaseSidePanel";
 import { selectedRowStyle } from "../../components/styles";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 const PAGE_SIZE = 25;
 
@@ -91,40 +92,40 @@ export default function CaseHistoryPage() {
         style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, alignItems: "end", marginBottom: 16 }}
       >
         <div style={{ ...fieldStyle, gridColumn: "span 2" }}>
-          <label>Search</label>
+          <label><TipLabel tip="Searches case numbers, subjects, customers, mailboxes, owners and the event text.">Search</TipLabel></label>
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Case number, subject, customer email/name, mailbox, owner, event text…" />
         </div>
         <div style={fieldStyle}>
-          <label>Mailbox</label>
+          <label><TipLabel tip="Only events for Cases from one mailbox.">Mailbox</TipLabel></label>
           <select value={mailboxId} onChange={(e) => setMailboxId(e.target.value)}>
             <option value="">All mailboxes</option>
             {mailboxes.map((m) => <option key={m.id} value={m.id}>{m.emailAddress}</option>)}
           </select>
         </div>
         <div style={fieldStyle}>
-          <label>Owner</label>
+          <label><TipLabel tip="Only events for Cases owned by one employee.">Owner</TipLabel></label>
           <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
             <option value="">All owners</option>
             {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.fullName}</option>)}
           </select>
         </div>
         <div style={fieldStyle}>
-          <label>Event type</label>
+          <label><TipLabel tip="Only one kind of event, e.g. reminders, escalations or emails received.">Event type</TipLabel></label>
           <select value={eventType} onChange={(e) => setEventType(e.target.value)}>
             <option value="">All</option>
             {Object.entries(CASE_EVENT_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
         <div style={fieldStyle}>
-          <label>From</label>
+          <label><TipLabel tip="Earliest date to include.">From</TipLabel></label>
           <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
         </div>
         <div style={fieldStyle}>
-          <label>To</label>
+          <label><TipLabel tip="Latest date to include.">To</TipLabel></label>
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={clearFilters} disabled={activeFilters.length === 0}>Clear filters</button>
+          <button type="button" onClick={clearFilters} disabled={activeFilters.length === 0} data-tip="Remove every filter and show all events.">Clear filters</button>
         </div>
       </form>
 
@@ -145,7 +146,7 @@ export default function CaseHistoryPage() {
                 <th style={thStyle}>Mailbox → Owner</th>
                 <th style={thStyle}>Event</th>
                 <th style={thStyle}>Detail</th>
-                <th style={thStyle}>By</th>
+                <th style={thStyle}>By<InfoTip text="Who caused the event: an employee, an administrator, or the system itself." /></th>
               </tr>
             </thead>
             <tbody>

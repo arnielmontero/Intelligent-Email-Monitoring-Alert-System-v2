@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { EmployeeDto, NotificationDto, NotificationTemplateDto, NotificationTemplatesResponse } from "../../api/types";
 import { useAuthStore } from "../../store/authStore";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 const TYPE_LABELS: Record<string, string> = {
   NewEmail: "New Email",
@@ -49,8 +50,8 @@ export default function NotificationsPage() {
         here you edit the wording and see what was delivered.
       </p>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {isAdmin && <button style={tab === "templates" ? activeTabStyle : undefined} onClick={() => setTab("templates")}>Templates</button>}
-        <button style={tab === "log" ? activeTabStyle : undefined} onClick={() => setTab("log")}>Delivery log</button>
+        {isAdmin && <button style={tab === "templates" ? activeTabStyle : undefined} onClick={() => setTab("templates")} data-tip="Edit the wording of each pop-up message employees see.">Templates</button>}
+        <button style={tab === "log" ? activeTabStyle : undefined} onClick={() => setTab("log")} data-tip="See every pop-up that was sent, whether it arrived, and whether the employee acknowledged it.">Delivery log</button>
       </div>
       {tab === "templates" ? <TemplatesTab /> : <LogTab />}
     </div>
@@ -147,7 +148,7 @@ function TemplatesTab() {
         <thead>
           <tr>
             <th style={thStyle}>Notification</th>
-            <th style={thStyle}>Enabled</th>
+            <th style={thStyle}>Enabled<InfoTip text="Turn a pop-up type off to stop sending it. Nothing else about the Case changes." /></th>
             <th style={thStyle}>Message</th>
             <th style={thStyle}>Action</th>
           </tr>
@@ -172,8 +173,8 @@ function TemplatesTab() {
                 )}
               </td>
               <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
-                <button onClick={() => setEditing(t)}>Edit</button>{" "}
-                {t.isCustomized && <button onClick={() => reset(t.type)}>Reset</button>}
+                <button onClick={() => setEditing(t)} data-tip="Change the title and text of this pop-up.">Edit</button>{" "}
+                {t.isCustomized && <button onClick={() => reset(t.type)} data-tip="Go back to the original wording.">Reset</button>}
               </td>
             </tr>
           ))}
@@ -184,11 +185,11 @@ function TemplatesTab() {
         <div style={panelStyle}>
           <h2 style={{ fontSize: 18, marginTop: 0 }}>Edit: {TYPE_LABELS[editing.type] ?? editing.type}</h2>
           <div style={{ marginBottom: 8 }}>
-            <label>Title</label><br />
+            <label><TipLabel tip="The bold first line of the pop-up.">Title</TipLabel></label><br />
             <input value={editing.title} maxLength={200} style={{ width: "100%" }} onChange={(e) => setEditing({ ...editing, title: e.target.value })} />
           </div>
           <div style={{ marginBottom: 8 }}>
-            <label>Message text</label><br />
+            <label><TipLabel tip="The pop-up text. Use the Insert buttons to add live details such as the case number or customer name.">Message text</TipLabel></label><br />
             <textarea
               value={editing.messageText}
               maxLength={2000}
@@ -198,7 +199,7 @@ function TemplatesTab() {
             />
           </div>
           <div style={{ marginBottom: 12, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={mutedStyle}>Insert:</span>
+            <span style={mutedStyle}>Insert:</span><InfoTip text="Click a placeholder to add it at the cursor. It is replaced with the real value when the pop-up is sent." />
             {data.supportedVariables.map((v) => (
               <button key={v} type="button" style={{ fontSize: 12 }} onClick={() => insertVariable(v)}>{`{{${v}}}`}</button>
             ))}
@@ -211,7 +212,7 @@ function TemplatesTab() {
             </div>
           )}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={save}>Save</button>
+            <button onClick={save} data-tip="Save the new wording. It is used for pop-ups sent from now on.">Save</button>
             <button onClick={() => { setEditing(null); setError(null); }}>Cancel</button>
           </div>
         </div>
@@ -258,27 +259,27 @@ function LogTab() {
     <div>
       <div style={{ display: "flex", gap: 12, alignItems: "end", marginBottom: 16, flexWrap: "wrap" }}>
         <div>
-          <label>Employee</label><br />
+          <label><TipLabel tip="Only pop-ups sent to one employee.">Employee</TipLabel></label><br />
           <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
             <option value="">All</option>
             {employees.map((e) => <option key={e.id} value={e.id}>{e.fullName}</option>)}
           </select>
         </div>
         <div>
-          <label>Type</label><br />
+          <label><TipLabel tip="Only one kind of pop-up, e.g. reminders or escalation warnings.">Type</TipLabel></label><br />
           <select value={type} onChange={(e) => setType(e.target.value)}>
             <option value="">All</option>
             {Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
         <div>
-          <label>Status</label><br />
+          <label><TipLabel tip="Queued: waiting for the PC to come online. Sent: delivered. Acknowledged: the employee clicked it. Failed or Cancelled: not shown.">Status</TipLabel></label><br />
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All</option>
             {["Queued", "Sent", "Acknowledged", "Cancelled", "Failed"].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        <button onClick={load}>Filter</button>
+        <button onClick={load} data-tip="Reload the log with the filters above.">Filter</button>
       </div>
 
       {error && <div className="form-error">{error}</div>}

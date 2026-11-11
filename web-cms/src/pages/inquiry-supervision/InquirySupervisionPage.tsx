@@ -14,6 +14,7 @@ import Pagination from "../../components/Pagination";
 import StatCard from "../../components/StatCard";
 import { selectedRowStyle } from "../../components/styles";
 import { useAuthStore } from "../../store/authStore";
+import { InfoTip } from "../../components/help/Tooltip";
 
 /** The columns of the per-agent table; each is also a list filter ("bucket"). */
 const BUCKETS: Array<{ key: string; label: string; count: (a: AgentInquiryCountsDto) => number; help: string }> = [
@@ -109,7 +110,7 @@ export default function InquirySupervisionPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <h1>Inquiry Supervision</h1>
           {isAdmin && (
-            <button onClick={runNow} disabled={running}>{running ? "Running…" : "Check now"}</button>
+            <button onClick={runNow} disabled={running} data-tip="Run the supervision check immediately instead of waiting for the next one-minute cycle: deadlines are re-checked and any due reminders or escalations are sent.">{running ? "Running…" : "Check now"}</button>
           )}
         </div>
         <p style={{ color: "var(--color-text-muted)", fontSize: 13, maxWidth: 900 }}>
@@ -126,9 +127,9 @@ export default function InquirySupervisionPage() {
             <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13 }}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: "left" }}>Agent</th>
+                  <th style={{ textAlign: "left" }}>Agent<InfoTip text="The employee who owns the mailbox the inquiry arrived in. Click any number in a row to list that agent's inquiries below." /></th>
                   {BUCKETS.map((b) => (
-                    <th key={b.key} title={b.help} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{b.label}</th>
+                    <th key={b.key} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{b.label}<InfoTip text={b.help} /></th>
                   ))}
                 </tr>
               </thead>
@@ -166,7 +167,7 @@ export default function InquirySupervisionPage() {
         )}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
-          <select value={bucket} onChange={(e) => pick(e.target.value, employeeId)}>
+          <select value={bucket} onChange={(e) => pick(e.target.value, employeeId)} data-tip="Choose which inquiries to list below, for example only the ones waiting on the agent, or everything.">
             {BUCKETS.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
             <option value="awaiting-agent">Awaiting agent (any)</option>
             <option value="active">Active conversations</option>
@@ -175,11 +176,11 @@ export default function InquirySupervisionPage() {
           {agentName && (
             <span style={{ fontSize: 13 }}>
               Agent: <strong>{agentName}</strong>{" "}
-              <button onClick={() => pick(bucket, null)} style={{ fontSize: 12 }}>All agents</button>
+              <button onClick={() => pick(bucket, null)} style={{ fontSize: 12 }} data-tip="Remove the agent filter and show every agent's inquiries.">All agents</button>
             </span>
           )}
           <form onSubmit={(e) => { e.preventDefault(); if (page === 1) loadList(); else setPage(1); }} style={{ display: "flex", gap: 8 }}>
-            <input placeholder="Search case #, subject, customer" value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 240 }} />
+            <input placeholder="Search case #, subject, customer" value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 240 }} data-tip="Type part of a case number (e.g. CASE-0012), a subject or a customer email, then press Search." />
             <button type="submit">Search</button>
           </form>
         </div>
@@ -191,9 +192,9 @@ export default function InquirySupervisionPage() {
               <th style={{ textAlign: "left" }}>Customer</th>
               <th style={{ textAlign: "left" }}>Subject</th>
               <th style={{ textAlign: "left" }}>Agent</th>
-              <th style={{ textAlign: "left" }}>Stage</th>
-              <th style={{ textAlign: "left" }}>Since</th>
-              <th style={{ textAlign: "left" }}>Resolution target</th>
+              <th style={{ textAlign: "left" }}>Stage<InfoTip text="Where the conversation stands. Orange means the agent owes the next step; blue means the AI thinks it is resolved and the agent should confirm." /></th>
+              <th style={{ textAlign: "left" }}>Since<InfoTip text="When the inquiry entered its current stage. Reminder and idle timers count from this moment." /></th>
+              <th style={{ textAlign: "left" }}>Resolution target<InfoTip text="The deadline to have the inquiry fully resolved (5 business days by default). Missing it marks the inquiry Overdue; it is never closed automatically." /></th>
             </tr>
           </thead>
           <tbody>
@@ -232,15 +233,15 @@ function SummaryCards({ overview, bucket, employeeId, onPick }: { overview: Inqu
   const on = (b: string) => bucket === b && employeeId === null;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12, marginBottom: 20 }}>
-      <StatCard label="Detected (all time)" value={overview.totalDetected} hint="Every inquiry ever recorded" onClick={() => onPick("all")} active={on("all")} />
-      <StatCard label="New" value={t.awaitingInitialResponse} hint="No first reply yet" tone={t.awaitingInitialResponse ? "warn" : "neutral"} onClick={() => onPick("awaiting-initial")} active={on("awaiting-initial")} />
-      <StatCard label="Awaiting agent" value={awaitingAgent} hint="The agent owes a reply" tone={awaitingAgent ? "warn" : "neutral"} onClick={() => onPick("awaiting-agent")} active={on("awaiting-agent")} />
-      <StatCard label="Active conversations" value={active} hint="Waiting on customer or internal" tone="info" onClick={() => onPick("active")} active={on("active")} />
-      <StatCard label="Potentially resolved" value={t.potentiallyResolved} hint="Waiting for the agent to confirm" tone="info" onClick={() => onPick("potentially-resolved")} active={on("potentially-resolved")} />
-      <StatCard label="Unresolved" value={t.openTotal} hint="Still under supervision" onClick={() => onPick("open")} active={on("open")} />
-      <StatCard label="Overdue" value={t.overdue} hint="Past the resolution target" tone={t.overdue ? "bad" : "neutral"} onClick={() => onPick("overdue")} active={on("overdue")} />
-      <StatCard label="Escalated" value={t.escalated} hint="Management has been told" tone={t.escalated ? "bad" : "neutral"} onClick={() => onPick("escalated")} active={on("escalated")} />
-      <StatCard label="Resolved" value={t.resolvedLast30Days} hint="Confirmed, last 30 days" tone="good" onClick={() => onPick("resolved")} active={on("resolved")} />
+      <StatCard label="Detected (all time)" help="Every customer inquiry IEMAS has ever recorded, open or closed." value={overview.totalDetected} hint="Every inquiry ever recorded" onClick={() => onPick("all")} active={on("all")} />
+      <StatCard label="New" help="Inquiries no one has answered yet. The agent gets a reminder when the first-reply deadline (4 business hours by default) passes." value={t.awaitingInitialResponse} hint="No first reply yet" tone={t.awaitingInitialResponse ? "warn" : "neutral"} onClick={() => onPick("awaiting-initial")} active={on("awaiting-initial")} />
+      <StatCard label="Awaiting agent" help="Inquiries where the ball is in the agent's court: new, the customer wrote again, or the conversation went quiet on our side." value={awaitingAgent} hint="The agent owes a reply" tone={awaitingAgent ? "warn" : "neutral"} onClick={() => onPick("awaiting-agent")} active={on("awaiting-agent")} />
+      <StatCard label="Active conversations" help="The agent has replied and is now waiting on the customer or on another department. Nothing is owed by the agent right now." value={active} hint="Waiting on customer or internal" tone="info" onClick={() => onPick("active")} active={on("active")} />
+      <StatCard label="Potentially resolved" help="The AI read the conversation and thinks the issue is solved. The agent must confirm it, or say it is not resolved yet." value={t.potentiallyResolved} hint="Waiting for the agent to confirm" tone="info" onClick={() => onPick("potentially-resolved")} active={on("potentially-resolved")} />
+      <StatCard label="Unresolved" help="Every inquiry still being supervised, in any stage except Resolved or Closed." value={t.openTotal} hint="Still under supervision" onClick={() => onPick("open")} active={on("open")} />
+      <StatCard label="Overdue" help="Inquiries past their overall resolution target and still open. They stay open; they are only flagged." value={t.overdue} hint="Past the resolution target" tone={t.overdue ? "bad" : "neutral"} onClick={() => onPick("overdue")} active={on("overdue")} />
+      <StatCard label="Escalated" help="Inquiries where management received an escalation email because the agent did not act after reminders." value={t.escalated} hint="Management has been told" tone={t.escalated ? "bad" : "neutral"} onClick={() => onPick("escalated")} active={on("escalated")} />
+      <StatCard label="Resolved" help="Inquiries the agent confirmed as resolved in the last 30 days." value={t.resolvedLast30Days} hint="Confirmed, last 30 days" tone="good" onClick={() => onPick("resolved")} active={on("resolved")} />
     </div>
   );
 }
@@ -304,8 +305,8 @@ function InquiryPanel({ caseId, onClose, onChanged }: { caseId: string; onClose:
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <h2 style={{ margin: 0, fontSize: 18 }}>{data?.caseNumber ?? "Inquiry"}</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <Link to={`/cases/${caseId}`} style={{ fontSize: 13 }}>Case page</Link>
-          <button onClick={onClose}>Close</button>
+          <Link to={`/cases/${caseId}`} style={{ fontSize: 13 }} data-tip="Open the full Case page with the timeline, notifications and AI analysis.">Case page</Link>
+          <button onClick={onClose} data-tip="Close this panel.">Close</button>
         </div>
       </div>
       {!data && <p>Loading…</p>}
@@ -322,13 +323,13 @@ function InquiryPanel({ caseId, onClose, onChanged }: { caseId: string; onClose:
           <EmailThread messages={data.conversation} />
           <div style={{ height: 16 }} />
           <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 13, margin: "8px 0 16px" }}>
-            <dt>First reply</dt><dd style={{ margin: 0 }}>{when(data.firstAgentResponseAt)}</dd>
+            <dt>First reply<InfoTip text="When the agent first answered the customer, found in the agent's Sent folder." /></dt><dd style={{ margin: 0 }}>{when(data.firstAgentResponseAt)}</dd>
             <dt>Last customer message</dt><dd style={{ margin: 0 }}>{when(data.lastCustomerMessageAt)}</dd>
             <dt>Last agent message</dt><dd style={{ margin: 0 }}>{when(data.lastAgentMessageAt)}</dd>
-            <dt>Last internal activity</dt><dd style={{ margin: 0 }}>{when(data.lastInternalActivityAt)}</dd>
+            <dt>Last internal activity<InfoTip text="Last email between colleagues about this inquiry, for example a forward to another department." /></dt><dd style={{ margin: 0 }}>{when(data.lastInternalActivityAt)}</dd>
             <dt>Resolution target</dt><dd style={{ margin: 0 }}>{when(data.resolutionDueAt)}</dd>
-            <dt>This stage</dt><dd style={{ margin: 0 }}>{data.episodeRemindersSent} reminder(s), {data.episodeEscalations} escalation(s)</dd>
-            <dt>AI check</dt>
+            <dt>This stage<InfoTip text="Reminders and escalations sent since the inquiry entered its current stage. They reset when the stage changes." /></dt><dd style={{ margin: 0 }}>{data.episodeRemindersSent} reminder(s), {data.episodeEscalations} escalation(s)</dd>
+            <dt>AI check<InfoTip text="The AI's reading of the whole conversation: acknowledged only, in progress, customer waiting, or appears resolved, with how sure it is. The AI can only suggest; it never closes an inquiry." /></dt>
             <dd style={{ margin: 0 }}>
               {data.aiVerdict
                 ? `${data.aiVerdict} (${Math.round((data.aiConfidence ?? 0) * 100)} %) — ${data.aiReason ?? ""}`
@@ -338,19 +339,19 @@ function InquiryPanel({ caseId, onClose, onChanged }: { caseId: string; onClose:
 
           {!closed && (
             <section style={{ borderTop: "1px solid var(--color-border)", paddingTop: 12, marginBottom: 16 }}>
-              <textarea placeholder="Note (optional)" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} style={{ width: "100%", marginBottom: 8 }} />
+              <textarea data-tip="Optional note saved in the Case history with your action, e.g. why you closed or kept it open." placeholder="Note (optional)" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} style={{ width: "100%", marginBottom: 8 }} />
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => act("confirm-resolved", { comment }, "Marked resolved. Supervision has ended.")}>Confirm resolved</button>
+                <button onClick={() => act("confirm-resolved", { comment }, "Marked resolved. Supervision has ended.")} data-tip="The customer's issue is solved. This closes the inquiry and stops all reminders and escalation. If the customer writes again, it reopens automatically.">Confirm resolved</button>
                 {data.stage === "PotentiallyResolved" && (
-                  <button onClick={() => act("reject-resolution", { comment }, "Kept open. Supervision continues.")}>Not resolved yet</button>
+                  <button onClick={() => act("reject-resolution", { comment }, "Kept open. Supervision continues.")} data-tip="The AI guessed wrong: the issue is not solved. The inquiry goes back to its previous stage and supervision continues.">Not resolved yet</button>
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)}>
+                <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} data-tip="Pick the employee who should take over this inquiry.">
                   <option value="">Reassign to…</option>
                   {employees.map((e) => <option key={e.id} value={e.id}>{e.fullName}</option>)}
                 </select>
-                <button disabled={!reassignTo} onClick={() => act("reassign", { employeeId: reassignTo }, "Reassigned.")}>Reassign</button>
+                <button disabled={!reassignTo} onClick={() => act("reassign", { employeeId: reassignTo }, "Reassigned.")} data-tip="Hand the inquiry to the chosen employee. Deadlines keep running; from now on reminders go to the new owner.">Reassign</button>
               </div>
             </section>
           )}

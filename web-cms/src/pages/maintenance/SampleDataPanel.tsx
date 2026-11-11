@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { apiClient } from "../../api/client";
 import type { CaseRunResult } from "../../api/types";
 import { Badge } from "../../components/StatCard";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 interface SampleEmail {
   emailMessageId: string;
@@ -55,7 +56,7 @@ export default function SampleDataPanel({ onGenerated }: { onGenerated?: () => v
 
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginTop: 14 }}>
         <div style={fieldStyle}>
-          <label htmlFor="sample-count">Number of emails</label>
+          <label htmlFor="sample-count"><TipLabel tip="How many fake customer emails to create for testing.">Number of emails</TipLabel></label>
           <select id="sample-count" value={count} onChange={(e) => setCount(Number(e.target.value))}>
             {[3, 5, 10, 20].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
@@ -63,8 +64,9 @@ export default function SampleDataPanel({ onGenerated }: { onGenerated?: () => v
         <label style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 8, color: "var(--color-text)" }}>
           <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} />
           Let the AI read them (uses OpenRouter credit)
+          <InfoTip text="Off: the emails arrive already sorted, free and instant. On: they go through the real filter and AI like normal mail, which costs a little." />
         </label>
-        <button className="btn-primary" onClick={generate} disabled={running}>
+        <button className="btn-primary" onClick={generate} disabled={running} data-tip="Create sample emails marked [Sample] so you can try Cases, pop-ups, reminders and escalation safely.">
           {running ? "Generating..." : "Generate sample emails"}
         </button>
       </div>

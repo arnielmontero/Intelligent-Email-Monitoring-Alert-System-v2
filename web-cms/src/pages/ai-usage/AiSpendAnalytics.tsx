@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { AiAnalyticsDto } from "../../api/types";
+import { InfoTip } from "../../components/help/Tooltip";
+import { StatLabel } from "../../components/StatCard";
 import ColumnChart, { type ChartPoint, type ChartSeries } from "../../components/ColumnChart";
 import { compact, longDate, number, purposeLabel, shortDate, usd, usdTick } from "./format";
 
@@ -59,7 +61,7 @@ export default function AiSpendAnalytics() {
 
   return (
     <section aria-label="Spending analytics">
-      <h2 style={sectionTitle}>Spending analytics</h2>
+      <h2 style={{ ...sectionTitle, display: "flex", alignItems: "center" }}>Spending analytics<InfoTip text="Charts and totals for the date range you pick below. Everything on this part of the page follows that range." /></h2>
 
       {/* One filter row above everything it scopes. */}
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
@@ -69,6 +71,7 @@ export default function AiSpendAnalytics() {
               key={r.days}
               type="button"
               aria-pressed={days === r.days}
+              data-tip={`Show figures for the ${r.label.toLowerCase()}.`}
               onClick={() => setDays(r.days)}
               style={{
                 padding: "6px 14px", border: "none", cursor: "pointer", fontSize: 13,
@@ -92,30 +95,30 @@ export default function AiSpendAnalytics() {
         <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity 120ms" }} aria-busy={loading}>
           <div style={cardGridStyle}>
             <div className="stat-card">
-              <div className="stat-label">Spend</div>
+              <StatLabel help="Total money paid to the AI provider (OpenRouter) in the chosen date range, in US dollars. Includes failed calls and tests.">Spend</StatLabel>
               <div className="stat-value">{usd(t.costUsd)}</div>
               <div style={hintStyle}>{number(t.calls)} call{t.calls === 1 ? "" : "s"} in {data.days} days</div>
               {t.callsWithoutCost > 0 && <div style={hintStyle}>{t.callsWithoutCost} had no cost reported</div>}
             </div>
             <div className="stat-card">
-              <div className="stat-label">Tokens</div>
+              <StatLabel help="Tokens are the small pieces of text the AI reads and writes; the provider charges per token. 'In' is the email text we send, 'out' is the AI's answer.">Tokens</StatLabel>
               <div className="stat-value">{compact(t.totalTokens)}</div>
               <div style={hintStyle}>{compact(t.promptTokens)} in · {compact(t.completionTokens)} out</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Average per call</div>
+              <StatLabel help="What one AI request costs on average, how many tokens it uses, and how long it takes to answer.">Average per call</StatLabel>
               <div className="stat-value">{usd(t.averageCostPerCallUsd, 6)}</div>
               <div style={hintStyle}>{compact(t.averageTokensPerCall)} tokens · {(t.averageDurationMs / 1000).toFixed(1)}s</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Wasted on failed calls</div>
+              <StatLabel help="Money spent on AI requests that failed (for example a timeout) and had to be retried. Ideally close to $0.">Wasted on failed calls</StatLabel>
               <div className="stat-value">{usd(t.failedCostUsd)}</div>
               <div style={hintStyle}>
                 {t.failedCalls === 0 ? "No failed calls" : <><span style={{ color: "var(--color-danger)" }}>▲ {number(t.failedCalls)} failed</span> of {number(t.calls)}</>}
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Projected this month</div>
+              <StatLabel help="An estimate of this calendar month's total bill: spend so far plus the recent daily average for the days left. One-off tests are left out.">Projected this month</StatLabel>
               <div className="stat-value">{usd(f.projectedMonthUsd)}</div>
               <div style={hintStyle}>
                 {usd(f.monthToDateUsd)} so far · running cost {usd(f.dailyAverageLast7DaysUsd, 5)}/day (last 7 days, not counting one-off tests)
@@ -125,7 +128,7 @@ export default function AiSpendAnalytics() {
 
           <div style={chartGridStyle}>
             <div style={panelStyle}>
-              <h3 style={chartTitle}>Spend per day</h3>
+              <h3 style={{ ...chartTitle, display: "flex", alignItems: "center" }}>Spend per day<InfoTip text="One bar per day showing what the AI cost that day. Hover a bar for the exact amount and number of calls." /></h3>
               <ColumnChart
                 points={spendPoints}
                 series={SPEND_SERIES}
@@ -136,7 +139,7 @@ export default function AiSpendAnalytics() {
               />
             </div>
             <div style={panelStyle}>
-              <h3 style={chartTitle}>Tokens per day</h3>
+              <h3 style={{ ...chartTitle, display: "flex", alignItems: "center" }}>Tokens per day<InfoTip text="How much text went to the AI (input) and came back (output) each day. More tokens means higher cost." /></h3>
               <ColumnChart
                 points={tokenPoints}
                 series={TOKEN_SERIES}
@@ -149,7 +152,7 @@ export default function AiSpendAnalytics() {
           </div>
 
           <div style={{ margin: "10px 0 0" }}>
-            <button type="button" onClick={() => setShowTable((v) => !v)} style={linkButton} aria-expanded={showTable}>
+            <button type="button" onClick={() => setShowTable((v) => !v)} style={linkButton} aria-expanded={showTable} data-tip="See the same daily numbers as a table instead of charts.">
               {showTable ? "Hide the daily table" : "Show as table"}
             </button>
           </div>
@@ -182,10 +185,10 @@ export default function AiSpendAnalytics() {
             </div>
           )}
 
-          <h2 style={sectionTitle}>Where the money goes</h2>
+          <h2 style={{ ...sectionTitle, display: "flex", alignItems: "center" }}>Where the money goes<InfoTip text="The same spend split two ways: by which AI model answered, and by what the call was for." /></h2>
           <div style={chartGridStyle}>
             <div style={panelStyle}>
-              <h3 style={chartTitle}>By model</h3>
+              <h3 style={{ ...chartTitle, display: "flex", alignItems: "center" }}>By model<InfoTip text="Each AI model used, with its share of the spend. A fallback model appears here when the main one failed." /></h3>
               <table style={tableStyle}>
                 <thead>
                   <tr>
@@ -218,7 +221,7 @@ export default function AiSpendAnalytics() {
             </div>
 
             <div style={panelStyle}>
-              <h3 style={chartTitle}>By purpose</h3>
+              <h3 style={{ ...chartTitle, display: "flex", alignItems: "center" }}>By purpose<InfoTip text="Why the AI was called: reading new email, checking whether a conversation looks resolved, or a test you ran yourself." /></h3>
               <table style={tableStyle}>
                 <thead>
                   <tr>
@@ -249,7 +252,7 @@ export default function AiSpendAnalytics() {
             </div>
           </div>
 
-          <h2 style={sectionTitle}>What the built-in filter saves</h2>
+          <h2 style={{ ...sectionTitle, display: "flex", alignItems: "center" }}>What the built-in filter saves<InfoTip text="IEMAS's own keyword filter (Zettelkasten) decides most emails for free. Only unclear emails are sent to the paid AI." /></h2>
           <div style={panelStyle}>
             <p style={{ ...hintStyle, margin: "0 0 10px", lineHeight: 1.5 }}>
               IEMAS first checks every email with its own keyword filter, which costs nothing. The AI is only asked when that filter is unsure.
@@ -273,21 +276,21 @@ export default function AiSpendAnalytics() {
                 </div>
                 <div style={cardGridStyle}>
                   <div className="stat-card">
-                    <div className="stat-label">Emails classified</div>
+                    <StatLabel help="How many incoming emails were checked in this range, by the free filter or by the AI.">Emails classified</StatLabel>
                     <div className="stat-value">{number(e.emailsClassified)}</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-label">Cost per 1,000 emails</div>
+                    <StatLabel help="Total classification spend divided across every email checked. A simple way to compare months.">Cost per 1,000 emails</StatLabel>
                     <div className="stat-value">{usd(e.costPer1000EmailsUsd)}</div>
                     <div style={hintStyle}>all classification spend, spread over every email</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-label">Cost per AI-checked email</div>
+                    <StatLabel help="What it costs, on average, when an email does need the AI, including retries and fallback models.">Cost per AI-checked email</StatLabel>
                     <div className="stat-value">{usd(e.costPerAiEmailUsd, 6)}</div>
                     <div style={hintStyle}>including retries and fallbacks</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-label">Estimated saved</div>
+                    <StatLabel help="Roughly what it would have cost if every email the free filter settled had gone to the AI instead.">Estimated saved</StatLabel>
                     <div className="stat-value">{usd(e.estimatedSavedUsd)}</div>
                     <div style={hintStyle}>if the filter had sent those emails to the AI</div>
                   </div>

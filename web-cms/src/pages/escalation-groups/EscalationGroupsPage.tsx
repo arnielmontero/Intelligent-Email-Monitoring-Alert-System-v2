@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { EmployeeDto, EscalationGroupDto, SaveEscalationGroupRequest } from "../../api/types";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 interface FormState {
   name: string;
@@ -108,7 +109,7 @@ export default function EscalationGroupsPage() {
         <thead>
           <tr>
             <th style={thStyle}>Name</th>
-            <th style={thStyle}>Members</th>
+            <th style={thStyle}>Members<InfoTip text="The employees in this group." /></th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -118,8 +119,8 @@ export default function EscalationGroupsPage() {
               <td style={tdStyle}>{g.name}</td>
               <td style={tdStyle}>{g.members.map((m) => m.employeeName).join(", ") || "(none)"}</td>
               <td style={tdStyle}>
-                <button onClick={() => startEdit(g)} style={{ marginRight: 8 }}>Edit</button>
-                <button onClick={() => handleDelete(g.id)}>Delete</button>
+                <button onClick={() => startEdit(g)} style={{ marginRight: 8 }} data-tip="Rename the group or change its members.">Edit</button>
+                <button onClick={() => handleDelete(g.id)} data-tip="Delete this group. Policies that name it will need a new recipient.">Delete</button>
               </td>
             </tr>
           ))}
@@ -129,17 +130,17 @@ export default function EscalationGroupsPage() {
         </tbody>
       </table>
 
-      {!showForm && <button onClick={startCreate}>Add Escalation Group</button>}
+      {!showForm && <button onClick={startCreate} data-tip="Create a named group, e.g. Sales managers, to use as an escalation recipient.">Add Escalation Group</button>}
 
       {showForm && (
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 480 }}>
           <h2 style={{ fontSize: 16 }}>{editingId ? "Edit Group" : "Add Group"}</h2>
           <div>
-            <label>Name</label><br />
+            <label><TipLabel tip="A name for the group, e.g. Sales managers.">Name</TipLabel></label><br />
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ width: "100%" }} />
           </div>
           <div>
-            <label>Members</label>
+            <label><TipLabel tip="Tick everyone who should belong to this group.">Members</TipLabel></label>
             <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--color-border)", borderRadius: 4, padding: 8, marginTop: 4 }}>
               {employees.map((emp) => (
                 <label key={emp.id} style={{ display: "block", padding: "2px 0" }}>
@@ -154,7 +155,7 @@ export default function EscalationGroupsPage() {
             </div>
           </div>
           <div>
-            <button type="submit" style={{ marginRight: 8 }}>Save</button>
+            <button type="submit" style={{ marginRight: 8 }} data-tip="Save the group.">Save</button>
             <button type="button" onClick={() => setShowForm(false)}>Cancel</button>
           </div>
         </form>

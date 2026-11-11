@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { EscalationEventDto, EscalationOutcome, EscalationRunResult } from "../../api/types";
 import { ESCALATION_OUTCOME_LABELS, ESCALATION_RECIPIENT_TYPE_LABELS, ESCALATION_SKIP_REASON_LABELS } from "../../api/types";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 export default function EscalationHistoryPage() {
   const [events, setEvents] = useState<EscalationEventDto[]>([]);
@@ -66,7 +67,7 @@ export default function EscalationHistoryPage() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "end", marginBottom: 16, flexWrap: "wrap" }}>
         <div>
-          <label>Outcome</label><br />
+          <label><TipLabel tip="Show only escalations that were carried out, skipped, or could not find anyone to send to.">Outcome</TipLabel></label><br />
           <select value={outcomeFilter} onChange={(e) => setOutcomeFilter(e.target.value === "" ? "" : (Number(e.target.value) as EscalationOutcome))}>
             <option value="">All</option>
             {(Object.keys(ESCALATION_OUTCOME_LABELS) as unknown as EscalationOutcome[]).map((v) => (
@@ -75,11 +76,11 @@ export default function EscalationHistoryPage() {
           </select>
         </div>
         <div>
-          <label>Take</label><br />
+          <label><TipLabel tip="How many of the most recent entries to load.">Take</TipLabel></label><br />
           <input type="number" min={1} value={take} onChange={(e) => setTake(Number(e.target.value))} style={{ width: 80 }} />
         </div>
-        <button onClick={load}>Filter</button>
-        <button onClick={handleRunNow} disabled={running}>{running ? "Running..." : "Run Now"}</button>
+        <button onClick={load} data-tip="Reload the list with the filters above.">Filter</button>
+        <button onClick={handleRunNow} disabled={running} data-tip="Run the escalation check now instead of waiting for the next scheduled run. Any Case that qualifies is escalated immediately.">{running ? "Running..." : "Run Now"}</button>
         {runResult && (
           <span style={{ fontSize: 13 }}>
             Considered {runResult.considered}, Executed {runResult.executed}, Skipped {runResult.skipped},
@@ -93,14 +94,14 @@ export default function EscalationHistoryPage() {
           <tr>
             <th style={thStyle}>Occurred At</th>
             <th style={thStyle}>Case Number</th>
-            <th style={thStyle}>Policy</th>
-            <th style={thStyle}>Level</th>
-            <th style={thStyle}>Trigger</th>
-            <th style={thStyle}>Recipient Type</th>
-            <th style={thStyle}>Recipient</th>
-            <th style={thStyle}>Channel</th>
-            <th style={thStyle}>Outcome</th>
-            <th style={thStyle}>Skip Reason</th>
+            <th style={thStyle}>Policy<InfoTip text="The escalation policy whose rules triggered this check." /></th>
+            <th style={thStyle}>Level<InfoTip text="Escalation step: 1 is the first person told (e.g. supervisor); each further level goes higher (e.g. director)." /></th>
+            <th style={thStyle}>Trigger<InfoTip text="What caused the escalation, e.g. no reply after the reminders, or an idle conversation." /></th>
+            <th style={thStyle}>Recipient Type<InfoTip text="Who the level is meant for: the owner, their supervisor, the department manager, a named employee or a group." /></th>
+            <th style={thStyle}>Recipient<InfoTip text="The actual person or group the escalation went to." /></th>
+            <th style={thStyle}>Channel<InfoTip text="How the recipient was told, e.g. email." /></th>
+            <th style={thStyle}>Outcome<InfoTip text="Carried out, skipped, or no recipient found. Skipped and not-found entries explain why in the next columns." /></th>
+            <th style={thStyle}>Skip Reason<InfoTip text="Why the escalation did not go out, e.g. the Case was already answered or resolved." /></th>
             <th style={thStyle}>Detail</th>
           </tr>
         </thead>

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { apiClient } from "../../api/client";
 import type { CaseRunResult, CaseWorkflowItemDto, CaseWorkflowOverviewDto, PagedResult } from "../../api/types";
 import AiCost from "../../components/AiCost";
+import { InfoTip } from "../../components/help/Tooltip";
 import Pagination from "../../components/Pagination";
 import StatCard, { Badge, type Tone } from "../../components/StatCard";
 
@@ -14,6 +15,7 @@ interface Stage {
   hint: string;
   link?: string;
   tone?: Tone;
+  help?: string;
 }
 
 /// The path every customer email takes, with how many are at each stage right now, and the email → Case step in detail.
@@ -92,23 +94,23 @@ export default function CaseWorkflowPage() {
   }
 
   const intake: Stage[] = overview ? [
-    { label: "Email received", count: overview.receivedLast24Hours, hint: "last 24 hours", link: "/email-monitoring" },
-    { label: "AI check", count: overview.awaitingAiCheck, hint: "waiting to be read by the AI", link: "/email-classification" },
-    { label: "Waiting for a Case", count: overview.waitingForCase, hint: "important, not yet a Case", tone: overview.waitingForCase > 0 ? "warn" : undefined },
+    { label: "Email received", count: overview.receivedLast24Hours, hint: "last 24 hours", link: "/email-monitoring", help: "Emails that arrived in the watched mailboxes in the last 24 hours." },
+    { label: "AI check", count: overview.awaitingAiCheck, hint: "waiting to be read by the AI", link: "/email-classification", help: "Emails the free filter could not decide on, queued for the AI. Normally empties within a minute or two." },
+    { label: "Waiting for a Case", count: overview.waitingForCase, hint: "important, not yet a Case", help: "Emails judged important that are not in a Case yet. Run Now below turns them into Cases immediately.", tone: overview.waitingForCase > 0 ? "warn" : undefined },
   ] : [];
 
   const work: Stage[] = overview ? [
-    { label: "Action required", count: overview.actionRequired, hint: "new, not started", link: "/cases?status=1", tone: overview.actionRequired > 0 ? "warn" : undefined },
-    { label: "In progress", count: overview.inProgress, hint: "employee is working on it", link: "/cases?status=2" },
-    { label: "Waiting", count: overview.waitingOnCustomer + overview.waitingInternally, hint: `${overview.waitingOnCustomer} on customer · ${overview.waitingInternally} internal`, link: "/cases?status=3" },
-    { label: "Completed", count: overview.completedLast7Days, hint: "last 7 days", link: "/cases?status=8" },
+    { label: "Action required", count: overview.actionRequired, hint: "new, not started", link: "/cases?status=1", help: "New Cases the owner has not started on.", tone: overview.actionRequired > 0 ? "warn" : undefined },
+    { label: "In progress", count: overview.inProgress, hint: "employee is working on it", link: "/cases?status=2", help: "Cases the owner has replied to or started working on." },
+    { label: "Waiting", count: overview.waitingOnCustomer + overview.waitingInternally, hint: `${overview.waitingOnCustomer} on customer · ${overview.waitingInternally} internal`, link: "/cases?status=3", help: "Cases paused while waiting on the customer or on another department." },
+    { label: "Completed", count: overview.completedLast7Days, hint: "last 7 days", link: "/cases?status=8", help: "Cases finished in the last 7 days." },
   ] : [];
 
   const side: Stage[] = overview ? [
-    { label: "Not work", count: overview.notWorkLast24Hours, hint: "AI: no Case needed (last 24 h)" },
-    { label: "Needs review", count: overview.needsReview, hint: "AI was unsure — a person decides", link: "/email-classification", tone: overview.needsReview > 0 ? "warn" : undefined },
-    { label: "Overdue", count: overview.overdue, hint: "no reply in time", link: "/cases?status=6", tone: overview.overdue > 0 ? "bad" : undefined },
-    { label: "Escalated", count: overview.escalated, hint: "no reply after reminders — see Escalation History", link: "/cases?status=7", tone: overview.escalated > 0 ? "bad" : undefined },
+    { label: "Not work", count: overview.notWorkLast24Hours, hint: "AI: no Case needed (last 24 h)", help: "Emails judged not to need work (newsletters, notices, spam) in the last 24 hours. No Case was made." },
+    { label: "Needs review", count: overview.needsReview, hint: "AI was unsure — a person decides", link: "/email-classification", help: "The AI was not confident enough to decide. A person should look at these on Email Classification.", tone: overview.needsReview > 0 ? "warn" : undefined },
+    { label: "Overdue", count: overview.overdue, hint: "no reply in time", link: "/cases?status=6", help: "Cases where the reply deadline passed without a reply.", tone: overview.overdue > 0 ? "bad" : undefined },
+    { label: "Escalated", count: overview.escalated, hint: "no reply after reminders — see Escalation History", link: "/cases?status=7", help: "Cases still unanswered after the reminders, so management was alerted.", tone: overview.escalated > 0 ? "bad" : undefined },
   ] : [];
 
   return (
@@ -139,7 +141,7 @@ export default function CaseWorkflowPage() {
             Run Now does it immediately and shows what happened to each email.
           </p>
         </div>
-        <button className="btn-primary" onClick={runNow} disabled={running}>
+        <button className="btn-primary" onClick={runNow} disabled={running} data-tip="Turn the waiting important emails into Cases right now, instead of waiting up to 2 minutes. Shows what happened to each email.">
           {running ? "Running..." : "Run Now"}
         </button>
       </div>
@@ -163,6 +165,7 @@ export default function CaseWorkflowPage() {
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           placeholder="Search sender, subject, mailbox or case #"
+          data-tip="Filters the list as you type."
           style={{ width: 320 }}
         />
       </div>
@@ -182,7 +185,7 @@ function StageGrid({ stages }: { stages: Stage[] }) {
   return (
     <div className="stat-grid">
       {stages.map((stage) => (
-        <StatCard key={stage.label} label={stage.label} value={stage.count} hint={stage.hint} tone={stage.tone} to={stage.link} />
+        <StatCard key={stage.label} label={stage.label} value={stage.count} hint={stage.hint} tone={stage.tone} to={stage.link} help={stage.help} />
       ))}
     </div>
   );
@@ -217,7 +220,7 @@ function EmailTable({ items, empty, sort }: { items: CaseWorkflowItemDto[]; empt
           {header("Mailbox", "mailbox")}
           {header("Case", "case")}
           {header("Processed", "processed")}
-          <th style={thStyle} title="What AI spent checking this email. The built-in filter is free, so many emails show $0.">AI cost</th>
+          <th style={thStyle}>AI cost<InfoTip text="What the AI cost to check this email. The built-in filter is free, so many emails show $0." /></th>
         </tr>
       </thead>
       <tbody>

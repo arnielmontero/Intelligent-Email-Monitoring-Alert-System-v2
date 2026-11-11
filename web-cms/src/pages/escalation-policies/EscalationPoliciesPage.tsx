@@ -12,6 +12,7 @@ import type {
   TestEscalationPolicyResult,
 } from "../../api/types";
 import { CLASSIFICATION_PRIORITY_LABELS, ESCALATION_RECIPIENT_TYPE_LABELS } from "../../api/types";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 
 function timeSpanToHours(ts: string): number {
   // .NET serializes TimeSpan as "d.hh:mm:ss" for durations >= 1 day, "hh:mm:ss" otherwise.
@@ -291,13 +292,13 @@ export default function EscalationPoliciesPage() {
           <tr>
             <th style={thStyle}>Name</th>
             <th style={thStyle}>Enabled</th>
-            <th style={thStyle}>Default</th>
-            <th style={thStyle}>Trigger Count</th>
-            <th style={thStyle}>Grace Period</th>
-            <th style={thStyle}>Cooldown</th>
-            <th style={thStyle}>Max Level</th>
-            <th style={thStyle}>Channel</th>
-            <th style={thStyle}># Levels</th>
+            <th style={thStyle}>Default<InfoTip text="The policy used when no other matches the Case." /></th>
+            <th style={thStyle}>Trigger Count<InfoTip text="How many reminders must go unanswered before escalating." /></th>
+            <th style={thStyle}>Grace Period<InfoTip text="Extra hours to wait after the last reminder before escalating." /></th>
+            <th style={thStyle}>Cooldown<InfoTip text="Minimum hours between two escalations of the same Case." /></th>
+            <th style={thStyle}>Max Level<InfoTip text="The highest level it can escalate to (up to 3)." /></th>
+            <th style={thStyle}>Channel<InfoTip text="How the recipient is told, e.g. email." /></th>
+            <th style={thStyle}># Levels<InfoTip text="How many escalation steps are set up." /></th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -318,22 +319,22 @@ export default function EscalationPoliciesPage() {
                 <td style={tdStyle}>{p.channel}</td>
                 <td style={tdStyle}>{p.levels.length}</td>
                 <td style={tdStyle}>
-                  <button onClick={() => startEdit(p)} style={{ marginRight: 8 }}>Edit</button>
-                  <button onClick={() => handleToggleEnabled(p)} style={{ marginRight: 8 }}>{p.enabled ? "Disable" : "Enable"}</button>
-                  <button onClick={() => handleDelete(p.id)}>Delete</button>
+                  <button onClick={() => startEdit(p)} style={{ marginRight: 8 }} data-tip="Change this policy's timings and levels.">Edit</button>
+                  <button onClick={() => handleToggleEnabled(p)} style={{ marginRight: 8 }} data-tip="Turn this policy on or off without deleting it.">{p.enabled ? "Disable" : "Enable"}</button>
+                  <button onClick={() => handleDelete(p.id)} data-tip="Delete this policy permanently.">Delete</button>
                 </td>
               </tr>
               <tr>
                 <td style={tdStyle} colSpan={10}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
-                    <strong>Test Policy:</strong>
+                    <strong>Test Policy:</strong><InfoTip text="Paste a Case ID to see who this policy would escalate it to and why. Nothing is sent or recorded." />
                     <input
                       placeholder="Case ID (guid)"
                       value={testCaseIds[p.id] ?? ""}
                       onChange={(e) => setTestCaseIds({ ...testCaseIds, [p.id]: e.target.value })}
                       style={{ width: 300 }}
                     />
-                    <button onClick={() => handleTest(p.id)} disabled={testRunning === p.id}>
+                    <button onClick={() => handleTest(p.id)} disabled={testRunning === p.id} data-tip="Dry-run the policy against the Case ID on the left.">
                       {testRunning === p.id ? "Testing..." : "Test"}
                     </button>
                     {testResults[p.id] && (
@@ -355,7 +356,7 @@ export default function EscalationPoliciesPage() {
         </tbody>
       </table>
 
-      {!showForm && <button onClick={startCreate}>Add Escalation Policy</button>}
+      {!showForm && <button onClick={startCreate} data-tip="Create new escalation rules.">Add Escalation Policy</button>}
 
       {showForm && (
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
@@ -363,48 +364,48 @@ export default function EscalationPoliciesPage() {
 
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
             <div>
-              <label>Name</label><br />
+              <label><TipLabel tip="A short name, e.g. Standard escalation.">Name</TipLabel></label><br />
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
             </div>
             <div>
-              <label>Description</label><br />
+              <label><TipLabel tip="Optional note about when this policy is used.">Description</TipLabel></label><br />
               <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
             <div>
-              <label>Trigger reminder count</label><br />
+              <label><TipLabel tip="Escalate after this many reminders were sent with no reply. Example: 2.">Trigger reminder count</TipLabel></label><br />
               <input type="number" min={1} value={form.triggerReminderCount}
                 onChange={(e) => setForm({ ...form, triggerReminderCount: Number(e.target.value) })} style={{ width: 80 }} />
             </div>
             <div>
-              <label>Grace period (hours)</label><br />
+              <label><TipLabel tip="Extra hours after the last reminder before escalating, so the agent can still act.">Grace period (hours)</TipLabel></label><br />
               <input type="number" min={0} step={0.5} value={form.gracePeriodHours}
                 onChange={(e) => setForm({ ...form, gracePeriodHours: Number(e.target.value) })} style={{ width: 80 }} />
             </div>
             <div>
-              <label>Cooldown (hours)</label><br />
+              <label><TipLabel tip="Wait at least this long before escalating the same Case again (to the next level).">Cooldown (hours)</TipLabel></label><br />
               <input type="number" min={0} step={0.5} value={form.cooldownHours}
                 onChange={(e) => setForm({ ...form, cooldownHours: Number(e.target.value) })} style={{ width: 80 }} />
             </div>
             <div>
-              <label>Maximum level</label><br />
+              <label><TipLabel tip="The highest level to escalate to, 1 to 3.">Maximum level</TipLabel></label><br />
               <input type="number" min={1} max={3} value={form.maximumLevel}
                 onChange={(e) => setForm({ ...form, maximumLevel: Number(e.target.value) })} style={{ width: 80 }} />
             </div>
             <div>
-              <label>Channel</label><br />
+              <label><TipLabel tip="How recipients are told. Escalation emails are sent through Outbound Email.">Channel</TipLabel></label><br />
               <input value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })} style={{ width: 120 }} />
             </div>
             <div>
-              <label>Classification Profile ID (optional)</label><br />
+              <label><TipLabel tip="Only use this policy for Cases from mailboxes with this profile. Leave blank for all.">Classification Profile ID (optional)</TipLabel></label><br />
               <input value={form.classificationProfileId} onChange={(e) => setForm({ ...form, classificationProfileId: e.target.value })}
                 placeholder="(none)" style={{ width: 220 }} />
             </div>
             <div>
-              <label>Categories (optional)</label><br />
+              <label><TipLabel tip="Only use this policy for these email categories, comma-separated. Leave blank for all.">Categories (optional)</TipLabel></label><br />
               <input value={form.categories} onChange={(e) => setForm({ ...form, categories: e.target.value })} style={{ width: 160 }} />
             </div>
             <div>
-              <label>Priority (optional)</label><br />
+              <label><TipLabel tip="Only use this policy for Cases of this priority. Leave blank for all.">Priority (optional)</TipLabel></label><br />
               <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value === "" ? "" : (Number(e.target.value) as ClassificationPriority) })}>
                 <option value="">(none)</option>
                 {(Object.keys(CLASSIFICATION_PRIORITY_LABELS) as unknown as ClassificationPriority[]).map((v) => (
@@ -418,19 +419,19 @@ export default function EscalationPoliciesPage() {
             </div>
             <div>
               <label><input type="checkbox" checked={form.isDefault}
-                onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} /> Default policy</label>
+                onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} /> Default policy<InfoTip text="Use this policy whenever no other one matches the Case." /></label>
             </div>
           </div>
 
           <div>
-            <h3 style={{ fontSize: 14 }}>Levels</h3>
+            <h3 style={{ fontSize: 14, display: "flex", alignItems: "center" }}>Levels<InfoTip text="Who is told at each step. Level 1 goes first (e.g. supervisor); if the Case is still neglected, the next level is told (e.g. department manager)." /></h3>
             <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
               <thead>
                 <tr>
                   <th style={thStyle}>Level</th>
-                  <th style={thStyle}>Delay (hours)</th>
-                  <th style={thStyle}>Recipient Type</th>
-                  <th style={thStyle}>Specific Employee / Group</th>
+                  <th style={thStyle}>Delay (hours)<InfoTip text="Hours after the previous level before this one is used." /></th>
+                  <th style={thStyle}>Recipient Type<InfoTip text="Who to tell: the Case owner, their supervisor, the department manager, a named employee or a group." /></th>
+                  <th style={thStyle}>Specific Employee / Group<InfoTip text="Pick the person or group when the recipient type asks for one." /></th>
                   <th style={thStyle}></th>
                 </tr>
               </thead>
@@ -478,11 +479,11 @@ export default function EscalationPoliciesPage() {
                 ))}
               </tbody>
             </table>
-            <button type="button" onClick={addLevelRow} style={{ marginTop: 8 }}>Add Level</button>
+            <button type="button" onClick={addLevelRow} style={{ marginTop: 8 }} data-tip="Add another, higher escalation step.">Add Level</button>
           </div>
 
           <div>
-            <button type="submit" style={{ marginRight: 8 }}>Save</button>
+            <button type="submit" style={{ marginRight: 8 }} data-tip="Save the policy.">Save</button>
             <button type="button" onClick={() => setShowForm(false)}>Cancel</button>
           </div>
         </form>

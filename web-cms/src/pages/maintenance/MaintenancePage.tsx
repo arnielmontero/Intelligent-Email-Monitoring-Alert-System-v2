@@ -5,6 +5,7 @@ import { useAuthStore } from "../../store/authStore";
 import { Badge } from "../../components/StatCard";
 import ResetEmailDataPanel from "./ResetEmailDataPanel";
 import SampleDataPanel from "./SampleDataPanel";
+import { InfoTip } from "../../components/help/Tooltip";
 
 /// Requirements §91 — Emergency Pause. Changes are permission-controlled (Administrator+),
 /// audited, timestamped and attributed; pausing never deletes Cases.
@@ -98,13 +99,14 @@ export default function MaintenancePage() {
                   {!c.isPaused && (
                     <input
                       placeholder="Reason (required)"
+                      data-tip="Say why you are pausing, e.g. Mail server maintenance. It is shown to other admins and kept in the log."
                       maxLength={500}
                       value={reasons[c.control] ?? ""}
                       onChange={(e) => setReasons((r) => ({ ...r, [c.control]: e.target.value }))}
                       style={{ width: 220 }}
                     />
                   )}
-                  <button disabled={busy === c.control} onClick={() => setPaused(c, !c.isPaused)}>
+                  <button disabled={busy === c.control} onClick={() => setPaused(c, !c.isPaused)} data-tip={c.isPaused ? "Start this part again. It continues where it stopped." : "Stop this part of the system until you resume it. Nothing is deleted."}>
                     {c.isPaused ? "Resume" : "Pause"}
                   </button>
                 </div>
@@ -114,7 +116,7 @@ export default function MaintenancePage() {
         ))}
       </div>
 
-      <h2>Recent changes</h2>
+      <h2 style={{ display: "flex", alignItems: "center" }}>Recent changes<InfoTip text="Who paused or resumed what, when, and why." /></h2>
       <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
         <thead>
           <tr>

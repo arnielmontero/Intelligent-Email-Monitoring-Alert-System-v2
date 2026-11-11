@@ -4,6 +4,7 @@ import type { SystemSettingDto } from "../../api/types";
 import IgnoredSendersEditor from "../system-settings/IgnoredSendersEditor";
 import EmailRulesTable from "./EmailRulesTable";
 import { CONFIGURATION_GROUPS } from "./groups";
+import { InfoTip } from "../../components/help/Tooltip";
 
 /// Which emails become work: the rules the AI uses to judge legitimacy and whether a reply is
 /// needed, plus senders that are always ignored.
@@ -61,7 +62,7 @@ export default function SystemConfigurationPage() {
       {error && <div className="form-error">{error}</div>}
       {notice && <div style={noticeStyle}>{notice}</div>}
 
-      <h2 style={sectionTitle}>Email rules (AI)</h2>
+      <h2 style={{ ...sectionTitle, display: "flex", alignItems: "center" }}>Email rules (AI)<InfoTip text="Plain-language rules the AI follows when deciding whether an email is real work. Example: Newsletters from suppliers means Not legitimate." /></h2>
       <p style={hintStyle}>
         Add, edit or delete rules any time — each change saves immediately and applies to email classified from then on
         (email already classified keeps its result). Test them on the Email Classification page with a sample email.
@@ -80,6 +81,7 @@ export default function SystemConfigurationPage() {
                 e.target.checked ? "Only email that needs a response becomes a Case." : "Every relevant, legitimate email becomes a Case.")}
             />
             <strong>{toggle.label}</strong>
+            <InfoTip text="On: only email that needs an answer becomes a Case. Off: every legitimate customer email becomes a Case, even a simple thank-you." />
           </label>
           <div style={{ ...hintStyle, marginTop: 4 }}>{toggle.description}</div>
         </div>
@@ -87,7 +89,7 @@ export default function SystemConfigurationPage() {
 
       {senderList && (
         <>
-          <h2 style={sectionTitle}>Email filtering</h2>
+          <h2 style={{ ...sectionTitle, display: "flex", alignItems: "center" }}>Email filtering<InfoTip text="Senders or whole domains whose email is always ignored: never a Case, never an alert. Good for newsletters and automatic systems." /></h2>
           <IgnoredSendersEditor setting={senderList} onSaved={apply} />
         </>
       )}

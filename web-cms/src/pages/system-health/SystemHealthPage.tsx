@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { SystemHealthDto } from "../../api/types";
 import StatCard, { Badge, type Tone } from "../../components/StatCard";
+import { InfoTip } from "../../components/help/Tooltip";
 
 const STATUS_TONE: Record<string, Tone> = {
   Healthy: "good",
@@ -68,17 +69,17 @@ export default function SystemHealthPage() {
                 {checkedAt && ` Last checked ${checkedAt.toLocaleTimeString()} (${health.totalDurationMs.toFixed(0)} ms).`}
               </div>
             </div>
-            <button onClick={load}>Refresh now</button>
+            <button onClick={load} data-tip="Re-check every part of the system right now.">Refresh now</button>
           </div>
 
-          <div className="section-title">Dependencies</div>
+          <div className="section-title" style={{ display: "flex", alignItems: "center" }}>Dependencies<InfoTip text="The services IEMAS needs to work: the database, the mailboxes and the AI provider. Anything not green needs attention." /></div>
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th style={{ ...thStyle, width: 220 }}>Dependency</th>
                 <th style={{ ...thStyle, width: 130 }}>Status</th>
                 <th style={thStyle}>Details</th>
-                <th style={{ ...thStyle, width: 110, textAlign: "right" }}>Response</th>
+                <th style={{ ...thStyle, width: 110, textAlign: "right" }}>Response<InfoTip text="How long the service took to answer the health check." /></th>
               </tr>
             </thead>
             <tbody>
@@ -93,13 +94,13 @@ export default function SystemHealthPage() {
             </tbody>
           </table>
 
-          <div className="section-title">Background jobs</div>
+          <div className="section-title" style={{ display: "flex", alignItems: "center" }}>Background jobs<InfoTip text="The automatic tasks that run on a schedule: checking mail, reminders, escalation and so on." /></div>
           <div className="stat-grid">
-            <StatCard label="Running now" value={health.processingJobCount ?? "—"}
+            <StatCard label="Running now" value={health.processingJobCount ?? "—"} help="Automatic tasks being worked on at this moment."
               hint="jobs being worked on at this moment" />
-            <StatCard label="Queued for later" value={health.scheduledJobCount ?? "—"}
+            <StatCard label="Queued for later" value={health.scheduledJobCount ?? "—"} help="One-off tasks waiting for their start time, e.g. a delayed retry."
               hint="one-off jobs waiting for their start time" />
-            <StatCard label="Failed" value={health.failedJobCount ?? "—"}
+            <StatCard label="Failed" value={health.failedJobCount ?? "—"} help="Tasks that kept failing after their retries. A non-zero number means something needs fixing; a developer can check the API log."
               tone={(health.failedJobCount ?? 0) > 0 ? "bad" : "neutral"}
               hint={(health.failedJobCount ?? 0) > 0 ? "jobs that gave up after retries — check the API log" : "no failed jobs"} />
           </div>

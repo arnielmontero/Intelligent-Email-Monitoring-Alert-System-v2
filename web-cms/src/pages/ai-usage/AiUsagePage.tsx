@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { AiProviderKeyCheck, AiUsageCallDto, AiUsageSummaryDto, PagedResult } from "../../api/types";
 import Pagination from "../../components/Pagination";
-import { Badge } from "../../components/StatCard";
+import { Badge, StatLabel } from "../../components/StatCard";
+import { InfoTip, TipLabel } from "../../components/help/Tooltip";
 import AiSpendAnalytics from "./AiSpendAnalytics";
 import { PURPOSE_LABELS, number, usd } from "./format";
 
@@ -59,7 +60,7 @@ export default function AiUsagePage() {
       <div style={cardGridStyle}>
         {summary?.periods.map((p) => (
           <div key={p.label} className="stat-card">
-            <div className="stat-label">{p.label}</div>
+            <StatLabel help={`AI spend for ${p.label.toLowerCase()}, with the number of calls and tokens. Failed calls are shown in red.`}>{p.label}</StatLabel>
             <div className="stat-value">{usd(p.costUsd)}</div>
             <div style={hintStyle}>
               {number(p.calls)} call{p.calls === 1 ? "" : "s"} · {number(p.tokens)} tokens
@@ -69,7 +70,7 @@ export default function AiUsagePage() {
           </div>
         ))}
         <div className="stat-card">
-          <div className="stat-label">OpenRouter account</div>
+          <StatLabel help="Live figures from OpenRouter for the API key in use: how much it has spent in total and how much is left if a spending limit is set.">OpenRouter account</StatLabel>
           {!account ? (
             <div style={hintStyle}>Loading…</div>
           ) : account.succeeded ? (
@@ -88,24 +89,24 @@ export default function AiUsagePage() {
 
       <AiSpendAnalytics />
 
-      <h2 style={sectionTitle}>Calls</h2>
+      <h2 style={{ ...sectionTitle, display: "flex", alignItems: "center" }}>Calls<InfoTip text="Every single request sent to the AI, newest first. Use the filters to find failures or a particular model." /></h2>
       <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap", marginBottom: 12 }}>
         <div style={fieldStyle}>
-          <label>Model</label>
+          <label><TipLabel tip="Show only calls answered by one AI model.">Model</TipLabel></label>
           <select value={model} onChange={(e) => setModel(e.target.value)}>
             <option value="">All models</option>
             {models.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </div>
         <div style={fieldStyle}>
-          <label>Purpose</label>
+          <label><TipLabel tip="Show only calls made for one reason, e.g. email classification or a resolution check.">Purpose</TipLabel></label>
           <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
             <option value="">All</option>
             {Object.entries(PURPOSE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
         <div style={fieldStyle}>
-          <label>Result</label>
+          <label><TipLabel tip="Show only calls that worked, or only ones that failed. Hover a failed badge to read the error.">Result</TipLabel></label>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All</option>
             <option value="ok">Succeeded</option>
@@ -121,9 +122,9 @@ export default function AiUsagePage() {
             <th style={thStyle}>Model</th>
             <th style={thStyle}>Purpose</th>
             <th style={thStyle}>Result</th>
-            <th style={thRight}>Tokens (in / out)</th>
+            <th style={thRight}>Tokens (in / out)<InfoTip text="Text sent to the AI / text it wrote back, in tokens. Cost is based on these." /></th>
             <th style={thRight}>Cost</th>
-            <th style={thRight}>Duration</th>
+            <th style={thRight}>Duration<InfoTip text="How long the AI took to answer, in seconds." /></th>
           </tr>
         </thead>
         <tbody>
